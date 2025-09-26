@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useKV } from '@github/spark/hooks'
 import { Header } from '@/components/Header'
 import { AuthModal } from '@/components/AuthModal'
-import { DebugPanel } from '@/components/DebugPanel'
 import { HomePage, ParkDetailsPage, ParkSelectorPage } from '@/pages'
 import { Toaster } from 'sonner'
 import { initializeSampleData } from '@/data/sampleData'
@@ -122,9 +121,6 @@ function App() {
 
         {/* Toast notifications container */}
         <Toaster position="top-right" richColors />
-        
-        {/* Debug panel for troubleshooting */}
-        <DebugPanel />
       </div>
     </Router>
   )
