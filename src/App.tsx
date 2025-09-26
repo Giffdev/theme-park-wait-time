@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useKV } from '@github/spark/hooks'
 import { Header } from '@/components/Header'
 import { AuthModal } from '@/components/AuthModal'
+import { DebugPanel } from '@/components/DebugPanel'
 import { HomePage, ParkDetailsPage, ParkSelectorPage } from '@/pages'
 import { Toaster } from 'sonner'
 import { initializeSampleData } from '@/data/sampleData'
@@ -40,18 +41,43 @@ function App() {
     const loadData = async () => {
       try {
         console.log('🚀 App initializing sample data')
+        
+        // Check if spark is available first
+        if (!window.spark) {
+          console.error('❌ Spark global object not available')
+          return
+        }
+        
+        if (!window.spark.kv) {
+          console.error('❌ Spark KV not available')
+          return
+        }
+        
+        console.log('✅ Spark KV is available, proceeding with data initialization')
+        
         const success = await initializeSampleData()
         if (!success) {
           console.error('❌ Failed to initialize sample data')
         } else {
           console.log('✅ App sample data initialized successfully')
+          
+          // Quick verification that data is accessible
+          try {
+            const testPark = 'universal-studios-orlando'
+            const testData = await window.spark.kv.get(`attractions-${testPark}`)
+            console.log(`🔍 Test verification for ${testPark}:`, testData ? 'Data found' : 'No data')
+          } catch (testError) {
+            console.error('❌ Test verification failed:', testError)
+          }
         }
       } catch (error) {
         console.error('❌ App error loading sample data:', error)
       }
     }
     
-    loadData()
+    // Add a small delay to ensure the spark runtime is fully loaded
+    const timer = setTimeout(loadData, 100)
+    return () => clearTimeout(timer)
   }, [])
 
   const handleLogin = (user: User) => {
@@ -96,6 +122,9 @@ function App() {
 
         {/* Toast notifications container */}
         <Toaster position="top-right" richColors />
+        
+        {/* Debug panel for troubleshooting */}
+        <DebugPanel />
       </div>
     </Router>
   )

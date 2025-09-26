@@ -63,55 +63,55 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
 
     const loadChartData = async () => {
       try {
-        // Always generate data, regardless of historical reports for now
-        // This ensures charts are never empty
+        // Always generate data first to ensure charts are never empty
         const generatedData = generateTodayData()
         setChartData(generatedData)
         console.log(`📈 Generated chart data for ${attractionId}:`, generatedData.length, 'points')
+        
+        // If we have real historical reports, process those
+        if (historicalReports && Array.isArray(historicalReports) && historicalReports.length > 10) {
+          // Process real reports into hourly averages
+          const today = new Date()
+          const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+          
+          const hourlyData: { [hour: number]: number[] } = {}
+          
+          historicalReports
+            .filter(report => new Date(report.reportedAt) >= todayStart)
+            .forEach(report => {
+              const hour = new Date(report.reportedAt).getHours()
+              if (!hourlyData[hour]) hourlyData[hour] = []
+              hourlyData[hour].push(report.waitTime)
+            })
+          
+          const processedData: WaitTimeDataPoint[] = []
+          for (let hour = 9; hour <= 22; hour++) {
+            const hourReports = hourlyData[hour] || []
+            const avgWaitTime = hourReports.length > 0 
+              ? Math.round(hourReports.reduce((sum, time) => sum + time, 0) / hourReports.length)
+              : generatedData.find(d => d.hour === hour)?.waitTime || Math.round(Math.random() * 50 + 20) // Fallback
+            
+            const timeString = `${hour.toString().padStart(2, '0')}:00`
+            processedData.push({
+              time: timeString,
+              waitTime: avgWaitTime,
+              hour
+            })
+          }
+          
+          setChartData(processedData)
+          console.log(`📈 Using processed historical data for ${attractionId}:`, processedData.length, 'points')
+        }
       } catch (error) {
         console.error(`❌ Error generating chart data for ${attractionId}:`, error)
-        // Still try to set some basic data
-        setChartData(generateTodayData())
+        // Still ensure we have data to prevent blank charts
+        const fallbackData = generateTodayData()
+        setChartData(fallbackData)
       }
     }
 
     // Load chart data immediately
     loadChartData()
-
-    // If we have real historical reports, process those
-    if (historicalReports && Array.isArray(historicalReports) && historicalReports.length > 10) {
-      // Process real reports into hourly averages
-      const today = new Date()
-      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-      
-      const hourlyData: { [hour: number]: number[] } = {}
-      
-      historicalReports
-        .filter(report => new Date(report.reportedAt) >= todayStart)
-        .forEach(report => {
-          const hour = new Date(report.reportedAt).getHours()
-          if (!hourlyData[hour]) hourlyData[hour] = []
-          hourlyData[hour].push(report.waitTime)
-        })
-      
-      const processedData: WaitTimeDataPoint[] = []
-      for (let hour = 9; hour <= 22; hour++) {
-        const hourReports = hourlyData[hour] || []
-        const avgWaitTime = hourReports.length > 0 
-          ? Math.round(hourReports.reduce((sum, time) => sum + time, 0) / hourReports.length)
-          : Math.round(Math.random() * 50 + 20) // Fallback if no data
-        
-        const timeString = `${hour.toString().padStart(2, '0')}:00`
-        processedData.push({
-          time: timeString,
-          waitTime: avgWaitTime,
-          hour
-        })
-      }
-      
-      setChartData(processedData)
-      console.log(`📈 Using processed historical data for ${attractionId}:`, processedData.length, 'points')
-    }
   }, [attractionId, historicalReports])
 
   // Always render a chart - never return null

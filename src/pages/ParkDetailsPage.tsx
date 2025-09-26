@@ -42,6 +42,12 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
       try {
         console.log(`🚀 Park details initializing data for: ${selectedPark}`)
         
+        // Ensure spark is available
+        if (!window.spark?.kv) {
+          console.error('❌ Spark KV not available in ParkDetailsPage')
+          return
+        }
+        
         const success = await initializeSampleData()
         if (!success) {
           console.error('❌ Failed to initialize sample data')
@@ -50,11 +56,18 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
         
         setDataInitialized(true)
         
-        // Verify that data was loaded for the selected park
-        const data = await window.spark.kv.get<any[]>(`attractions-${selectedPark}`)
+        // Verify that data was loaded for the selected park with retry
+        let retries = 3
+        let data: any[] | undefined = undefined
+        
+        while (retries > 0 && (!data || !Array.isArray(data) || data.length === 0)) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+          data = await window.spark.kv.get<any[]>(`attractions-${selectedPark}`)
+          retries--
+        }
+        
         if (!data || !Array.isArray(data) || data.length === 0) {
-          console.error(`❌ No data found for park ${selectedPark} even after initialization`)
-          await initializeSampleData()
+          console.error(`❌ No data found for park ${selectedPark} even after initialization with retries`)
         } else {
           console.log(`✅ Park details verified data for ${selectedPark}: ${data.length} attractions`)
         }

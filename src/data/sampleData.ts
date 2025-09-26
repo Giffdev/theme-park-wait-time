@@ -752,32 +752,71 @@ export const sampleAttractions: Record<string, Attraction[]> = {
 
 // Function to initialize sample data
 export async function initializeSampleData() {
-  const { kv } = window.spark
-  
   try {
-    console.log('🔄 Starting sample data initialization...')
-    
-    // Force clear and re-initialize data for all parks
-    let totalSeeded = 0
-    for (const [parkId, attractions] of Object.entries(sampleAttractions)) {
-      await kv.set(`attractions-${parkId}`, attractions)
-      totalSeeded += attractions.length
-      console.log(`✅ Seeded ${attractions.length} attractions for ${parkId}`)
+    // Ensure spark is available
+    if (!window.spark || !window.spark.kv) {
+      console.error('❌ Spark KV not available')
+      return false
     }
     
-    console.log(`✅ Sample data initialization completed: ${totalSeeded} total attractions across ${Object.keys(sampleAttractions).length} parks`)
+    const { kv } = window.spark
     
-    // Verify all data was saved correctly with detailed logging
-    for (const parkId of Object.keys(sampleAttractions)) {
-      const data = await kv.get<Attraction[]>(`attractions-${parkId}`)
-      if (data && Array.isArray(data) && data.length > 0) {
-        console.log(`✅ Verified ${parkId}: ${data.length} attractions stored correctly`)
-      } else {
-        console.error(`❌ Verification failed for ${parkId}: ${data?.length || 0} attractions found`)
+    console.log('🔄 Starting sample data initialization...')
+    
+    // Check if data is already initialized to avoid unnecessary re-seeding
+    const existingKeys = await kv.keys()
+    const attractionKeys = existingKeys.filter(key => key.startsWith('attractions-'))
+    
+    // If we already have data for most parks, skip re-initialization
+    const expectedParks = Object.keys(sampleAttractions)
+    const existingParks = attractionKeys.map(key => key.replace('attractions-', ''))
+    const missingParks = expectedParks.filter(park => !existingParks.includes(park))
+    
+    if (missingParks.length === 0 && attractionKeys.length > 0) {
+      console.log('✅ Sample data already initialized, skipping...')
+      return true
+    }
+    
+    console.log(`🔄 Initializing missing parks: ${missingParks.length > 0 ? missingParks.join(', ') : 'all parks'}`)
+    
+    // Initialize data for missing or all parks
+    let totalSeeded = 0
+    const parksToInit = missingParks.length > 0 ? missingParks : expectedParks
+    
+    for (const parkId of parksToInit) {
+      try {
+        const attractions = sampleAttractions[parkId]
+        if (attractions && Array.isArray(attractions)) {
+          await kv.set(`attractions-${parkId}`, attractions)
+          totalSeeded += attractions.length
+          console.log(`✅ Seeded ${attractions.length} attractions for ${parkId}`)
+          
+          // Add a small delay to prevent overwhelming the storage system
+          await new Promise(resolve => setTimeout(resolve, 10))
+        }
+      } catch (parkError) {
+        console.error(`❌ Failed to seed ${parkId}:`, parkError)
       }
     }
     
-    console.log('🎉 Sample data initialization and verification completed successfully')
+    console.log(`✅ Sample data initialization completed: ${totalSeeded} attractions seeded for ${parksToInit.length} parks`)
+    
+    // Quick verification for a few key parks
+    const keyParks = ['universal-studios-orlando', 'islands-of-adventure', 'magic-kingdom']
+    for (const parkId of keyParks) {
+      try {
+        const data = await kv.get<Attraction[]>(`attractions-${parkId}`)
+        if (data && Array.isArray(data) && data.length > 0) {
+          console.log(`✅ Verified ${parkId}: ${data.length} attractions`)
+        } else {
+          console.warn(`⚠️ Verification concern for ${parkId}: ${data?.length || 0} attractions`)
+        }
+      } catch (verifyError) {
+        console.error(`❌ Verification failed for ${parkId}:`, verifyError)
+      }
+    }
+    
+    console.log('🎉 Sample data initialization completed successfully')
     return true
   } catch (error) {
     console.error('❌ Error initializing sample data:', error)

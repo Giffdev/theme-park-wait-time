@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useKV } from '@github/spark/hooks'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,9 +20,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
   const [lastUpdate, setLastUpdate] = useState(new Date())
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
-  // Load attractions from seeded data - use key that changes with parkId
-  const [attractions, setAttractions] = useKV<Attraction[]>(`attractions-${parkId}`, [])
+  const [attractions, setAttractions] = useState<Attraction[]>([])
   
   const { getConsensusWaitTime, getRecentReports } = useReporting()
 
@@ -35,11 +32,16 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
       console.log(`🔄 Loading attractions for park: ${parkId}`)
       
       try {
-        // First check if data exists
+        // Ensure spark KV is available
+        if (!window.spark?.kv) {
+          throw new Error('Spark KV not available')
+        }
+        
+        // First try to get data directly
         let parkData = await window.spark.kv.get<Attraction[]>(`attractions-${parkId}`)
         console.log(`📊 Initial check for ${parkId}:`, parkData?.length || 0, 'attractions')
         
-        // If no data found, initialize sample data and try again
+        // If no data found, initialize sample data and try again with retries
         if (!parkData || !Array.isArray(parkData) || parkData.length === 0) {
           console.warn(`❌ No data found for ${parkId}, initializing sample data...`)
           
@@ -47,8 +49,22 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
           const success = await initializeSampleData()
           
           if (success) {
-            parkData = await window.spark.kv.get<Attraction[]>(`attractions-${parkId}`)
-            console.log(`🔄 After initialization for ${parkId}:`, parkData?.length || 0, 'attractions')
+            // Wait a moment for data to be properly saved
+            await new Promise(resolve => setTimeout(resolve, 200))
+            
+            // Try to get data again with retry logic
+            let retries = 3
+            while (retries > 0 && (!parkData || !Array.isArray(parkData) || parkData.length === 0)) {
+              parkData = await window.spark.kv.get<Attraction[]>(`attractions-${parkId}`)
+              console.log(`🔄 Retry ${4 - retries} for ${parkId}:`, parkData?.length || 0, 'attractions')
+              
+              if (!parkData || !Array.isArray(parkData) || parkData.length === 0) {
+                await new Promise(resolve => setTimeout(resolve, 100))
+                retries--
+              } else {
+                break
+              }
+            }
           }
         }
         
@@ -56,8 +72,8 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
           setAttractions(parkData)
           console.log(`✅ Successfully loaded ${parkData.length} attractions for ${parkId}`)
         } else {
-          console.error(`❌ Still no data found for ${parkId} even after initialization`)
-          setError(`No attractions found for this park`)
+          console.error(`❌ Still no data found for ${parkId} even after initialization and retries`)
+          setError(`Failed to load attraction data for this park. The data might be corrupted or the park ID "${parkId}" might not exist.`)
           setAttractions([])
         }
       } catch (error) {
@@ -70,7 +86,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
     }
 
     loadAttractionsForPark()
-  }, [parkId, setAttractions])
+  }, [parkId])
 
   // Update wait times based on consensus every 30 seconds
   useEffect(() => {
@@ -78,10 +94,9 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
 
     const updateWaitTimes = () => {
       setAttractions(currentAttractions => {
-        const safeAttractions = currentAttractions || []
-        if (safeAttractions.length === 0) return safeAttractions
+        if (!currentAttractions || currentAttractions.length === 0) return currentAttractions
         
-        return safeAttractions.map(attraction => {
+        return currentAttractions.map(attraction => {
           const consensusTime = getConsensusWaitTime(attraction.id)
           if (consensusTime !== null && consensusTime !== attraction.currentWaitTime) {
             return {
@@ -101,7 +116,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
     updateWaitTimes()
     const interval = setInterval(updateWaitTimes, 30000)
     return () => clearInterval(interval)
-  }, [attractions, getConsensusWaitTime, setAttractions])
+  }, [attractions, getConsensusWaitTime])
 
   const getWaitTimeColor = (waitTime: number) => {
     if (waitTime <= 20) return 'bg-success text-success-foreground'
@@ -175,17 +190,30 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
           ))}
         </div>
       ) : error ? (
-        <div className="text-center py-8">
-          <h3 className="text-lg font-medium text-destructive mb-2">
-            Error Loading Data
-          </h3>
-          <p className="text-sm text-muted-foreground mb-4">{error}</p>
-          <Button 
-            onClick={() => window.location.reload()}
-            variant="outline"
-          >
-            Reload Page
-          </Button>
+        <div className="text-center py-8 space-y-4">
+          <div className="mx-auto w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center">
+            <Warning size={32} className="text-destructive" />
+          </div>
+          <div>
+            <h3 className="text-lg font-medium text-destructive mb-2">
+              Error Loading Data
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
+              {error}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Button 
+              onClick={() => window.location.reload()}
+              variant="outline"
+              className="mx-2"
+            >
+              Reload Page
+            </Button>
+            <div className="text-xs text-muted-foreground">
+              If this error persists, try selecting a different park or clearing your browser cache.
+            </div>
+          </div>
         </div>
       ) : !attractions || attractions.length === 0 ? (
         <div className="text-center py-8">

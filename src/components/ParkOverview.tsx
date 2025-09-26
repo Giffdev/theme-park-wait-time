@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useKV } from '@github/spark/hooks'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -37,35 +36,47 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
       try {
         const data: Record<string, Attraction[]> = {}
         
+        // Ensure spark is available before proceeding
+        if (!window.spark?.kv) {
+          console.error('❌ Spark KV not available in ParkOverview')
+          return
+        }
+        
         // Initialize sample data first and wait for completion
         const { initializeSampleData } = await import('@/data/sampleData')
         const initSuccess = await initializeSampleData()
         
         if (!initSuccess) {
-          console.error('❌ Failed to initialize sample data')
+          console.error('❌ Failed to initialize sample data in ParkOverview')
         }
         
         // Give a small delay to ensure data is properly saved
-        await new Promise(resolve => setTimeout(resolve, 100))
+        await new Promise(resolve => setTimeout(resolve, 200))
         
-        for (const park of allParks) {
+        // Load data for all parks with error handling for each park
+        const loadPromises = allParks.map(async (park) => {
           try {
-            const attractions = await window.spark.kv.get<Attraction[]>(`attractions-${park.id}`)
+            let attractions = await window.spark.kv.get<Attraction[]>(`attractions-${park.id}`)
+            
+            // Retry once if no data found
+            if (!attractions || !Array.isArray(attractions) || attractions.length === 0) {
+              await new Promise(resolve => setTimeout(resolve, 100))
+              attractions = await window.spark.kv.get<Attraction[]>(`attractions-${park.id}`)
+            }
+            
             if (attractions && Array.isArray(attractions) && attractions.length > 0) {
               data[park.id] = attractions
               console.log(`✅ Loaded ${attractions.length} attractions for ${park.name} (${park.id})`)
             } else {
-              console.warn(`⚠️ No attractions found for ${park.name} (${park.id})`)
-              
-              // Check if we have the key in storage at all
-              const allKeys = await window.spark.kv.keys()
-              const hasKey = allKeys.includes(`attractions-${park.id}`)
-              console.log(`🔍 Key 'attractions-${park.id}' exists in storage: ${hasKey}`)
+              console.warn(`⚠️ No attractions found for ${park.name} (${park.id}) - this park might not have sample data`)
             }
           } catch (parkError) {
             console.error(`❌ Error loading park ${park.name}:`, parkError)
           }
-        }
+        })
+        
+        // Wait for all parks to load
+        await Promise.all(loadPromises)
         
         setParkData(data)
         console.log(`✅ Loaded park overview data: ${Object.keys(data).length} parks with data out of ${allParks.length} total parks`)
@@ -362,10 +373,18 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
           
           {filteredGroupedParks.length === 0 && !isLoading && (
             <div className="text-center py-12">
+              <div className="mx-auto w-16 h-16 bg-muted/20 rounded-full flex items-center justify-center mb-4">
+                <FunnelSimple size={32} className="text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-medium text-foreground mb-2">
+                {selectedFamily === 'all' 
+                  ? "No parks available" 
+                  : "No parks found for selected family"}
+              </h3>
               <p className="text-muted-foreground mb-4">
                 {selectedFamily === 'all' 
-                  ? "Loading park data..." 
-                  : "No parks found for the selected family or data is still loading."}
+                  ? "Park data may still be loading. Please try refreshing the page." 
+                  : "Try selecting a different park family or clear the filter to see all parks."}
               </p>
               {selectedFamily !== 'all' && (
                 <Button 
