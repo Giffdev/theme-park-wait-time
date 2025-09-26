@@ -20,7 +20,7 @@ interface ParkDetailsPageProps {
 export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps) {
   const { parkId } = useParams<{ parkId: string }>()
   const navigate = useNavigate()
-  const [selectedPark, setSelectedPark] = useState<string>(parkId || 'universal-orlando')
+  const [selectedPark, setSelectedPark] = useState<string>(parkId || 'magic-kingdom')
   const [activeTab, setActiveTab] = useState('live-times')
   const [dataInitialized, setDataInitialized] = useState(false)
 

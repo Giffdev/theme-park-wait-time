@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { SignOut, User as UserIcon } from '@phosphor-icons/react'
+import { Link, useLocation } from 'react-router-dom'
 import type { User } from '@/App'
 
 interface HeaderProps {
@@ -10,27 +11,48 @@ interface HeaderProps {
 }
 
 export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
+  const location = useLocation()
+  
+  const isActive = (path: string) => {
+    if (path === '/' && location.pathname === '/') return true
+    if (path !== '/' && location.pathname.startsWith(path)) return true
+    return false
+  }
+
   return (
     <header className="border-b bg-card/50 backdrop-blur-sm">
       <div className="container mx-auto px-4 py-4 max-w-7xl">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+          <Link to="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <span className="text-primary-foreground font-bold text-lg">P</span>
             </div>
             <span className="text-xl font-bold text-foreground">ParkFlow</span>
-          </div>
+          </Link>
           
           <nav className="hidden md:flex items-center space-x-6">
-            <a href="#" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              Live Times
-            </a>
-            <a href="#" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            <Link 
+              to="/" 
+              className={`text-sm font-medium transition-colors hover:text-foreground ${
+                isActive('/') ? 'text-foreground' : 'text-muted-foreground'
+              }`}
+            >
+              Home
+            </Link>
+            <Link 
+              to="/parks" 
+              className={`text-sm font-medium transition-colors hover:text-foreground ${
+                isActive('/parks') ? 'text-foreground' : 'text-muted-foreground'
+              }`}
+            >
+              Parks
+            </Link>
+            <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
               Calendar
-            </a>
-            <a href="#" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            </span>
+            <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
               Analytics
-            </a>
+            </span>
           </nav>
 
           <div className="flex items-center space-x-4">

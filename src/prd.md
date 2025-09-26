@@ -14,22 +14,38 @@
 
 ## Navigation Structure
 **Home Page** (`/`): 
-- Live park overview cards showing current wait times and mini-graphs
+- Live park overview organized by park family (Disney World, Universal Orlando, etc.)
+- Featured parks with current wait times and trend graphs
 - Primary entry point for park selection
+
+**Parks Page** (`/parks`):
+- Comprehensive park selector organized by resort families
+- Complete list of all supported parks across the United States
+- Quick access to any park without navigating through home page
 
 **Park Details Page** (`/park/:parkId`):
 - Detailed view for a specific park
-- Live wait times with reporting functionality
+- Live wait times with reporting functionality  
 - Crowd calendar and historical analytics
 - Park selector to switch between parks
-- Back navigation to home page
+- Back navigation to previous page
 
 ## Essential Features
 
 ### Live Park Overview (Home Page)
-- **What**: Grid of cards showing all major theme parks with current wait times and mini trend graphs
-- **Why**: Gives users immediate overview of all parks to make initial selection decisions
-- **Success Criteria**: Users can quickly compare parks and navigate to detailed views
+- **What**: Grid of cards organized by park families (Disney World, Universal Orlando, etc.) showing current wait times and mini trend graphs
+- **Why**: Gives users immediate overview of major parks grouped logically to make initial selection decisions
+- **Success Criteria**: Users can quickly compare parks within families and navigate to detailed views
+
+### Park Family Organization
+- **What**: Parks grouped by resort/operator families (Disney World: 4 theme parks + 2 water parks, Universal Orlando: 3 theme parks + 1 water park, etc.)
+- **Why**: Reflects real-world park relationships and visitor decision-making patterns
+- **Success Criteria**: Intuitive navigation that matches how users think about park visits
+
+### Comprehensive Park Coverage
+- **What**: Support for major US theme park destinations including Disney World, Disneyland, Universal Orlando/Hollywood, Six Flags, Cedar Point, Knott's Berry Farm
+- **Why**: Provides value to visitors across the country, not just Orlando-focused
+- **Success Criteria**: Accurate data for diverse park types and regions
 
 ### Park Details Navigation
 - **What**: Dedicated page for each park with comprehensive details and tools

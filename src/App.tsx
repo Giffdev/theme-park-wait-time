@@ -3,8 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useKV } from '@github/spark/hooks'
 import { Header } from '@/components/Header'
 import { AuthModal } from '@/components/AuthModal'
-import { HomePage } from '@/pages'
-import { ParkDetailsPage } from '@/pages'
+import { HomePage, ParkDetailsPage, ParkSelectorPage } from '@/pages'
 import { Toaster } from 'sonner'
 import { initializeSampleData } from '@/data/sampleData'
 
@@ -75,6 +74,7 @@ function App() {
         
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/parks" element={<ParkSelectorPage />} />
           <Route 
             path="/park/:parkId" 
             element={

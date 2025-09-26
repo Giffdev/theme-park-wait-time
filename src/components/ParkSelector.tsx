@@ -1,38 +1,6 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MapPin } from '@phosphor-icons/react'
-
-const parks = [
-  {
-    id: 'universal-orlando',
-    name: 'Universal Studios Orlando',
-    location: 'Orlando, FL'
-  },
-  {
-    id: 'islands-of-adventure',
-    name: 'Islands of Adventure',
-    location: 'Orlando, FL'
-  },
-  {
-    id: 'epic-universe',
-    name: 'Epic Universe',
-    location: 'Orlando, FL'
-  },
-  {
-    id: 'hollywood-studios',
-    name: 'Hollywood Studios',
-    location: 'Orlando, FL'
-  },
-  {
-    id: 'animal-kingdom',
-    name: 'Animal Kingdom',
-    location: 'Orlando, FL'
-  },
-  {
-    id: 'magic-kingdom',
-    name: 'Magic Kingdom',
-    location: 'Orlando, FL'
-  }
-]
+import { parkFamilies } from '@/data/sampleData'
 
 interface ParkSelectorProps {
   selectedPark: string
@@ -40,7 +8,16 @@ interface ParkSelectorProps {
 }
 
 export function ParkSelector({ selectedPark, onParkChange }: ParkSelectorProps) {
-  const currentPark = parks.find(park => park.id === selectedPark)
+  // Get all parks from all families
+  const allParks = parkFamilies.flatMap(family => 
+    family.parks.map(park => ({
+      ...park,
+      familyName: family.name,
+      location: family.location
+    }))
+  )
+  
+  const currentPark = allParks.find(park => park.id === selectedPark)
 
   return (
     <div className="space-y-2">
@@ -53,7 +30,7 @@ export function ParkSelector({ selectedPark, onParkChange }: ParkSelectorProps) 
           <SelectValue placeholder="Choose a park">
             {currentPark && (
               <div>
-                <span className="font-medium">{currentPark.name}</span>
+                <span className="font-medium">{currentPark.shortName}</span>
                 <span className="text-muted-foreground text-sm ml-2">
                   {currentPark.location}
                 </span>
@@ -62,13 +39,24 @@ export function ParkSelector({ selectedPark, onParkChange }: ParkSelectorProps) 
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
-          {parks.map((park) => (
-            <SelectItem key={park.id} value={park.id}>
-              <div>
-                <div className="font-medium">{park.name}</div>
-                <div className="text-sm text-muted-foreground">{park.location}</div>
+          {parkFamilies.map((family) => (
+            <div key={family.id}>
+              {/* Family header */}
+              <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b">
+                {family.name} - {family.location}
               </div>
-            </SelectItem>
+              {/* Parks in this family */}
+              {family.parks.map((park) => (
+                <SelectItem key={park.id} value={park.id} className="pl-4">
+                  <div>
+                    <div className="font-medium">{park.shortName}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {park.type === 'theme-park' ? 'Theme Park' : 'Water Park'}
+                    </div>
+                  </div>
+                </SelectItem>
+              ))}
+            </div>
           ))}
         </SelectContent>
       </Select>
