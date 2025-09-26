@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Clock, TrendUp, Plus, Users, CheckCircle, Warning } from '@phosphor-icons/react'
 import { ReportWaitTimeModal } from '@/components/ReportWaitTimeModal'
+import { WaitTimeChart } from '@/components/WaitTimeChart'
 import { useReporting } from '@/hooks/useReporting'
 import type { User, Attraction } from '@/App'
 
@@ -23,6 +24,11 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
   const [attractions, setAttractions] = useKV<Attraction[]>(`attractions-${parkId}`, [])
   
   const { getConsensusWaitTime, getRecentReports } = useReporting()
+
+  // Debug: Log the current attractions to see if they're loading
+  useEffect(() => {
+    console.log(`Loading attractions for ${parkId}:`, attractions)
+  }, [parkId, attractions])
 
   // Update wait times based on consensus every 30 seconds
   useEffect(() => {
@@ -108,73 +114,93 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {attractions?.map((attraction) => {
-          const reportCount = getReportCount(attraction.id)
-          const verificationStatus = getVerificationStatus(attraction.id)
-          
-          return (
-            <Card key={attraction.id} className="hover:shadow-lg transition-all duration-300">
+      {/* Loading state */}
+      {!attractions || attractions.length === 0 ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i} className="animate-pulse">
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <CardTitle className="text-lg font-medium leading-tight">
-                    {attraction.name}
-                  </CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="text-xs">
-                      {attraction.type}
-                    </Badge>
-                    {verificationStatus === 'verified' && (
-                      <CheckCircle size={16} className="text-success" />
-                    )}
-                    {verificationStatus === 'disputed' && (
-                      <Warning size={16} className="text-destructive" />
-                    )}
-                  </div>
-                </div>
+                <div className="h-6 bg-muted rounded w-3/4"></div>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Clock size={16} className="text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Wait Time</span>
-                  </div>
-                  <Badge className={getWaitTimeColor(attraction.currentWaitTime)}>
-                    {attraction.currentWaitTime} min
-                  </Badge>
-                </div>
-                
-                {reportCount > 0 && (
-                  <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                    <Users size={14} />
-                    <span>{reportCount} recent report{reportCount !== 1 ? 's' : ''}</span>
-                  </div>
-                )}
-                
-                <div className="flex items-center space-x-2 pt-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleReportClick(attraction.id)}
-                    className="flex-1"
-                  >
-                    <Plus size={14} className="mr-1" />
-                    {user ? 'Report Time' : 'Login to Report'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="flex items-center space-x-1"
-                  >
-                    <TrendUp size={14} />
-                    <span>Trends</span>
-                  </Button>
-                </div>
+              <CardContent>
+                <div className="h-24 bg-muted rounded mb-4"></div>
+                <div className="h-8 bg-muted rounded"></div>
               </CardContent>
             </Card>
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {attractions.map((attraction) => {
+            const reportCount = getReportCount(attraction.id)
+            const verificationStatus = getVerificationStatus(attraction.id)
+            
+            return (
+              <Card key={attraction.id} className="hover:shadow-lg transition-all duration-300">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <CardTitle className="text-lg font-medium leading-tight">
+                      {attraction.name}
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs">
+                        {attraction.type}
+                      </Badge>
+                      {verificationStatus === 'verified' && (
+                        <CheckCircle size={16} className="text-success" />
+                      )}
+                      {verificationStatus === 'disputed' && (
+                        <Warning size={16} className="text-destructive" />
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Clock size={16} className="text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Current Wait</span>
+                    </div>
+                    <Badge className={getWaitTimeColor(attraction.currentWaitTime)}>
+                      {attraction.currentWaitTime} min
+                    </Badge>
+                  </div>
+                  
+                  {/* Historical Chart */}
+                  <WaitTimeChart attractionId={attraction.id} />
+                  
+                  {reportCount > 0 && (
+                    <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                      <Users size={14} />
+                      <span>{reportCount} recent report{reportCount !== 1 ? 's' : ''}</span>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center space-x-2 pt-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleReportClick(attraction.id)}
+                      className="flex-1"
+                    >
+                      <Plus size={14} className="mr-1" />
+                      {user ? 'Report Time' : 'Login to Report'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="flex items-center space-x-1"
+                    >
+                      <TrendUp size={14} />
+                      <span>Trends</span>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
 
       {showReportModal && selectedAttraction && user && (
         <ReportWaitTimeModal

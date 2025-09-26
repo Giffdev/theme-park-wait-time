@@ -44,7 +44,22 @@ function App() {
 
   // Initialize sample data on app load
   useEffect(() => {
-    initializeSampleData().catch(console.error)
+    const loadData = async () => {
+      try {
+        await initializeSampleData()
+        
+        // Double-check that data was loaded for the selected park
+        const data = await window.spark.kv.get<Attraction[]>(`attractions-${selectedPark}`)
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          console.warn(`No data found for park ${selectedPark}, reinitializing...`)
+          await initializeSampleData()
+        }
+      } catch (error) {
+        console.error('Error loading sample data:', error)
+      }
+    }
+    
+    loadData()
   }, [])
 
   const handleLogin = (user: User) => {

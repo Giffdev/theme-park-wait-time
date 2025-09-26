@@ -225,11 +225,18 @@ export const sampleAttractions: Record<string, Attraction[]> = {
 export async function initializeSampleData() {
   const { kv } = window.spark
   
-  for (const [parkId, attractions] of Object.entries(sampleAttractions)) {
-    const existingData = await kv.get<Attraction[]>(`attractions-${parkId}`)
-    if (!existingData || existingData.length === 0) {
-      await kv.set(`attractions-${parkId}`, attractions)
-      console.log(`Seeded data for ${parkId}`)
+  try {
+    for (const [parkId, attractions] of Object.entries(sampleAttractions)) {
+      const existingData = await kv.get<Attraction[]>(`attractions-${parkId}`)
+      if (!existingData || existingData.length === 0) {
+        await kv.set(`attractions-${parkId}`, attractions)
+        console.log(`Seeded ${attractions.length} attractions for ${parkId}`)
+      } else {
+        console.log(`Park ${parkId} already has ${existingData.length} attractions`)
+      }
     }
+    console.log('Sample data initialization completed successfully')
+  } catch (error) {
+    console.error('Error initializing sample data:', error)
   }
 }
