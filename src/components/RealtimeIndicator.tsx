@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Bell, Clock, CheckCircle, Users } from '@phosphor-icons/react'
 import { useReporting } from '@/hooks/useReporting'
+import { formatTime12Hour } from '@/utils/timeFormat'
 import { toast } from 'sonner'
 
 interface RealtimeIndicatorProps {
@@ -165,7 +166,7 @@ export function RealtimeIndicator({ parkId }: RealtimeIndicatorProps) {
 
         {lastReportTime && (
           <div className="mt-2 pt-2 border-t text-xs text-muted-foreground">
-            Last update: {new Date(lastReportTime).toLocaleTimeString()}
+            Last update: {formatTime12Hour(new Date(lastReportTime).getHours(), new Date(lastReportTime).getMinutes())}
           </div>
         )}
       </CardContent>

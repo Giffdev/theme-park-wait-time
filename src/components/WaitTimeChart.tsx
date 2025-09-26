@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { formatTime12Hour } from '@/utils/timeFormat'
 import { useKV } from '@github/spark/hooks'
 
 interface WaitTimeDataPoint {
@@ -50,7 +51,7 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
         // Ensure minimum wait time of 5 minutes
         baseWaitTime = Math.max(5, Math.round(baseWaitTime))
         
-        const timeString = `${hour.toString().padStart(2, '0')}:00`
+        const timeString = formatTime12Hour(hour)
         data.push({
           time: timeString,
           waitTime: baseWaitTime,
@@ -91,7 +92,7 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
               ? Math.round(hourReports.reduce((sum, time) => sum + time, 0) / hourReports.length)
               : generatedData.find(d => d.hour === hour)?.waitTime || Math.round(Math.random() * 50 + 20) // Fallback
             
-            const timeString = `${hour.toString().padStart(2, '0')}:00`
+            const timeString = formatTime12Hour(hour)
             processedData.push({
               time: timeString,
               waitTime: avgWaitTime,
@@ -245,10 +246,10 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
         
         {/* X-axis labels */}
         <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-          <span>9AM</span>
-          <span>2PM</span>
-          <span>7PM</span>
-          <span>10PM</span>
+          <span>{formatTime12Hour(9)}</span>
+          <span>{formatTime12Hour(14)}</span>
+          <span>{formatTime12Hour(19)}</span>
+          <span>{formatTime12Hour(22)}</span>
         </div>
         
         {/* Y-axis labels */}

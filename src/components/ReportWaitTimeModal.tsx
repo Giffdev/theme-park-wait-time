@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Clock, CheckCircle, XCircle, Warning } from '@phosphor-icons/react'
 import { useReporting } from '@/hooks/useReporting'
+import { formatTime12Hour } from '@/utils/timeFormat'
 import type { User } from '@/App'
 import type { WaitTimeReport } from '@/types'
 
@@ -171,7 +172,7 @@ export function ReportWaitTimeModal({
                       <div className="flex items-center gap-2">
                         <div className="font-medium">{report.username}</div>
                         <Badge variant="secondary" className="text-xs">
-                          {new Date(report.reportedAt).toLocaleTimeString()}
+                          {formatTime12Hour(new Date(report.reportedAt).getHours(), new Date(report.reportedAt).getMinutes())}
                         </Badge>
                         {getStatusIcon(report.status)}
                       </div>
@@ -231,7 +232,7 @@ export function ReportWaitTimeModal({
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">{report.username}</span>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(report.reportedAt).toLocaleTimeString()}
+                      {formatTime12Hour(new Date(report.reportedAt).getHours(), new Date(report.reportedAt).getMinutes())}
                     </span>
                     {getStatusIcon(report.status)}
                   </div>

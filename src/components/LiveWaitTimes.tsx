@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Clock, TrendUp, Plus, Users, CheckCircle, Warning } from '@phosphor-icons/react'
+import { formatTime12Hour, formatDateTime12Hour } from '@/utils/timeFormat'
 import { ReportWaitTimeModal } from '@/components/ReportWaitTimeModal'
 import { WaitTimeChart } from '@/components/WaitTimeChart'
 import { useReporting } from '@/hooks/useReporting'
@@ -203,7 +204,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold text-foreground">Live Wait Times</h2>
         <div className="text-sm text-muted-foreground">
-          Updated: {lastUpdate.toLocaleTimeString()}
+          Updated: {formatTime12Hour(lastUpdate.getHours(), lastUpdate.getMinutes())}
         </div>
       </div>
 

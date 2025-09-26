@@ -5,8 +5,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ArrowLeft, Clock, TrendUp, Calendar } from '@phosphor-icons/react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ScatterChart, Scatter, ComposedChart } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { parkFamilies } from '@/data/sampleData'
+import { formatTime12Hour, formatChartTimestamp } from '@/utils/timeFormat'
 import type { Park, Attraction } from '@/App'
 
 type TimeRange = 'week' | 'month' | 'year'
@@ -114,7 +115,7 @@ export function AttractionDetailsPage() {
           const weekendMultiplier = date.getDay() === 0 || date.getDay() === 6 ? 1.3 : 1
           
           data.push({
-            timestamp: `${date.getMonth() + 1}/${date.getDate()} ${hour}:00`,
+            timestamp: `${date.getMonth() + 1}/${date.getDate()} ${formatTime12Hour(hour)}`,
             waitTime: Math.max(5, Math.round((baseWait + randomVariation) * weekendMultiplier)),
             dayOfWeek: date.toLocaleDateString('en-US', { weekday: 'short' }),
             hour
@@ -161,9 +162,10 @@ export function AttractionDetailsPage() {
   }
 
   const calculateTrendLine = (data: HistoricalData[]): HistoricalData[] => {
-    if (data.length < 3) return data
+    if (data.length < 3) return data.map(d => ({ ...d, trendLine: d.waitTime }))
     
-    const windowSize = Math.max(3, Math.floor(data.length / 10)) // Adaptive window size
+    // Use a simpler moving average with fixed window size for better visibility
+    const windowSize = Math.max(3, Math.min(7, Math.floor(data.length / 5)))
     
     return data.map((point, index) => {
       // Calculate moving average for trend line
@@ -209,7 +211,7 @@ export function AttractionDetailsPage() {
       }
     })
     
-    return `${peakHour}:00 - ${peakHour + 1}:00`
+    return `${formatTime12Hour(peakHour)} - ${formatTime12Hour(peakHour + 1)}`
   }
 
   const getBestTime = () => {
@@ -236,7 +238,7 @@ export function AttractionDetailsPage() {
       }
     })
     
-    return `${bestHour}:00 - ${bestHour + 1}:00`
+    return `${formatTime12Hour(bestHour)} - ${formatTime12Hour(bestHour + 1)}`
   }
 
   const normalizeYAxisDomain = (data: HistoricalData[]) => {
@@ -349,7 +351,7 @@ export function AttractionDetailsPage() {
             <CardContent>
               <div className="h-96">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={historicalData}>
+                  <LineChart data={historicalData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis 
                       dataKey="timestamp" 
@@ -370,7 +372,7 @@ export function AttractionDetailsPage() {
                         if (name === 'waitTime') {
                           return [`${value} minutes`, 'Reported Wait Time']
                         } else if (name === 'trendLine') {
-                          return [`${value} minutes`, 'Trend Line']
+                          return [`${value} minutes`, 'Statistical Trend']
                         }
                         return [value, name]
                       }}
@@ -382,14 +384,7 @@ export function AttractionDetailsPage() {
                       }}
                     />
                     
-                    {/* Scatter plot for actual reported data points */}
-                    <Scatter
-                      dataKey="waitTime"
-                      fill="hsl(var(--primary))"
-                      fillOpacity={0.6}
-                    />
-                    
-                    {/* Smooth trend line */}
+                    {/* Statistical trend line */}
                     <Line
                       type="monotone"
                       dataKey="trendLine"
@@ -397,9 +392,25 @@ export function AttractionDetailsPage() {
                       strokeWidth={3}
                       dot={false}
                       strokeDasharray="none"
-                      connectNulls={true}
+                      name="trendLine"
                     />
-                  </ComposedChart>
+                    
+                    {/* Actual reported data points */}
+                    <Line
+                      type="monotone"
+                      dataKey="waitTime"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={0}
+                      dot={{ 
+                        fill: "hsl(var(--primary))", 
+                        strokeWidth: 0, 
+                        r: 4,
+                        fillOpacity: 0.8
+                      }}
+                      connectNulls={false}
+                      name="waitTime"
+                    />
+                  </LineChart>
                 </ResponsiveContainer>
               </div>
               
