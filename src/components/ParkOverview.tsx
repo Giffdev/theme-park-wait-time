@@ -91,7 +91,7 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
         if (waitTime === 0) return { color: 'bg-success', label: 'Walk On', textColor: 'text-success-foreground' }
         if (waitTime <= 15) return { color: 'bg-success', label: `${waitTime}min`, textColor: 'text-success-foreground' }
         if (waitTime <= 30) return { color: 'bg-accent', label: `${waitTime}min`, textColor: 'text-accent-foreground' }
-        if (waitTime <= 60) return { color: 'bg-accent', label: `${waitTime}min`, textColor: 'text-accent-foreground' }
+        if (waitTime <= 60) return { color: 'bg-secondary', label: `${waitTime}min`, textColor: 'text-secondary-foreground' }
         return { color: 'bg-destructive', label: `${waitTime}min`, textColor: 'text-destructive-foreground' }
     }
   }

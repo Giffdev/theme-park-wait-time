@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Calendar, TrendUp, ArrowLeft, ArrowRight, Sun, Cloud, CloudRain, CloudSnow, CloudLightning } from '@phosphor-icons/react'
+import { getWeatherForDate } from '@/services/weatherService'
 
 interface CrowdCalendarProps {
   parkId: string
@@ -11,6 +12,46 @@ interface CrowdCalendarProps {
 export function CrowdCalendar({ parkId }: CrowdCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
+  const [weatherData, setWeatherData] = useState<Record<string, any>>({})
+
+  const getDaysInMonth = (month: number, year: number): number => {
+    return new Date(year, month + 1, 0).getDate()
+  }
+
+  // Load weather data when month changes
+  useEffect(() => {
+    const loadWeatherData = async () => {
+      const daysInMonth = getDaysInMonth(currentMonth, currentYear)
+      const newWeatherData: Record<string, any> = {}
+      
+      // Load weather for the first 10 days of the month (to avoid rate limiting)
+      const maxDays = Math.min(daysInMonth, 10)
+      const promises: Promise<void>[] = []
+      
+      for (let day = 1; day <= maxDays; day++) {
+        const date = new Date(currentYear, currentMonth, day)
+        const dateKey = `${currentYear}-${currentMonth}-${day}`
+        
+        const promise = getWeatherForDate(parkId, date)
+          .then(weather => {
+            if (weather) {
+              newWeatherData[dateKey] = weather
+            }
+          })
+          .catch(error => {
+            console.warn(`Failed to load weather for ${dateKey}:`, error)
+          })
+        
+        promises.push(promise)
+      }
+      
+      // Load all weather data in parallel but with a reasonable limit
+      await Promise.allSettled(promises)
+      setWeatherData(newWeatherData)
+    }
+
+    loadWeatherData()
+  }, [parkId, currentMonth, currentYear])
 
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -23,6 +64,27 @@ export function CrowdCalendar({ parkId }: CrowdCalendarProps) {
   }
 
   const getWeatherType = (date: number): 'sunny' | 'cloudy' | 'rainy' | 'stormy' | 'snowy' => {
+    const dateKey = `${currentYear}-${currentMonth}-${date}`
+    const weather = weatherData[dateKey]
+    
+    if (weather && weather.condition) {
+      switch (weather.condition) {
+        case 'clear':
+          return 'sunny'
+        case 'clouds':
+          return 'cloudy'
+        case 'rain':
+          return 'rainy'
+        case 'thunderstorm':
+          return 'stormy'
+        case 'snow':
+          return 'snowy'
+        default:
+          return 'cloudy'
+      }
+    }
+    
+    // Fallback to fake data for dates without real weather data
     const seed = (date * currentMonth * currentYear) % 100
     if (seed < 50) return 'sunny'
     if (seed < 70) return 'cloudy'
@@ -60,10 +122,6 @@ export function CrowdCalendar({ parkId }: CrowdCalendarProps) {
     if (level <= 60) return 'Moderate'
     if (level <= 80) return 'High'
     return 'Extreme'
-  }
-
-  const getDaysInMonth = (month: number, year: number): number => {
-    return new Date(year, month + 1, 0).getDate()
   }
 
   const getFirstDayOfMonth = (month: number, year: number): number => {

@@ -18,9 +18,10 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
   const [chartData, setChartData] = useState<WaitTimeDataPoint[]>([])
   const [historicalReports] = useKV<any[]>(`wait-reports-${attractionId}`, [])
 
-  const getWaitTimeVariant = (waitTime: number): "success" | "accent" | "destructive" => {
-    if (waitTime <= 20) return 'success'
-    if (waitTime <= 45) return 'accent'
+  const getWaitTimeVariant = (waitTime: number): "success" | "accent" | "secondary" | "destructive" => {
+    if (waitTime <= 15) return 'success'
+    if (waitTime <= 30) return 'accent'
+    if (waitTime <= 60) return 'secondary'
     return 'destructive'
   }
 

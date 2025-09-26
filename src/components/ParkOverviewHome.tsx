@@ -117,7 +117,7 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
     if (avgWaitTime === 0) return { color: 'bg-success/10', text: 'Great Day!', textColor: 'text-success' }
     if (avgWaitTime <= 15) return { color: 'bg-success/10', text: 'Low Crowds', textColor: 'text-success' }
     if (avgWaitTime <= 30) return { color: 'bg-accent/10', text: 'Moderate', textColor: 'text-accent-foreground' }
-    if (avgWaitTime <= 45) return { color: 'bg-accent/10', text: 'Busy', textColor: 'text-accent-foreground' }
+    if (avgWaitTime <= 60) return { color: 'bg-secondary/10', text: 'Busy', textColor: 'text-secondary-foreground' }
     return { color: 'bg-destructive/10', text: 'Very Busy', textColor: 'text-destructive' }
   }
 
