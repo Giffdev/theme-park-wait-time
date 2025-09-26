@@ -224,8 +224,7 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
                       </span>
                       <div className="flex items-center gap-2">
                         <Badge 
-                          variant="secondary" 
-                          className={`text-xs ${statusInfo.textColor}`}
+                          className={`text-xs ${statusInfo.color} ${statusInfo.textColor} border-0`}
                         >
                           {statusInfo.label}
                         </Badge>
@@ -262,8 +261,7 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
                     </div>
                     <div className="text-right flex items-center gap-2">
                       <Badge 
-                        variant="secondary" 
-                        className={`${statusInfo.textColor} font-semibold`}
+                        className={`${statusInfo.color} ${statusInfo.textColor} font-semibold border-0`}
                       >
                         {statusInfo.label}
                       </Badge>
