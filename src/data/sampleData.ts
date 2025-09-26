@@ -218,6 +218,56 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       status: 'operating',
       lastUpdated: new Date().toISOString()
     }
+  ],
+  'magic-kingdom': [
+    {
+      id: 'space-mountain',
+      name: 'Space Mountain',
+      type: 'thrill',
+      currentWaitTime: 65,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'seven-dwarfs-mine-train',
+      name: 'Seven Dwarfs Mine Train',
+      type: 'family',
+      currentWaitTime: 80,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'pirates-caribbean',
+      name: 'Pirates of the Caribbean',
+      type: 'family',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'haunted-mansion',
+      name: 'Haunted Mansion',
+      type: 'family',
+      currentWaitTime: 40,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'big-thunder-mountain',
+      name: 'Big Thunder Mountain Railroad',
+      type: 'thrill',
+      currentWaitTime: 45,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'splash-mountain',
+      name: 'Tiana\'s Bayou Adventure',
+      type: 'thrill',
+      currentWaitTime: 70,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    }
   ]
 }
 
@@ -226,17 +276,22 @@ export async function initializeSampleData() {
   const { kv } = window.spark
   
   try {
+    console.log('Starting sample data initialization...')
+    
+    // Force clear and re-initialize data
     for (const [parkId, attractions] of Object.entries(sampleAttractions)) {
-      const existingData = await kv.get<Attraction[]>(`attractions-${parkId}`)
-      if (!existingData || existingData.length === 0) {
-        await kv.set(`attractions-${parkId}`, attractions)
-        console.log(`Seeded ${attractions.length} attractions for ${parkId}`)
-      } else {
-        console.log(`Park ${parkId} already has ${existingData.length} attractions`)
-      }
+      await kv.set(`attractions-${parkId}`, attractions)
+      console.log(`✅ Force seeded ${attractions.length} attractions for ${parkId}`)
     }
-    console.log('Sample data initialization completed successfully')
+    
+    // Verify all data was saved correctly
+    for (const parkId of Object.keys(sampleAttractions)) {
+      const data = await kv.get<Attraction[]>(`attractions-${parkId}`)
+      console.log(`📊 Verified ${parkId}: ${data?.length || 0} attractions stored`)
+    }
+    
+    console.log('✅ Sample data initialization completed successfully')
   } catch (error) {
-    console.error('Error initializing sample data:', error)
+    console.error('❌ Error initializing sample data:', error)
   }
 }

@@ -19,24 +19,60 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
   const [showReportModal, setShowReportModal] = useState(false)
   const [selectedAttraction, setSelectedAttraction] = useState<string | null>(null)
   const [lastUpdate, setLastUpdate] = useState(new Date())
+  const [isLoading, setIsLoading] = useState(true)
   
-  // Load attractions from seeded data
+  // Load attractions from seeded data - use key that changes with parkId
   const [attractions, setAttractions] = useKV<Attraction[]>(`attractions-${parkId}`, [])
   
   const { getConsensusWaitTime, getRecentReports } = useReporting()
 
+  // Force reload attractions when park changes
+  useEffect(() => {
+    const loadAttractionsForPark = async () => {
+      setIsLoading(true)
+      console.log(`🔄 Loading attractions for park: ${parkId}`)
+      try {
+        const parkData = await window.spark.kv.get<Attraction[]>(`attractions-${parkId}`)
+        console.log(`📊 Found data for ${parkId}:`, parkData?.length || 0, 'attractions')
+        if (parkData && parkData.length > 0) {
+          setAttractions(parkData)
+          console.log(`✅ Set ${parkData.length} attractions for ${parkId}`)
+        } else {
+          console.warn(`❌ No data found for ${parkId}`)
+          setAttractions([])
+        }
+      } catch (error) {
+        console.error(`❌ Error loading attractions for ${parkId}:`, error)
+        setAttractions([])
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadAttractionsForPark()
+  }, [parkId, setAttractions])
+
   // Debug: Log the current attractions to see if they're loading
   useEffect(() => {
-    console.log(`Loading attractions for ${parkId}:`, attractions)
-  }, [parkId, attractions])
+    console.log(`🔍 LiveWaitTimes render state for ${parkId}:`)
+    console.log(`  - isLoading: ${isLoading}`)
+    console.log(`  - attractions: ${attractions?.length || 0} items`)
+    console.log(`  - attractions data:`, attractions)
+    if (attractions && attractions.length > 0) {
+      setIsLoading(false)
+    }
+  }, [parkId, attractions, isLoading])
 
   // Update wait times based on consensus every 30 seconds
   useEffect(() => {
-    const updateWaitTimes = () => {
-      if (!attractions || attractions.length === 0) return
+    if (!attractions || attractions.length === 0) return
 
+    const updateWaitTimes = () => {
       setAttractions(currentAttractions => {
-        return (currentAttractions || []).map(attraction => {
+        const safeAttractions = currentAttractions || []
+        if (safeAttractions.length === 0) return safeAttractions
+        
+        return safeAttractions.map(attraction => {
           const consensusTime = getConsensusWaitTime(attraction.id)
           if (consensusTime !== null && consensusTime !== attraction.currentWaitTime) {
             return {
@@ -115,7 +151,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
       </div>
 
       {/* Loading state */}
-      {!attractions || attractions.length === 0 ? (
+      {isLoading || !attractions || attractions.length === 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[...Array(6)].map((_, i) => (
             <Card key={i} className="animate-pulse">

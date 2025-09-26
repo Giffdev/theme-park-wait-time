@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useKV } from '@github/spark/hooks'
 import { Header } from '@/components/Header'
 import { ParkSelector } from '@/components/ParkSelector' 
+import { ParkOverview } from '@/components/ParkOverview'
 import { LiveWaitTimes } from '@/components/LiveWaitTimes'
 import { CrowdCalendar } from '@/components/CrowdCalendar'
 import { AuthModal } from '@/components/AuthModal'
@@ -42,7 +43,7 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [currentUser, setCurrentUser] = useKV<User | null>('current-user', null)
 
-  // Initialize sample data on app load
+  // Initialize sample data on app load and when park changes
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -54,13 +55,14 @@ function App() {
           console.warn(`No data found for park ${selectedPark}, reinitializing...`)
           await initializeSampleData()
         }
+        console.log(`Verified data for ${selectedPark}:`, data?.length, 'attractions')
       } catch (error) {
         console.error('Error loading sample data:', error)
       }
     }
     
     loadData()
-  }, [])
+  }, [selectedPark]) // Add selectedPark as dependency
 
   const handleLogin = (user: User) => {
     setCurrentUser(user)
@@ -96,6 +98,11 @@ function App() {
           />
         </div>
 
+        {/* Park Overview - Shows summary of all parks */}
+        <div className="mb-8">
+          <ParkOverview onParkSelect={setSelectedPark} />
+        </div>
+
         {/* Realtime Activity Indicator */}
         <div className="mb-6">
           <RealtimeIndicator parkId={selectedPark} />
@@ -108,34 +115,46 @@ function App() {
           </div>
         )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3">
-            <TabsTrigger value="live-times">Live Wait Times</TabsTrigger>
-            <TabsTrigger value="crowd-calendar">Crowd Calendar</TabsTrigger>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
-          </TabsList>
+        {/* Selected Park Details */}
+        <div className="border-t pt-8 space-y-6">
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl font-semibold text-foreground">
+              Selected Park Details
+            </h2>
+            <p className="text-muted-foreground">
+              Detailed insights for your selected park
+            </p>
+          </div>
 
-          <TabsContent value="live-times">
-            <LiveWaitTimes 
-              parkId={selectedPark}
-              user={currentUser ?? null}
-              onLoginRequired={() => setShowAuthModal(true)}
-            />
-          </TabsContent>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3">
+              <TabsTrigger value="live-times">Live Wait Times</TabsTrigger>
+              <TabsTrigger value="crowd-calendar">Crowd Calendar</TabsTrigger>
+              <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="crowd-calendar">
-            <CrowdCalendar parkId={selectedPark} />
-          </TabsContent>
+            <TabsContent value="live-times">
+              <LiveWaitTimes 
+                parkId={selectedPark}
+                user={currentUser ?? null}
+                onLoginRequired={() => setShowAuthModal(true)}
+              />
+            </TabsContent>
 
-          <TabsContent value="analytics">
-            <div className="rounded-lg border bg-card p-6">
-              <h2 className="text-2xl font-semibold mb-4">Historical Analytics</h2>
-              <p className="text-muted-foreground">
-                Detailed wait time trends and patterns coming soon...
-              </p>
-            </div>
-          </TabsContent>
-        </Tabs>
+            <TabsContent value="crowd-calendar">
+              <CrowdCalendar parkId={selectedPark} />
+            </TabsContent>
+
+            <TabsContent value="analytics">
+              <div className="rounded-lg border bg-card p-6">
+                <h2 className="text-2xl font-semibold mb-4">Historical Analytics</h2>
+                <p className="text-muted-foreground">
+                  Detailed wait time trends and patterns coming soon...
+                </p>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
       </main>
 
       {showAuthModal && (
