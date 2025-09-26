@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { SignOut, User as UserIcon } from '@phosphor-icons/react'
+import { SignOut, User as UserIcon, Train } from '@phosphor-icons/react'
 import { Link, useLocation } from 'react-router-dom'
 import type { User } from '@/App'
 
@@ -25,7 +25,7 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-lg">P</span>
+              <Train size={18} className="text-primary-foreground" />
             </div>
             <span className="text-xl font-bold text-foreground">ParkFlow</span>
           </Link>

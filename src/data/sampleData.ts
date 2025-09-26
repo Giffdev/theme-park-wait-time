@@ -177,6 +177,38 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       currentWaitTime: 10,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'despicable-me-minion-mayhem',
+      name: 'Despicable Me Minion Mayhem',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'shrek-4d',
+      name: 'Shrek 4-D',
+      type: 'show',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'universal-horror-makeup-show',
+      name: 'Universal Orlando\'s Horror Make-Up Show',
+      type: 'show',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'diagon-alley-experience',
+      name: 'The Wizarding World of Harry Potter - Diagon Alley',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
     }
   ],
   'islands-of-adventure': [
@@ -248,6 +280,46 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       id: 'hogwarts-express-hogsmeade',
       name: 'Hogwarts Express - Hogsmeade Station',
       type: 'experience',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'dudley-do-right',
+      name: "Dudley Do-Right's Ripsaw Falls",
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'popeye-blutos',
+      name: "Popeye & Bluto's Bilge-Rat Barges",
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'jurassic-world-velociraptor',
+      name: 'Jurassic World VelociCoaster',
+      type: 'thrill',
+      currentWaitTime: 75,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'seuss-landing-carousel',
+      name: 'Caro-Seuss-el',
+      type: 'family',
+      currentWaitTime: 5,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'storm-force-acceleration',
+      name: 'Storm Force Accelatron',
+      type: 'family',
       currentWaitTime: 10,
       status: 'operating',
       lastUpdated: new Date().toISOString()

@@ -1,16 +1,22 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { MapPin, Users, Calendar } from '@phosphor-icons/react'
+import { MapPin, Users, Calendar, Funnel } from '@phosphor-icons/react'
 import { parkFamilies } from '@/data/sampleData'
 
 export function HomePage() {
   const navigate = useNavigate()
+  const [selectedFamily, setSelectedFamily] = useState<string | null>(null)
 
   const handleParkSelect = (parkId: string) => {
     navigate(`/park/${parkId}`)
   }
+
+  const filteredFamilies = selectedFamily 
+    ? parkFamilies.filter(family => family.id === selectedFamily)
+    : parkFamilies
 
   return (
     <main className="container mx-auto px-4 py-8 max-w-7xl">
@@ -23,8 +29,35 @@ export function HomePage() {
         </p>
       </div>
 
+      {/* Filter Controls */}
+      <div className="mb-8 bg-card border rounded-lg p-6">
+        <div className="flex items-center space-x-4 mb-4">
+          <Funnel size={20} className="text-muted-foreground" />
+          <h3 className="text-lg font-semibold text-foreground">Filter by Resort Group</h3>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant={selectedFamily === null ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setSelectedFamily(null)}
+          >
+            All Parks ({parkFamilies.length} groups)
+          </Button>
+          {parkFamilies.map((family) => (
+            <Button
+              key={family.id}
+              variant={selectedFamily === family.id ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelectedFamily(family.id)}
+            >
+              {family.name.split(' ')[0]} ({family.parks.length})
+            </Button>
+          ))}
+        </div>
+      </div>
+
       <div className="space-y-10">
-        {parkFamilies.map((family) => (
+        {filteredFamilies.map((family) => (
           <div key={family.id} className="space-y-6">
             {/* Family Header */}
             <div className="border-b-2 border-primary/20 pb-4">
