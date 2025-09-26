@@ -3,7 +3,9 @@ import { useKV } from '@github/spark/hooks'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Clock, TrendUp, MapPin } from '@phosphor-icons/react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Clock, TrendUp, MapPin, CaretDown, CaretUp, FunnelSimple } from '@phosphor-icons/react'
 import { WaitTimeChart } from '@/components/WaitTimeChart'
 import { parkFamilies } from '@/data/sampleData'
 import type { Attraction } from '@/App'
@@ -15,6 +17,8 @@ interface ParkOverviewProps {
 export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
   const [parkData, setParkData] = useState<Record<string, Attraction[]>>({})
   const [isLoading, setIsLoading] = useState(true)
+  const [selectedFamily, setSelectedFamily] = useState<string>('all')
+  const [collapsedFamilies, setCollapsedFamilies] = useState<Set<string>>(new Set())
 
   // Get all individual parks from all park families
   const allParks = parkFamilies.flatMap(family => 
@@ -94,11 +98,75 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
     return acc
   }, [] as { family: typeof parkFamilies[0], parks: typeof parkFamilies[0]['parks'] }[])
 
+  // Filter parks based on selected family
+  const filteredGroupedParks = selectedFamily === 'all' 
+    ? groupedParks 
+    : groupedParks.filter(group => group.family.id === selectedFamily)
+
+  const toggleFamilyCollapse = (familyId: string) => {
+    setCollapsedFamilies(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(familyId)) {
+        newSet.delete(familyId)
+      } else {
+        newSet.add(familyId)
+      }
+      return newSet
+    })
+  }
+
   return (
-    <div className="space-y-8">
-      <div className="text-center space-y-2">
+    <div className="space-y-6">
+      <div className="text-center space-y-4">
         <h2 className="text-2xl font-semibold text-foreground">Live Park Overview</h2>
         <p className="text-muted-foreground">Current wait times and trends across all parks</p>
+        
+        {/* Family Filter */}
+        <div className="flex justify-center">
+          <div className="w-full max-w-xs">
+            <Select value={selectedFamily} onValueChange={setSelectedFamily}>
+              <SelectTrigger className="w-full">
+                <div className="flex items-center gap-2">
+                  <FunnelSimple size={16} />
+                  <SelectValue placeholder="Filter by park family" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  <div className="flex items-center gap-2">
+                    <span>All Park Families</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {groupedParks.length}
+                    </Badge>
+                  </div>
+                </SelectItem>
+                {groupedParks.map(({ family, parks }) => (
+                  <SelectItem key={family.id} value={family.id}>
+                    <div className="flex items-center gap-2">
+                      <span>{family.name}</span>
+                      <Badge variant="secondary" className="text-xs">
+                        {parks.length}
+                      </Badge>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {selectedFamily !== 'all' && (
+          <div className="text-sm text-muted-foreground">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setSelectedFamily('all')}
+              className="text-primary hover:text-primary"
+            >
+              ← Show all families
+            </Button>
+          </div>
+        )}
       </div>
 
       {isLoading ? (
@@ -120,93 +188,142 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
           ))}
         </div>
       ) : (
-        <div className="space-y-8">
-          {groupedParks.map(({ family, parks }) => (
-            <div key={family.id} className="space-y-4">
-              <div className="border-b pb-2">
-                <h3 className="text-xl font-semibold text-foreground">{family.name}</h3>
-                <div className="flex items-center text-sm text-muted-foreground mt-1">
-                  <MapPin size={14} className="mr-1" />
-                  {family.location}
-                </div>
-              </div>
-              
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {parks.map((park) => {
-                  const attractions = parkData[park.id] || []
-                  const stats = getParkStats(attractions)
-                  
-                  return (
-                    <Card 
-                      key={park.id} 
-                      className="hover:shadow-lg transition-all duration-300 cursor-pointer"
-                      onClick={() => onParkSelect(park.id)}
+        <div className="space-y-6">
+          {filteredGroupedParks.map(({ family, parks }) => {
+            const isCollapsed = collapsedFamilies.has(family.id)
+            const totalParks = parks.length
+            const totalAttractions = parks.reduce((sum, park) => sum + (parkData[park.id]?.length || 0), 0)
+            const avgWaitAcrossFamily = parks.reduce((sum, park) => {
+              const attractions = parkData[park.id] || []
+              const stats = getParkStats(attractions)
+              return sum + stats.avgWait
+            }, 0) / parks.length || 0
+            
+            return (
+              <Collapsible key={family.id} open={!isCollapsed} onOpenChange={() => toggleFamilyCollapse(family.id)}>
+                <div className="border border-border rounded-lg overflow-hidden bg-card">
+                  <CollapsibleTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      className="w-full justify-between p-6 h-auto hover:bg-muted/50 rounded-none"
                     >
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <CardTitle className="text-lg font-medium leading-tight">
-                              {park.shortName}
-                            </CardTitle>
+                      <div className="flex items-center gap-6 text-left">
+                        <div className="flex-1">
+                          <h3 className="text-xl font-semibold text-foreground">{family.name}</h3>
+                          <div className="flex items-center text-sm text-muted-foreground mt-1">
+                            <MapPin size={14} className="mr-1" />
+                            {family.location}
                           </div>
-                          <Badge variant="secondary" className="text-xs">
-                            {attractions.length} rides
-                          </Badge>
                         </div>
-                      </CardHeader>
-                      
-                      <CardContent className="space-y-4">
-                        {/* Featured Attraction Chart */}
-                        {stats.popular && (
-                          <div className="space-y-2">
-                            <div className="text-sm text-muted-foreground font-medium">
-                              Busiest: {stats.popular.name}
-                            </div>
-                            <WaitTimeChart attractionId={stats.popular.id} />
+                        <div className="flex items-center gap-3">
+                          <div className="text-center">
+                            <div className="text-sm font-medium text-foreground">{Math.round(avgWaitAcrossFamily)}</div>
+                            <div className="text-xs text-muted-foreground">avg min</div>
                           </div>
-                        )}
-                        
-                        {/* Current Stats */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <Clock size={16} className="text-muted-foreground" />
-                            <span className="text-sm text-muted-foreground">Avg Wait</span>
-                          </div>
-                          <Badge className={getWaitTimeColor(stats.avgWait)}>
-                            {stats.avgWait} min
-                          </Badge>
-                        </div>
-                        
-                        {stats.maxWait > stats.avgWait && (
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <TrendUp size={16} className="text-muted-foreground" />
-                              <span className="text-sm text-muted-foreground">Peak Wait</span>
-                            </div>
-                            <Badge className={getWaitTimeColor(stats.maxWait)}>
-                              {stats.maxWait} min
+                          <div className="flex flex-col gap-1">
+                            <Badge variant="outline" className="text-xs whitespace-nowrap">
+                              {totalParks} parks
+                            </Badge>
+                            <Badge variant="outline" className="text-xs whitespace-nowrap">
+                              {totalAttractions} rides
                             </Badge>
                           </div>
-                        )}
-                        
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="w-full mt-4"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onParkSelect(park.id)
-                          }}
-                        >
-                          View Details
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isCollapsed ? <CaretDown size={20} /> : <CaretUp size={20} />}
+                      </div>
+                    </Button>
+                  </CollapsibleTrigger>
+                  
+                  <CollapsibleContent>
+                    <div className="p-6 pt-0 border-t bg-muted/20">
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {parks.map((park) => {
+                          const attractions = parkData[park.id] || []
+                          const stats = getParkStats(attractions)
+                          
+                          return (
+                            <Card 
+                              key={park.id} 
+                              className="hover:shadow-lg transition-all duration-300 cursor-pointer border-l-4 border-l-primary/20 hover:border-l-primary bg-background"
+                              onClick={() => onParkSelect(park.id)}
+                            >
+                              <CardHeader className="pb-3">
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <CardTitle className="text-lg font-medium leading-tight">
+                                      {park.shortName}
+                                    </CardTitle>
+                                  </div>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {attractions.length} rides
+                                  </Badge>
+                                </div>
+                              </CardHeader>
+                              
+                              <CardContent className="space-y-4">
+                                {/* Featured Attraction Chart */}
+                                {stats.popular && (
+                                  <div className="space-y-2">
+                                    <div className="text-sm text-muted-foreground font-medium">
+                                      Busiest: {stats.popular.name}
+                                    </div>
+                                    <WaitTimeChart attractionId={stats.popular.id} />
+                                  </div>
+                                )}
+                                
+                                {/* Current Stats */}
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center space-x-2">
+                                    <Clock size={16} className="text-muted-foreground" />
+                                    <span className="text-sm text-muted-foreground">Avg Wait</span>
+                                  </div>
+                                  <Badge className={getWaitTimeColor(stats.avgWait)}>
+                                    {stats.avgWait} min
+                                  </Badge>
+                                </div>
+                                
+                                {stats.maxWait > stats.avgWait && (
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-2">
+                                      <TrendUp size={16} className="text-muted-foreground" />
+                                      <span className="text-sm text-muted-foreground">Peak Wait</span>
+                                    </div>
+                                    <Badge className={getWaitTimeColor(stats.maxWait)}>
+                                      {stats.maxWait} min
+                                    </Badge>
+                                  </div>
+                                )}
+                                
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="w-full mt-4"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    onParkSelect(park.id)
+                                  }}
+                                >
+                                  View Details
+                                </Button>
+                              </CardContent>
+                            </Card>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+            )
+          })}
+          
+          {filteredGroupedParks.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">No parks found for the selected family.</p>
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
