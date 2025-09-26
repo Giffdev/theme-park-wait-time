@@ -37,23 +37,38 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
       try {
         const data: Record<string, Attraction[]> = {}
         
-        // Try to initialize sample data first
+        // Initialize sample data first and wait for completion
         const { initializeSampleData } = await import('@/data/sampleData')
-        await initializeSampleData()
+        const initSuccess = await initializeSampleData()
+        
+        if (!initSuccess) {
+          console.error('❌ Failed to initialize sample data')
+        }
+        
+        // Give a small delay to ensure data is properly saved
+        await new Promise(resolve => setTimeout(resolve, 100))
         
         for (const park of allParks) {
-          const attractions = await window.spark.kv.get<Attraction[]>(`attractions-${park.id}`)
-          if (attractions && Array.isArray(attractions) && attractions.length > 0) {
-            data[park.id] = attractions
-            console.log(`✅ Loaded ${attractions.length} attractions for ${park.name}`)
-          } else {
-            console.warn(`❌ No attractions found for ${park.name} (${park.id})`)
+          try {
+            const attractions = await window.spark.kv.get<Attraction[]>(`attractions-${park.id}`)
+            if (attractions && Array.isArray(attractions) && attractions.length > 0) {
+              data[park.id] = attractions
+              console.log(`✅ Loaded ${attractions.length} attractions for ${park.name} (${park.id})`)
+            } else {
+              console.warn(`⚠️ No attractions found for ${park.name} (${park.id})`)
+              
+              // Check if we have the key in storage at all
+              const allKeys = await window.spark.kv.keys()
+              const hasKey = allKeys.includes(`attractions-${park.id}`)
+              console.log(`🔍 Key 'attractions-${park.id}' exists in storage: ${hasKey}`)
+            }
+          } catch (parkError) {
+            console.error(`❌ Error loading park ${park.name}:`, parkError)
           }
         }
         
         setParkData(data)
-        console.log('✅ Loaded park overview data:', Object.keys(data).length, 'parks with data')
-        console.log('📊 Park data loaded:', data)
+        console.log(`✅ Loaded park overview data: ${Object.keys(data).length} parks with data out of ${allParks.length} total parks`)
       } catch (error) {
         console.error('❌ Error loading park overview:', error)
       } finally {
@@ -87,7 +102,7 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
   const groupedParks = parkFamilies.reduce((acc, family) => {
     const familyParks = family.parks
       .filter(park => park.type === 'theme-park')
-      .filter(park => parkData[park.id]) // Only show parks with data
+      // Show all parks initially, data will populate as it loads
     
     if (familyParks.length > 0) {
       acc.push({
@@ -192,12 +207,16 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
           {filteredGroupedParks.map(({ family, parks }) => {
             const isCollapsed = collapsedFamilies.has(family.id)
             const totalParks = parks.length
+            const parksWithData = parks.filter(park => parkData[park.id] && parkData[park.id].length > 0)
             const totalAttractions = parks.reduce((sum, park) => sum + (parkData[park.id]?.length || 0), 0)
-            const avgWaitAcrossFamily = parks.reduce((sum, park) => {
-              const attractions = parkData[park.id] || []
-              const stats = getParkStats(attractions)
-              return sum + stats.avgWait
-            }, 0) / parks.length || 0
+            
+            const avgWaitAcrossFamily = parksWithData.length > 0 
+              ? parksWithData.reduce((sum, park) => {
+                  const attractions = parkData[park.id] || []
+                  const stats = getParkStats(attractions)
+                  return sum + stats.avgWait
+                }, 0) / parksWithData.length
+              : 0
             
             return (
               <Collapsible key={family.id} open={!isCollapsed} onOpenChange={() => toggleFamilyCollapse(family.id)}>
@@ -217,7 +236,9 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="text-center">
-                            <div className="text-sm font-medium text-foreground">{Math.round(avgWaitAcrossFamily)}</div>
+                            <div className="text-sm font-medium text-foreground">
+                              {totalAttractions > 0 ? Math.round(avgWaitAcrossFamily) : '--'}
+                            </div>
                             <div className="text-xs text-muted-foreground">avg min</div>
                           </div>
                           <div className="flex flex-col gap-1">
@@ -225,7 +246,7 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
                               {totalParks} parks
                             </Badge>
                             <Badge variant="outline" className="text-xs whitespace-nowrap">
-                              {totalAttractions} rides
+                              {totalAttractions > 0 ? `${totalAttractions} rides` : 'Loading...'}
                             </Badge>
                           </div>
                         </div>
@@ -241,6 +262,7 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
                       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                         {parks.map((park) => {
                           const attractions = parkData[park.id] || []
+                          const hasData = attractions.length > 0
                           const stats = getParkStats(attractions)
                           
                           return (
@@ -257,43 +279,62 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
                                     </CardTitle>
                                   </div>
                                   <Badge variant="secondary" className="text-xs">
-                                    {attractions.length} rides
+                                    {hasData ? `${attractions.length} rides` : 'Loading...'}
                                   </Badge>
                                 </div>
                               </CardHeader>
                               
                               <CardContent className="space-y-4">
-                                {/* Featured Attraction Chart */}
-                                {stats.popular && (
-                                  <div className="space-y-2">
-                                    <div className="text-sm text-muted-foreground font-medium">
-                                      Busiest: {stats.popular.name}
+                                {hasData ? (
+                                  <>
+                                    {/* Featured Attraction Chart */}
+                                    {stats.popular && (
+                                      <div className="space-y-2">
+                                        <div className="text-sm text-muted-foreground font-medium">
+                                          Busiest: {stats.popular.name}
+                                        </div>
+                                        <WaitTimeChart attractionId={stats.popular.id} />
+                                      </div>
+                                    )}
+                                    
+                                    {/* Current Stats */}
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center space-x-2">
+                                        <Clock size={16} className="text-muted-foreground" />
+                                        <span className="text-sm text-muted-foreground">Avg Wait</span>
+                                      </div>
+                                      <Badge className={getWaitTimeColor(stats.avgWait)}>
+                                        {stats.avgWait} min
+                                      </Badge>
                                     </div>
-                                    <WaitTimeChart attractionId={stats.popular.id} />
-                                  </div>
-                                )}
-                                
-                                {/* Current Stats */}
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center space-x-2">
-                                    <Clock size={16} className="text-muted-foreground" />
-                                    <span className="text-sm text-muted-foreground">Avg Wait</span>
-                                  </div>
-                                  <Badge className={getWaitTimeColor(stats.avgWait)}>
-                                    {stats.avgWait} min
-                                  </Badge>
-                                </div>
-                                
-                                {stats.maxWait > stats.avgWait && (
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center space-x-2">
-                                      <TrendUp size={16} className="text-muted-foreground" />
-                                      <span className="text-sm text-muted-foreground">Peak Wait</span>
+                                    
+                                    {stats.maxWait > stats.avgWait && (
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center space-x-2">
+                                          <TrendUp size={16} className="text-muted-foreground" />
+                                          <span className="text-sm text-muted-foreground">Peak Wait</span>
+                                        </div>
+                                        <Badge className={getWaitTimeColor(stats.maxWait)}>
+                                          {stats.maxWait} min
+                                        </Badge>
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    {/* Loading placeholder */}
+                                    <div className="space-y-2">
+                                      <div className="h-24 bg-muted/50 rounded animate-pulse"></div>
                                     </div>
-                                    <Badge className={getWaitTimeColor(stats.maxWait)}>
-                                      {stats.maxWait} min
-                                    </Badge>
-                                  </div>
+                                    
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center space-x-2">
+                                        <Clock size={16} className="text-muted-foreground" />
+                                        <span className="text-sm text-muted-foreground">Loading wait times...</span>
+                                      </div>
+                                      <Badge variant="secondary">--</Badge>
+                                    </div>
+                                  </>
                                 )}
                                 
                                 <Button 
@@ -319,9 +360,21 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
             )
           })}
           
-          {filteredGroupedParks.length === 0 && (
+          {filteredGroupedParks.length === 0 && !isLoading && (
             <div className="text-center py-12">
-              <p className="text-muted-foreground">No parks found for the selected family.</p>
+              <p className="text-muted-foreground mb-4">
+                {selectedFamily === 'all' 
+                  ? "Loading park data..." 
+                  : "No parks found for the selected family or data is still loading."}
+              </p>
+              {selectedFamily !== 'all' && (
+                <Button 
+                  variant="outline" 
+                  onClick={() => setSelectedFamily('all')}
+                >
+                  Show All Families
+                </Button>
+              )}
             </div>
           )}
         </div>
