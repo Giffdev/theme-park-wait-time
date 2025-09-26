@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useKV } from '@github/spark/hooks'
 import { Header } from '@/components/Header'
 import { ParkSelector } from '@/components/ParkSelector' 
@@ -6,7 +6,11 @@ import { LiveWaitTimes } from '@/components/LiveWaitTimes'
 import { CrowdCalendar } from '@/components/CrowdCalendar'
 import { AuthModal } from '@/components/AuthModal'
 import { UserProfile } from '@/components/UserProfile'
+import { UserStats } from '@/components/UserStats'
+import { RealtimeIndicator } from '@/components/RealtimeIndicator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Toaster } from 'sonner'
+import { initializeSampleData } from '@/data/sampleData'
 
 export type Park = {
   id: string
@@ -37,6 +41,11 @@ function App() {
   const [activeTab, setActiveTab] = useState('live-times')
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [currentUser, setCurrentUser] = useKV<User | null>('current-user', null)
+
+  // Initialize sample data on app load
+  useEffect(() => {
+    initializeSampleData().catch(console.error)
+  }, [])
 
   const handleLogin = (user: User) => {
     setCurrentUser(user)
@@ -71,6 +80,18 @@ function App() {
             onParkChange={setSelectedPark}
           />
         </div>
+
+        {/* Realtime Activity Indicator */}
+        <div className="mb-6">
+          <RealtimeIndicator parkId={selectedPark} />
+        </div>
+
+        {/* User Stats - Show only when logged in */}
+        {currentUser && (
+          <div className="mb-6">
+            <UserStats user={currentUser} />
+          </div>
+        )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3">
@@ -108,6 +129,9 @@ function App() {
           onClose={() => setShowAuthModal(false)}
         />
       )}
+
+      {/* Toast notifications container */}
+      <Toaster position="top-right" richColors />
     </div>
   )
 }
