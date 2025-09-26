@@ -103,7 +103,7 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
         <Button 
           variant="ghost" 
           onClick={() => navigate('/')}
-          className="gap-2"
+          className="gap-2 text-muted-foreground hover:text-foreground"
         >
           <CaretLeft size={16} />
           Back to Home
@@ -162,11 +162,10 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
             setSearchParams({})
           }
         }} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="live-times">Live Times</TabsTrigger>
             <TabsTrigger value="crowd-calendar">Crowd Calendar</TabsTrigger>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -188,15 +187,6 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
 
           <TabsContent value="crowd-calendar">
             <CrowdCalendar parkId={selectedPark} />
-          </TabsContent>
-
-          <TabsContent value="analytics">
-            <div className="rounded-lg border bg-card p-6">
-              <h2 className="text-2xl font-semibold mb-4">Historical Analytics</h2>
-              <p className="text-muted-foreground">
-                Detailed wait time trends and patterns coming soon...
-              </p>
-            </div>
           </TabsContent>
         </Tabs>
       </div>

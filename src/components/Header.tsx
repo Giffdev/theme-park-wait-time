@@ -57,12 +57,14 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
                 My Logs
               </Link>
             )}
-            <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+            <Link 
+              to="/calendar" 
+              className={`text-sm font-medium transition-colors hover:text-foreground ${
+                isActive('/calendar') ? 'text-foreground' : 'text-muted-foreground'
+              }`}
+            >
               Calendar
-            </span>
-            <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-              Analytics
-            </span>
+            </Link>
           </nav>
 
           <div className="flex items-center space-x-4">
