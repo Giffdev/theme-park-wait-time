@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Calendar, TrendUp, ArrowLeft, ArrowRight } from '@phosphor-icons/react'
+import { Calendar, TrendUp, ArrowLeft, ArrowRight, Sun, Cloud, CloudRain, CloudSnow, CloudLightning } from '@phosphor-icons/react'
 
 interface CrowdCalendarProps {
   parkId: string
@@ -20,6 +20,32 @@ export function CrowdCalendar({ parkId }: CrowdCalendarProps) {
   const getCrowdLevel = (date: number): number => {
     const seed = date + currentMonth + currentYear
     return Math.floor(Math.random() * seed % 100) + 1
+  }
+
+  const getWeatherType = (date: number): 'sunny' | 'cloudy' | 'rainy' | 'stormy' | 'snowy' => {
+    const seed = (date * currentMonth * currentYear) % 100
+    if (seed < 50) return 'sunny'
+    if (seed < 70) return 'cloudy'
+    if (seed < 85) return 'rainy'
+    if (seed < 95) return 'stormy'
+    return 'snowy'
+  }
+
+  const getWeatherIcon = (weatherType: 'sunny' | 'cloudy' | 'rainy' | 'stormy' | 'snowy') => {
+    switch (weatherType) {
+      case 'sunny':
+        return <Sun size={14} className="text-yellow-500" />
+      case 'cloudy':
+        return <Cloud size={14} className="text-gray-500" />
+      case 'rainy':
+        return <CloudRain size={14} className="text-blue-500" />
+      case 'stormy':
+        return <CloudLightning size={14} className="text-purple-600" />
+      case 'snowy':
+        return <CloudSnow size={14} className="text-blue-300" />
+      default:
+        return <Sun size={14} className="text-yellow-500" />
+    }
   }
 
   const getCrowdColor = (level: number): string => {
@@ -73,13 +99,17 @@ export function CrowdCalendar({ parkId }: CrowdCalendarProps) {
 
     for (let day = 1; day <= daysInMonth; day++) {
       const crowdLevel = getCrowdLevel(day)
+      const weatherType = getWeatherType(day)
       days.push(
         <div
           key={day}
           className="h-20 border rounded-lg p-2 hover:shadow-md transition-shadow cursor-pointer"
         >
           <div className="flex flex-col h-full justify-between">
-            <span className="text-sm font-medium">{day}</span>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">{day}</span>
+              {getWeatherIcon(weatherType)}
+            </div>
             <Badge 
               className={`text-xs ${getCrowdColor(crowdLevel)} w-fit`}
               variant="secondary"
