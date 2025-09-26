@@ -148,10 +148,10 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
     }
   }, [targetRide, attractions, isLoading, onRideViewed])
 
-  const getWaitTimeColor = (waitTime: number) => {
-    if (waitTime <= 20) return 'bg-success text-success-foreground'
-    if (waitTime <= 45) return 'bg-accent text-accent-foreground'
-    return 'bg-destructive text-destructive-foreground'
+  const getWaitTimeVariant = (waitTime: number): "success" | "accent" | "destructive" => {
+    if (waitTime <= 20) return 'success'
+    if (waitTime <= 45) return 'accent'
+    return 'destructive'
   }
 
   const getReportCount = (attractionId: string) => {
@@ -294,7 +294,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
                       <Clock size={16} className="text-muted-foreground" />
                       <span className="text-sm text-muted-foreground">Current Wait</span>
                     </div>
-                    <Badge className={getWaitTimeColor(attraction.currentWaitTime)}>
+                    <Badge variant={getWaitTimeVariant(attraction.currentWaitTime)}>
                       {attraction.currentWaitTime} min
                     </Badge>
                   </div>
@@ -314,7 +314,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
                       size="sm"
                       variant="outline"
                       onClick={() => handleReportClick(attraction.id)}
-                      className="flex-1 text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary"
+                      className="flex-1"
                     >
                       <Plus size={14} className="mr-1" />
                       {user ? 'Report Time' : 'Login to Report'}
@@ -323,7 +323,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
                       size="sm"
                       variant="ghost"
                       onClick={() => handleTrendsClick(attraction.id)}
-                      className="flex items-center space-x-1 text-foreground hover:text-foreground hover:bg-accent"
+                      className="flex items-center space-x-1"
                     >
                       <TrendUp size={14} />
                       <span>Trends</span>

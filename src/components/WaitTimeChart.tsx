@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Badge } from '@/components/ui/badge'
 import { formatTime12Hour } from '@/utils/timeFormat'
 import { useKV } from '@github/spark/hooks'
 
@@ -16,6 +17,12 @@ interface WaitTimeChartProps {
 export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartProps) {
   const [chartData, setChartData] = useState<WaitTimeDataPoint[]>([])
   const [historicalReports] = useKV<any[]>(`wait-reports-${attractionId}`, [])
+
+  const getWaitTimeVariant = (waitTime: number): "success" | "accent" | "destructive" => {
+    if (waitTime <= 20) return 'success'
+    if (waitTime <= 45) return 'accent'
+    return 'destructive'
+  }
 
   useEffect(() => {
     // Generate realistic historical data for today based on typical theme park patterns
@@ -268,10 +275,9 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
       
       {currentDataPoint && (
         <div className="flex items-center justify-center mt-2 text-xs">
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
-            <div className="w-2 h-2 rounded-full bg-accent"></div>
+          <Badge variant={getWaitTimeVariant(currentDataPoint.waitTime)}>
             Now: {currentDataPoint.waitTime} min
-          </span>
+          </Badge>
         </div>
       )}
     </div>

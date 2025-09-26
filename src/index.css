@@ -38,12 +38,12 @@
   --accent: oklch(0.70 0.18 50);
   --accent-foreground: oklch(1 0 0);
   
-  /* Success - Sage Green */
-  --success: oklch(0.55 0.08 140);
+  /* Success - Darker Green for better contrast */
+  --success: oklch(0.45 0.12 140);
   --success-foreground: oklch(1 0 0);
   
-  /* Destructive for alerts */
-  --destructive: oklch(0.65 0.25 25);
+  /* Destructive for alerts - Slightly darker red */
+  --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(1 0 0);
   
   /* UI elements */

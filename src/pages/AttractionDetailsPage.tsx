@@ -299,7 +299,6 @@ export function AttractionDetailsPage() {
         <Button 
           onClick={() => navigate('/')} 
           variant="outline"
-          className="text-foreground hover:text-foreground hover:bg-accent"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Home
@@ -316,7 +315,6 @@ export function AttractionDetailsPage() {
           <Button 
             variant="outline" 
             onClick={() => navigate(`/park/${parkId}`)}
-            className="text-foreground hover:text-foreground hover:bg-accent"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to {park.name}
