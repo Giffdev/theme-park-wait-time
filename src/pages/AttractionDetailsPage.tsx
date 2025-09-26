@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ArrowLeft, Clock, TrendUp, Calendar } from '@phosphor-icons/react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ScatterChart, Scatter, ComposedChart } from 'recharts'
 import { parkFamilies } from '@/data/sampleData'
 import type { Park, Attraction } from '@/App'
 
@@ -14,6 +14,7 @@ type TimeRange = 'week' | 'month' | 'year'
 type HistoricalData = {
   timestamp: string
   waitTime: number
+  trendLine?: number
   dayOfWeek?: string
   hour?: number
   month?: string
@@ -155,7 +156,28 @@ export function AttractionDetailsPage() {
       }
     }
     
-    return data
+    // Calculate trend line using moving average
+    return calculateTrendLine(data)
+  }
+
+  const calculateTrendLine = (data: HistoricalData[]): HistoricalData[] => {
+    if (data.length < 3) return data
+    
+    const windowSize = Math.max(3, Math.floor(data.length / 10)) // Adaptive window size
+    
+    return data.map((point, index) => {
+      // Calculate moving average for trend line
+      const start = Math.max(0, index - Math.floor(windowSize / 2))
+      const end = Math.min(data.length, index + Math.ceil(windowSize / 2))
+      const window = data.slice(start, end)
+      
+      const trendLine = window.reduce((sum, p) => sum + p.waitTime, 0) / window.length
+      
+      return {
+        ...point,
+        trendLine: Math.round(trendLine)
+      }
+    })
   }
 
   const getAverageWaitTime = () => {
@@ -218,9 +240,12 @@ export function AttractionDetailsPage() {
   }
 
   const normalizeYAxisDomain = (data: HistoricalData[]) => {
-    const values = data.map(d => d.waitTime)
-    const min = Math.min(...values)
-    const max = Math.max(...values)
+    const waitValues = data.map(d => d.waitTime)
+    const trendValues = data.map(d => d.trendLine).filter(Boolean) as number[]
+    const allValues = [...waitValues, ...trendValues]
+    
+    const min = Math.min(...allValues)
+    const max = Math.max(...allValues)
     
     // Snap to nearest 10 minutes for better readability
     const minSnap = Math.floor(Math.max(0, min - 5) / 10) * 10
@@ -324,7 +349,7 @@ export function AttractionDetailsPage() {
             <CardContent>
               <div className="h-96">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={historicalData}>
+                  <ComposedChart data={historicalData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis 
                       dataKey="timestamp" 
@@ -341,7 +366,14 @@ export function AttractionDetailsPage() {
                       tickFormatter={(value) => `${value}m`}
                     />
                     <Tooltip
-                      formatter={(value: number) => [`${value} minutes`, 'Wait Time']}
+                      formatter={(value: number, name: string) => {
+                        if (name === 'waitTime') {
+                          return [`${value} minutes`, 'Reported Wait Time']
+                        } else if (name === 'trendLine') {
+                          return [`${value} minutes`, 'Trend Line']
+                        }
+                        return [value, name]
+                      }}
                       labelFormatter={(label) => `Time: ${label}`}
                       contentStyle={{
                         backgroundColor: 'hsl(var(--card))',
@@ -349,16 +381,38 @@ export function AttractionDetailsPage() {
                         borderRadius: '8px'
                       }}
                     />
+                    
+                    {/* Scatter plot for actual reported data points */}
+                    <Scatter
+                      dataKey="waitTime"
+                      fill="hsl(var(--primary))"
+                      fillOpacity={0.6}
+                    />
+                    
+                    {/* Smooth trend line */}
                     <Line
                       type="monotone"
-                      dataKey="waitTime"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2}
-                      dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 4 }}
-                      activeDot={{ r: 6, stroke: 'hsl(var(--primary))', strokeWidth: 2 }}
+                      dataKey="trendLine"
+                      stroke="hsl(var(--accent))"
+                      strokeWidth={3}
+                      dot={false}
+                      strokeDasharray="none"
+                      connectNulls={true}
                     />
-                  </LineChart>
+                  </ComposedChart>
                 </ResponsiveContainer>
+              </div>
+              
+              {/* Legend */}
+              <div className="flex justify-center gap-6 mt-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-primary opacity-60"></div>
+                  <span>Reported Wait Times</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-1 bg-accent"></div>
+                  <span>Statistical Trend</span>
+                </div>
               </div>
             </CardContent>
           </Card>
