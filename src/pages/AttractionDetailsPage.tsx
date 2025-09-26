@@ -88,6 +88,7 @@ export function AttractionDetailsPage() {
         // Generate historical data based on time range
         const data = generateHistoricalData(timeRange)
         setHistoricalData(data)
+        console.log('Historical data with trends:', data.slice(0, 3)) // Debug first few points
         
       } catch (error) {
         console.error('Error loading attraction data:', error)
@@ -164,10 +165,11 @@ export function AttractionDetailsPage() {
   const calculateTrendLine = (data: HistoricalData[]): HistoricalData[] => {
     if (data.length < 3) return data.map(d => ({ ...d, trendLine: d.waitTime }))
     
-    // Use a simpler moving average with fixed window size for better visibility
-    const windowSize = Math.max(3, Math.min(7, Math.floor(data.length / 5)))
+    // Use a simple moving average with fixed window size for better visibility
+    const windowSize = Math.max(3, Math.min(5, Math.floor(data.length / 4)))
+    console.log(`Calculating trend line with window size: ${windowSize} for ${data.length} data points`)
     
-    return data.map((point, index) => {
+    const result = data.map((point, index) => {
       // Calculate moving average for trend line
       const start = Math.max(0, index - Math.floor(windowSize / 2))
       const end = Math.min(data.length, index + Math.ceil(windowSize / 2))
@@ -180,6 +182,9 @@ export function AttractionDetailsPage() {
         trendLine: Math.round(trendLine)
       }
     })
+    
+    console.log('Sample trend calculations:', result.slice(0, 3).map(r => ({ waitTime: r.waitTime, trendLine: r.trendLine })))
+    return result
   }
 
   const getAverageWaitTime = () => {
@@ -384,17 +389,6 @@ export function AttractionDetailsPage() {
                       }}
                     />
                     
-                    {/* Statistical trend line */}
-                    <Line
-                      type="monotone"
-                      dataKey="trendLine"
-                      stroke="hsl(var(--accent))"
-                      strokeWidth={3}
-                      dot={false}
-                      strokeDasharray="none"
-                      name="trendLine"
-                    />
-                    
                     {/* Actual reported data points */}
                     <Line
                       type="monotone"
@@ -410,6 +404,18 @@ export function AttractionDetailsPage() {
                       connectNulls={false}
                       name="waitTime"
                     />
+                    
+                    {/* Statistical trend line - must come after data points to show on top */}
+                    <Line
+                      type="monotone"
+                      dataKey="trendLine"
+                      stroke="#f97316"
+                      strokeWidth={3}
+                      dot={false}
+                      strokeDasharray="none"
+                      name="trendLine"
+                      connectNulls={true}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -421,7 +427,7 @@ export function AttractionDetailsPage() {
                   <span>Reported Wait Times</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-1 bg-accent"></div>
+                  <div className="w-3 h-1" style={{ backgroundColor: '#f97316' }}></div>
                   <span>Statistical Trend</span>
                 </div>
               </div>

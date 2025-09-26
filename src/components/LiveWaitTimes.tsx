@@ -314,7 +314,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
                       size="sm"
                       variant="outline"
                       onClick={() => handleReportClick(attraction.id)}
-                      className="flex-1"
+                      className="flex-1 hover:bg-primary hover:text-primary-foreground hover:border-primary"
                     >
                       <Plus size={14} className="mr-1" />
                       {user ? 'Report Time' : 'Login to Report'}
