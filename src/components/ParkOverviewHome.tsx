@@ -229,7 +229,7 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
                           <Button 
                             variant="outline" 
                             size="sm" 
-                            className="w-full text-xs hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors"
+                            className="w-full text-xs hover:bg-primary hover:text-white hover:border-primary transition-colors"
                           >
                             View Details
                           </Button>
