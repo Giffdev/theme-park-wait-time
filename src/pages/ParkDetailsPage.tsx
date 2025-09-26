@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useKV } from '@github/spark/hooks'
 import { ParkSelector } from '@/components/ParkSelector' 
 import { LiveWaitTimes } from '@/components/LiveWaitTimes'
@@ -21,8 +21,10 @@ interface ParkDetailsPageProps {
 export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps) {
   const { parkId } = useParams<{ parkId: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [selectedPark, setSelectedPark] = useState<string>(parkId || 'magic-kingdom')
   const [activeTab, setActiveTab] = useState('overview')
+  const [targetRide, setTargetRide] = useState<string | null>(null)
   const [dataInitialized, setDataInitialized] = useState(false)
 
   // Update selected park when URL param changes
@@ -32,9 +34,26 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
     }
   }, [parkId])
 
+  // Handle ride navigation via URL parameters
+  useEffect(() => {
+    const rideParam = searchParams.get('ride')
+    if (rideParam) {
+      setTargetRide(rideParam)
+      setActiveTab('live-times')
+    }
+  }, [searchParams])
+
   // Navigate to new park details when park selector changes
   const handleParkChange = (newParkId: string) => {
     navigate(`/park/${newParkId}`)
+  }
+
+  // Handle ride selection from overview
+  const handleRideSelect = (rideId: string) => {
+    setTargetRide(rideId)
+    setActiveTab('live-times')
+    // Update URL to reflect the selected ride
+    setSearchParams({ ride: rideId })
   }
 
   // Initialize sample data on park load
@@ -125,7 +144,13 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
           </p>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={(newTab) => {
+          setActiveTab(newTab)
+          // Clear ride parameter when leaving live-times tab
+          if (newTab !== 'live-times' && searchParams.has('ride')) {
+            setSearchParams({})
+          }
+        }} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="live-times">Live Times</TabsTrigger>
@@ -134,7 +159,10 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
           </TabsList>
 
           <TabsContent value="overview">
-            <ParkDetailsOverview parkId={selectedPark} />
+            <ParkDetailsOverview 
+              parkId={selectedPark} 
+              onRideSelect={handleRideSelect}
+            />
           </TabsContent>
 
           <TabsContent value="live-times">
@@ -142,6 +170,8 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
               parkId={selectedPark}
               user={user}
               onLoginRequired={onLoginRequired}
+              targetRide={targetRide}
+              onRideViewed={() => setTargetRide(null)}
             />
           </TabsContent>
 

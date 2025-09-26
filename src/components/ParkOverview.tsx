@@ -5,16 +5,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ChartBar, Clock, TrendUp, SortAscending } from '@phosphor-icons/react'
+import { ChartBar, Clock, TrendUp, SortAscending, Eye } from '@phosphor-icons/react'
 import type { Attraction } from '@/App'
 
 interface ParkOverviewProps {
   parkId: string
+  onRideSelect?: (rideId: string) => void
 }
 
 type SortOption = 'waitTime-desc' | 'waitTime-asc' | 'name-asc' | 'name-desc'
 
-export function ParkDetailsOverview({ parkId }: ParkOverviewProps) {
+export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps) {
   const [attractions, setAttractions] = useKV<Attraction[]>(`attractions-${parkId}`, [])
   const [sortBy, setSortBy] = useState<SortOption>('waitTime-desc')
   const [viewMode, setViewMode] = useState<'bars' | 'list'>('bars')
@@ -196,6 +197,9 @@ export function ParkDetailsOverview({ parkId }: ParkOverviewProps) {
             {viewMode === 'bars' ? <ChartBar size={20} /> : <Clock size={20} />}
             All Attractions Overview
           </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Click on any attraction to view detailed live wait times
+          </p>
         </CardHeader>
         <CardContent>
           {viewMode === 'bars' ? (
@@ -208,9 +212,14 @@ export function ParkDetailsOverview({ parkId }: ParkOverviewProps) {
                   : attraction.status === 'operating' && attraction.currentWaitTime === 0 ? 5 : 2
                 
                 return (
-                  <div key={attraction.id} className="space-y-1">
+                  <div 
+                    key={attraction.id} 
+                    className="space-y-1 cursor-pointer hover:bg-muted/50 p-2 rounded transition-colors group"
+                    onClick={() => onRideSelect?.(attraction.id)}
+                    title="Click to view live details"
+                  >
                     <div className="flex justify-between items-center">
-                      <span className="font-medium text-sm truncate flex-1 mr-2">
+                      <span className="font-medium text-sm truncate flex-1 mr-2 group-hover:text-primary transition-colors">
                         {attraction.name}
                       </span>
                       <div className="flex items-center gap-2">
@@ -220,6 +229,7 @@ export function ParkDetailsOverview({ parkId }: ParkOverviewProps) {
                         >
                           {statusInfo.label}
                         </Badge>
+                        <Eye size={12} className="text-muted-foreground group-hover:text-primary transition-colors opacity-0 group-hover:opacity-100" />
                       </div>
                     </div>
                     <div className="relative h-6 bg-muted rounded-sm">
@@ -240,21 +250,24 @@ export function ParkDetailsOverview({ parkId }: ParkOverviewProps) {
                 return (
                   <div 
                     key={attraction.id} 
-                    className="flex justify-between items-center py-3 px-4 rounded-lg border bg-card hover:shadow-sm transition-shadow"
+                    className="flex justify-between items-center py-3 px-4 rounded-lg border bg-card hover:shadow-sm transition-all cursor-pointer group"
+                    onClick={() => onRideSelect?.(attraction.id)}
+                    title="Click to view live details"
                   >
                     <div className="flex-1">
-                      <h4 className="font-medium">{attraction.name}</h4>
+                      <h4 className="font-medium group-hover:text-primary transition-colors">{attraction.name}</h4>
                       <p className="text-sm text-muted-foreground capitalize">
                         {attraction.type} • Status: {attraction.status}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex items-center gap-2">
                       <Badge 
                         variant="secondary" 
                         className={`${statusInfo.textColor} font-semibold`}
                       >
                         {statusInfo.label}
                       </Badge>
+                      <Eye size={16} className="text-muted-foreground group-hover:text-primary transition-colors" />
                     </div>
                   </div>
                 )

@@ -12,9 +12,11 @@ interface LiveWaitTimesProps {
   parkId: string
   user: User | null
   onLoginRequired: () => void
+  targetRide?: string | null
+  onRideViewed?: () => void
 }
 
-export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesProps) {
+export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRideViewed }: LiveWaitTimesProps) {
   const [showReportModal, setShowReportModal] = useState(false)
   const [selectedAttraction, setSelectedAttraction] = useState<string | null>(null)
   const [lastUpdate, setLastUpdate] = useState(new Date())
@@ -117,6 +119,31 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
     const interval = setInterval(updateWaitTimes, 30000)
     return () => clearInterval(interval)
   }, [attractions, getConsensusWaitTime])
+
+  // Handle scrolling to target ride
+  useEffect(() => {
+    if (targetRide && attractions.length > 0 && !isLoading) {
+      const timer = setTimeout(() => {
+        const targetElement = document.getElementById(`ride-${targetRide}`)
+        if (targetElement) {
+          targetElement.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center' 
+          })
+          // Add a highlight effect
+          targetElement.classList.add('ring-2', 'ring-primary', 'ring-opacity-50')
+          setTimeout(() => {
+            targetElement.classList.remove('ring-2', 'ring-primary', 'ring-opacity-50')
+          }, 2000)
+          
+          // Notify that the ride has been viewed
+          onRideViewed?.()
+        }
+      }, 100) // Small delay to ensure rendering is complete
+      
+      return () => clearTimeout(timer)
+    }
+  }, [targetRide, attractions, isLoading, onRideViewed])
 
   const getWaitTimeColor = (waitTime: number) => {
     if (waitTime <= 20) return 'bg-success text-success-foreground'
@@ -231,7 +258,11 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
             const verificationStatus = getVerificationStatus(attraction.id)
             
             return (
-              <Card key={attraction.id} className="hover:shadow-lg transition-all duration-300">
+              <Card 
+                key={attraction.id} 
+                id={`ride-${attraction.id}`}
+                className="hover:shadow-lg transition-all duration-300"
+              >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <CardTitle className="text-lg font-medium leading-tight">
