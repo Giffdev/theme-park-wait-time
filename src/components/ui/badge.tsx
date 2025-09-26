@@ -10,17 +10,17 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default:
-          "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
+          "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90 [a&]:hover:text-primary-foreground",
         secondary:
-          "border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
+          "border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90 [a&]:hover:text-secondary-foreground",
         destructive:
-          "border-transparent bg-destructive text-destructive-foreground [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
+          "border-transparent bg-destructive text-destructive-foreground [a&]:hover:bg-destructive/90 [a&]:hover:text-destructive-foreground focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
         success:
-          "border-transparent bg-success text-success-foreground [a&]:hover:bg-success/90 focus-visible:ring-success/20 dark:focus-visible:ring-success/40",
+          "border-transparent bg-success text-success-foreground [a&]:hover:bg-success/90 [a&]:hover:text-success-foreground focus-visible:ring-success/20 dark:focus-visible:ring-success/40",
         accent:
-          "border-transparent bg-accent text-accent-foreground [a&]:hover:bg-accent/90 focus-visible:ring-accent/20 dark:focus-visible:ring-accent/40",
+          "border-transparent bg-accent text-accent-foreground [a&]:hover:bg-accent/90 [a&]:hover:text-accent-foreground focus-visible:ring-accent/20 dark:focus-visible:ring-accent/40",
         outline:
-          "text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+          "text-foreground [a&]:hover:bg-accent [a&]:hover:text-foreground",
       },
     },
     defaultVariants: {

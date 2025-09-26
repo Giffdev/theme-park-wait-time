@@ -114,11 +114,11 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
     : PARK_FAMILIES.filter(family => family.name === selectedFamily)
 
   const getWaitTimeBadge = (avgWaitTime: number, maxWaitTime: number) => {
-    if (avgWaitTime === 0) return { color: 'bg-green-100', text: 'Great Day!', textColor: 'text-green-800' }
-    if (avgWaitTime <= 15) return { color: 'bg-green-100', text: 'Low Crowds', textColor: 'text-green-800' }
-    if (avgWaitTime <= 30) return { color: 'bg-yellow-100', text: 'Moderate', textColor: 'text-yellow-800' }
-    if (avgWaitTime <= 45) return { color: 'bg-orange-100', text: 'Busy', textColor: 'text-orange-800' }
-    return { color: 'bg-red-100', text: 'Very Busy', textColor: 'text-red-800' }
+    if (avgWaitTime === 0) return { color: 'bg-success/10', text: 'Great Day!', textColor: 'text-success' }
+    if (avgWaitTime <= 15) return { color: 'bg-success/10', text: 'Low Crowds', textColor: 'text-success' }
+    if (avgWaitTime <= 30) return { color: 'bg-accent/10', text: 'Moderate', textColor: 'text-accent-foreground' }
+    if (avgWaitTime <= 45) return { color: 'bg-accent/10', text: 'Busy', textColor: 'text-accent-foreground' }
+    return { color: 'bg-destructive/10', text: 'Very Busy', textColor: 'text-destructive' }
   }
 
   if (isLoading) {

@@ -84,15 +84,15 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
   const getStatusInfo = (status: string, waitTime: number) => {
     switch (status) {
       case 'closed':
-        return { color: 'bg-gray-400', label: 'Closed', textColor: 'text-gray-600' }
+        return { color: 'bg-muted', label: 'Closed', textColor: 'text-muted-foreground' }
       case 'delayed':
-        return { color: 'bg-yellow-500', label: 'Delayed', textColor: 'text-yellow-600' }
+        return { color: 'bg-accent', label: 'Delayed', textColor: 'text-accent-foreground' }
       default:
-        if (waitTime === 0) return { color: 'bg-green-500', label: 'Walk On', textColor: 'text-green-600' }
-        if (waitTime <= 15) return { color: 'bg-green-400', label: `${waitTime}min`, textColor: 'text-green-600' }
-        if (waitTime <= 30) return { color: 'bg-yellow-400', label: `${waitTime}min`, textColor: 'text-yellow-600' }
-        if (waitTime <= 60) return { color: 'bg-orange-400', label: `${waitTime}min`, textColor: 'text-orange-600' }
-        return { color: 'bg-red-500', label: `${waitTime}min`, textColor: 'text-red-600' }
+        if (waitTime === 0) return { color: 'bg-success', label: 'Walk On', textColor: 'text-success-foreground' }
+        if (waitTime <= 15) return { color: 'bg-success', label: `${waitTime}min`, textColor: 'text-success-foreground' }
+        if (waitTime <= 30) return { color: 'bg-accent', label: `${waitTime}min`, textColor: 'text-accent-foreground' }
+        if (waitTime <= 60) return { color: 'bg-accent', label: `${waitTime}min`, textColor: 'text-accent-foreground' }
+        return { color: 'bg-destructive', label: `${waitTime}min`, textColor: 'text-destructive-foreground' }
     }
   }
 
@@ -135,19 +135,19 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">{stats.avg}min</div>
+            <div className="text-2xl font-bold text-success">{stats.avg}min</div>
             <div className="text-sm text-muted-foreground">Avg Wait</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-red-600">{stats.max}min</div>
+            <div className="text-2xl font-bold text-destructive">{stats.max}min</div>
             <div className="text-sm text-muted-foreground">Longest Wait</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">{stats.min || 0}min</div>
+            <div className="text-2xl font-bold text-success">{stats.min || 0}min</div>
             <div className="text-sm text-muted-foreground">Shortest Wait</div>
           </CardContent>
         </Card>

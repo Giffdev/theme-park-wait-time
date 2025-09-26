@@ -6,7 +6,6 @@ import { LiveWaitTimes } from '@/components/LiveWaitTimes'
 import { ParkDetailsOverview } from '@/components/ParkOverview'
 import { CrowdCalendar } from '@/components/CrowdCalendar'
 import { UserStats } from '@/components/UserStats'
-import { RealtimeIndicator } from '@/components/RealtimeIndicator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { CaretLeft } from '@phosphor-icons/react'
@@ -119,10 +118,7 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
         />
       </div>
 
-      {/* Realtime Activity Indicator */}
-      <div className="mb-6">
-        <RealtimeIndicator parkId={selectedPark} />
-      </div>
+
 
       {/* User Stats - Show only when logged in */}
       {user && (

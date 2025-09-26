@@ -500,35 +500,6 @@ export function AttractionDetailsPage() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Trip Planning Tips */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Planning Tips</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="p-3 bg-success/10 rounded-lg border border-success/20">
-                <div className="font-medium text-success-foreground mb-1">💡 Pro Tip</div>
-                <div className="text-xs text-muted-foreground">
-                  {timeRange === 'week' 
-                    ? `Visit during ${getBestTime()} for the shortest waits`
-                    : timeRange === 'month'
-                    ? 'Weekdays typically have shorter wait times'
-                    : 'Winter months often have the shortest wait times'
-                  }
-                </div>
-              </div>
-              
-              {getAverageWaitTime() > 30 && (
-                <div className="p-3 bg-accent/10 rounded-lg border border-accent/20">
-                  <div className="font-medium text-accent-foreground mb-1">⚠️ Popular Ride</div>
-                  <div className="text-xs text-muted-foreground">
-                    This is a popular attraction. Consider using Express Pass or visiting during off-peak hours.
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
       </div>
     </div>
