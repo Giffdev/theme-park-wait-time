@@ -226,13 +226,15 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
                             </div>
                           </div>
                           
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="w-full text-xs hover:bg-primary hover:text-white hover:border-primary transition-colors"
+                          <button 
+                            className="w-full px-3 py-2 text-xs font-medium text-primary bg-transparent border border-primary rounded-md hover:bg-primary hover:text-primary-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onParkSelect(park.id)
+                            }}
                           >
                             View Details
-                          </Button>
+                          </button>
                         </div>
                       </CardContent>
                     </Card>
