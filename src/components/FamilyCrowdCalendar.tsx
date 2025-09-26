@@ -27,33 +27,40 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
     const loadWeatherData = async () => {
       if (themeParks.length === 0) return
       
-      const daysInMonth = getDaysInMonth(currentMonth, currentYear)
-      const newWeatherData: Record<string, any> = {}
-      
-      // Load weather for the first 10 days of the month (to avoid rate limiting)
-      const maxDays = Math.min(daysInMonth, 10)
-      const promises: Promise<void>[] = []
-      
-      for (let day = 1; day <= maxDays; day++) {
-        const date = new Date(currentYear, currentMonth, day)
-        const dateKey = `${currentYear}-${currentMonth}-${day}`
+      try {
+        const daysInMonth = getDaysInMonth(currentMonth, currentYear)
+        const newWeatherData: Record<string, any> = {}
         
-        // Use the first theme park for weather reference since they're usually in the same area
-        const promise = getWeatherForDate(themeParks[0].id, date)
-          .then(weather => {
-            if (weather) {
-              newWeatherData[dateKey] = weather
-            }
-          })
-          .catch(error => {
-            console.warn(`Failed to load weather for ${dateKey}:`, error)
-          })
+        // Load weather for the first 10 days of the month (to avoid rate limiting)
+        const maxDays = Math.min(daysInMonth, 10)
+        const promises: Promise<void>[] = []
         
-        promises.push(promise)
+        for (let day = 1; day <= maxDays; day++) {
+          const date = new Date(currentYear, currentMonth, day)
+          const dateKey = `${currentYear}-${currentMonth}-${day}`
+          
+          // Use the first theme park for weather reference since they're usually in the same area
+          const promise = getWeatherForDate(themeParks[0].id, date)
+            .then(weather => {
+              if (weather) {
+                newWeatherData[dateKey] = weather
+              }
+            })
+            .catch(error => {
+              console.warn(`Failed to load weather for ${dateKey}:`, error)
+              // Continue without crashing
+            })
+          
+          promises.push(promise)
+        }
+        
+        await Promise.allSettled(promises)
+        setWeatherData(newWeatherData)
+      } catch (error) {
+        console.error('Error loading weather data:', error)
+        // Set empty weather data to prevent crashes
+        setWeatherData({})
       }
-      
-      await Promise.allSettled(promises)
-      setWeatherData(newWeatherData)
     }
 
     loadWeatherData()
@@ -66,48 +73,59 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
 
   // Generate different crowd levels for each park based on park type and characteristics
   const getCrowdLevel = (date: number, parkId: string): number => {
-    const seed = date + currentMonth + currentYear
-    let baseCrowd = Math.floor(Math.random() * seed % 100) + 1
-    
-    // Adjust based on park characteristics
-    if (parkId.includes('magic-kingdom')) {
-      baseCrowd = Math.min(100, baseCrowd + 20) // Magic Kingdom tends to be busier
-    } else if (parkId.includes('epcot')) {
-      baseCrowd = Math.max(1, baseCrowd - 10) // EPCOT tends to be less crowded
-    } else if (parkId.includes('animal-kingdom')) {
-      baseCrowd = Math.max(1, baseCrowd - 5) // Animal Kingdom moderately less busy
-    } else if (parkId.includes('universal') && parkId.includes('studios')) {
-      baseCrowd = Math.min(100, baseCrowd + 10) // Universal Studios busier than Islands
+    try {
+      // Create a more predictable seed
+      const seed = date + currentMonth * 31 + currentYear * 365
+      let baseCrowd = ((seed * 31) % 100) + 1 // Use modulo for predictable randomness
+      
+      // Adjust based on park characteristics
+      if (parkId.includes('magic-kingdom')) {
+        baseCrowd = Math.min(100, baseCrowd + 20) // Magic Kingdom tends to be busier
+      } else if (parkId.includes('epcot')) {
+        baseCrowd = Math.max(1, baseCrowd - 10) // EPCOT tends to be less crowded
+      } else if (parkId.includes('animal-kingdom')) {
+        baseCrowd = Math.max(1, baseCrowd - 5) // Animal Kingdom moderately less busy
+      } else if (parkId.includes('universal') && parkId.includes('studios')) {
+        baseCrowd = Math.min(100, baseCrowd + 10) // Universal Studios busier than Islands
+      }
+      
+      // Weekend adjustments
+      const dayOfWeek = new Date(currentYear, currentMonth, date).getDay()
+      if (dayOfWeek === 0 || dayOfWeek === 6) { // Weekend
+        baseCrowd = Math.min(100, baseCrowd + 15)
+      }
+      
+      return Math.max(1, Math.min(100, baseCrowd))
+    } catch (error) {
+      console.warn('Error calculating crowd level:', error)
+      // Return a safe default
+      return 50
     }
-    
-    // Weekend adjustments
-    const dayOfWeek = new Date(currentYear, currentMonth, date).getDay()
-    if (dayOfWeek === 0 || dayOfWeek === 6) { // Weekend
-      baseCrowd = Math.min(100, baseCrowd + 15)
-    }
-    
-    return Math.max(1, Math.min(100, baseCrowd))
   }
 
   const getWeatherType = (date: number): 'sunny' | 'cloudy' | 'rainy' | 'stormy' | 'snowy' => {
-    const dateKey = `${currentYear}-${currentMonth}-${date}`
-    const weather = weatherData[dateKey]
-    
-    if (weather && weather.condition) {
-      switch (weather.condition) {
-        case 'clear':
-          return 'sunny'
-        case 'clouds':
-          return 'cloudy'
-        case 'rain':
-          return 'rainy'
-        case 'thunderstorm':
-          return 'stormy'
-        case 'snow':
-          return 'snowy'
-        default:
-          return 'cloudy'
+    try {
+      const dateKey = `${currentYear}-${currentMonth}-${date}`
+      const weather = weatherData[dateKey]
+      
+      if (weather && weather.condition) {
+        switch (weather.condition) {
+          case 'clear':
+            return 'sunny'
+          case 'clouds':
+            return 'cloudy'
+          case 'rain':
+            return 'rainy'
+          case 'thunderstorm':
+            return 'stormy'
+          case 'snow':
+            return 'snowy'
+          default:
+            return 'cloudy'
+        }
       }
+    } catch (error) {
+      console.warn('Error getting weather type:', error)
     }
     
     // Fallback to fake data for dates without real weather data
@@ -173,60 +191,101 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
   }
 
   const renderCalendarDays = (): React.ReactElement[] => {
-    const daysInMonth = getDaysInMonth(currentMonth, currentYear)
-    const firstDay = getFirstDayOfMonth(currentMonth, currentYear)
-    const days: React.ReactElement[] = []
+    try {
+      const daysInMonth = getDaysInMonth(currentMonth, currentYear)
+      const firstDay = getFirstDayOfMonth(currentMonth, currentYear)
+      const days: React.ReactElement[] = []
 
-    for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="h-32" />)
-    }
+      // Add empty cells for days before the first day of the month
+      for (let i = 0; i < firstDay; i++) {
+        days.push(<div key={`empty-${i}`} className="h-32" />)
+      }
 
-    for (let day = 1; day <= daysInMonth; day++) {
-      const weatherType = getWeatherType(day)
-      days.push(
-        <div
-          key={day}
-          className="h-32 border rounded-lg p-2 hover:shadow-md transition-shadow cursor-pointer bg-card"
-        >
-          <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">{day}</span>
-              {getWeatherIcon(weatherType)}
-            </div>
-            <div className="flex-1 space-y-1">
-              {themeParks.slice(0, 4).map((park) => {
-                const crowdLevel = getCrowdLevel(day, park.id)
-                return (
-                  <div key={park.id} className="flex items-center justify-between text-xs">
-                    <span className="truncate text-muted-foreground pr-1" title={park.shortName}>
-                      {park.shortName.length > 8 ? park.shortName.substring(0, 8) + '...' : park.shortName}
-                    </span>
-                    <Badge 
-                      className={`text-xs px-1 py-0 ${getCrowdColor(crowdLevel)} min-w-[32px] text-center`}
-                      variant="secondary"
-                    >
-                      {getCrowdLabel(crowdLevel)}
-                    </Badge>
-                  </div>
-                )
-              })}
-              {themeParks.length > 4 && (
-                <div className="text-xs text-muted-foreground text-center">
-                  +{themeParks.length - 4} more
+      // Add calendar days
+      for (let day = 1; day <= daysInMonth; day++) {
+        try {
+          const weatherType = getWeatherType(day)
+          days.push(
+            <div
+              key={day}
+              className="h-32 border rounded-lg p-2 hover:shadow-md transition-shadow cursor-pointer bg-card"
+            >
+              <div className="flex flex-col h-full">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">{day}</span>
+                  {getWeatherIcon(weatherType)}
                 </div>
-              )}
+                <div className="flex-1 space-y-1">
+                  {themeParks.slice(0, 4).map((park) => {
+                    try {
+                      const crowdLevel = getCrowdLevel(day, park.id)
+                      return (
+                        <div key={park.id} className="flex items-center justify-between text-xs">
+                          <span className="truncate text-muted-foreground pr-1" title={park.shortName}>
+                            {park.shortName.length > 8 ? park.shortName.substring(0, 8) + '...' : park.shortName}
+                          </span>
+                          <Badge 
+                            className={`text-xs px-1 py-0 ${getCrowdColor(crowdLevel)} min-w-[32px] text-center`}
+                            variant="secondary"
+                          >
+                            {getCrowdLabel(crowdLevel)}
+                          </Badge>
+                        </div>
+                      )
+                    } catch (parkError) {
+                      console.warn(`Error rendering park ${park.id}:`, parkError)
+                      return (
+                        <div key={park.id} className="flex items-center justify-between text-xs">
+                          <span className="truncate text-muted-foreground pr-1" title={park.shortName}>
+                            {park.shortName.length > 8 ? park.shortName.substring(0, 8) + '...' : park.shortName}
+                          </span>
+                          <Badge className="text-xs px-1 py-0 bg-muted text-muted-foreground min-w-[32px] text-center">
+                            --
+                          </Badge>
+                        </div>
+                      )
+                    }
+                  })}
+                  {themeParks.length > 4 && (
+                    <div className="text-xs text-muted-foreground text-center">
+                      +{themeParks.length - 4} more
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )
-    }
+          )
+        } catch (dayError) {
+          console.warn(`Error rendering day ${day}:`, dayError)
+          // Render a fallback day cell
+          days.push(
+            <div
+              key={day}
+              className="h-32 border rounded-lg p-2 bg-card flex items-center justify-center"
+            >
+              <div className="text-muted-foreground text-sm">{day}</div>
+            </div>
+          )
+        }
+      }
 
-    return days
+      return days
+    } catch (error) {
+      console.error('Error rendering calendar days:', error)
+      // Return empty array to prevent crash
+      return []
+    }
   }
 
   if (!family) {
     return <div className="text-center text-muted-foreground">Park family not found</div>
   }
+
+  if (!family.parks || family.parks.length === 0) {
+    return <div className="text-center text-muted-foreground">No parks found for this family</div>
+  }
+
+  try {
 
   return (
     <div className="space-y-6">
@@ -334,4 +393,12 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
       </Card>
     </div>
   )
+  } catch (error) {
+    console.error('Error rendering FamilyCrowdCalendar:', error)
+    return (
+      <div className="text-center p-6">
+        <p className="text-muted-foreground">Unable to load calendar. Please try again later.</p>
+      </div>
+    )
+  }
 }

@@ -71,7 +71,7 @@ const weatherCache = new Map<string, { data: any; timestamp: number }>()
 const CACHE_DURATION = 10 * 60 * 1000 // 10 minutes
 
 // For production use, integrate with actual weather API
-const USE_MOCK_DATA = false // Using real weather API through a proxy service
+const USE_MOCK_DATA = true // Using mock data to prevent CORS and API issues
 
 export async function getCurrentWeather(parkId: string): Promise<WeatherData | null> {
   try {
