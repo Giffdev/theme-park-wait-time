@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ArrowLeft, Clock, TrendUp, Calendar } from '@phosphor-icons/react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { parkFamilies } from '@/data/sampleData'
 import type { Park, Attraction } from '@/App'
 
 type TimeRange = 'week' | 'month' | 'year'
@@ -16,6 +17,24 @@ type HistoricalData = {
   dayOfWeek?: string
   hour?: number
   month?: string
+}
+
+// Helper function to get park display name
+const getParkDisplayName = (parkId: string): string => {
+  for (const family of parkFamilies) {
+    const park = family.parks.find(p => p.id === parkId)
+    if (park) return park.name
+  }
+  return parkId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+}
+
+// Helper function to get park location
+const getParkLocation = (parkId: string): string => {
+  for (const family of parkFamilies) {
+    const park = family.parks.find(p => p.id === parkId)
+    if (park) return family.location
+  }
+  return 'Unknown Location'
 }
 
 export function AttractionDetailsPage() {
@@ -34,12 +53,34 @@ export function AttractionDetailsPage() {
         
         if (!parkId || !attractionId) return
         
-        // Load park data
-        const parkData = await window.spark.kv.get<Park>(`park-${parkId}`)
-        if (parkData) {
-          setPark(parkData)
-          const foundAttraction = parkData.attractions.find(a => a.id === attractionId)
-          setAttraction(foundAttraction || null)
+        console.log(`Loading attraction data for park: ${parkId}, attraction: ${attractionId}`)
+        
+        // Load attractions data for the park
+        const attractionsData = await window.spark.kv.get<Attraction[]>(`attractions-${parkId}`)
+        console.log(`Found attractions data:`, attractionsData?.length || 0, 'attractions')
+        
+        if (attractionsData && Array.isArray(attractionsData)) {
+          // Find the specific attraction
+          const foundAttraction = attractionsData.find(a => a.id === attractionId)
+          console.log(`Looking for attraction ID: ${attractionId}`)
+          console.log(`Available attraction IDs:`, attractionsData.map(a => a.id))
+          
+          if (foundAttraction) {
+            setAttraction(foundAttraction)
+            
+            // Create a mock park object for display
+            const mockPark: Park = {
+              id: parkId,
+              name: getParkDisplayName(parkId),
+              location: getParkLocation(parkId),
+              attractions: attractionsData
+            }
+            setPark(mockPark)
+          } else {
+            console.warn(`Attraction ${attractionId} not found in park ${parkId}`)
+          }
+        } else {
+          console.warn(`No attractions data found for park ${parkId}`)
         }
 
         // Generate historical data based on time range
