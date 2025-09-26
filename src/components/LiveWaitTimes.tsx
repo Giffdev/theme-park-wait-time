@@ -20,6 +20,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
   const [selectedAttraction, setSelectedAttraction] = useState<string | null>(null)
   const [lastUpdate, setLastUpdate] = useState(new Date())
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   
   // Load attractions from seeded data - use key that changes with parkId
   const [attractions, setAttractions] = useKV<Attraction[]>(`attractions-${parkId}`, [])
@@ -30,19 +31,38 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
   useEffect(() => {
     const loadAttractionsForPark = async () => {
       setIsLoading(true)
+      setError(null)
       console.log(`🔄 Loading attractions for park: ${parkId}`)
+      
       try {
-        const parkData = await window.spark.kv.get<Attraction[]>(`attractions-${parkId}`)
-        console.log(`📊 Found data for ${parkId}:`, parkData?.length || 0, 'attractions')
-        if (parkData && parkData.length > 0) {
+        // First check if data exists
+        let parkData = await window.spark.kv.get<Attraction[]>(`attractions-${parkId}`)
+        console.log(`📊 Initial check for ${parkId}:`, parkData?.length || 0, 'attractions')
+        
+        // If no data found, initialize sample data and try again
+        if (!parkData || !Array.isArray(parkData) || parkData.length === 0) {
+          console.warn(`❌ No data found for ${parkId}, initializing sample data...`)
+          
+          const { initializeSampleData } = await import('@/data/sampleData')
+          const success = await initializeSampleData()
+          
+          if (success) {
+            parkData = await window.spark.kv.get<Attraction[]>(`attractions-${parkId}`)
+            console.log(`🔄 After initialization for ${parkId}:`, parkData?.length || 0, 'attractions')
+          }
+        }
+        
+        if (parkData && Array.isArray(parkData) && parkData.length > 0) {
           setAttractions(parkData)
-          console.log(`✅ Set ${parkData.length} attractions for ${parkId}`)
+          console.log(`✅ Successfully loaded ${parkData.length} attractions for ${parkId}`)
         } else {
-          console.warn(`❌ No data found for ${parkId}`)
+          console.error(`❌ Still no data found for ${parkId} even after initialization`)
+          setError(`No attractions found for this park`)
           setAttractions([])
         }
       } catch (error) {
         console.error(`❌ Error loading attractions for ${parkId}:`, error)
+        setError(`Error loading park data: ${error instanceof Error ? error.message : 'Unknown error'}`)
         setAttractions([])
       } finally {
         setIsLoading(false)
@@ -51,17 +71,6 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
 
     loadAttractionsForPark()
   }, [parkId, setAttractions])
-
-  // Debug: Log the current attractions to see if they're loading
-  useEffect(() => {
-    console.log(`🔍 LiveWaitTimes render state for ${parkId}:`)
-    console.log(`  - isLoading: ${isLoading}`)
-    console.log(`  - attractions: ${attractions?.length || 0} items`)
-    console.log(`  - attractions data:`, attractions)
-    if (attractions && attractions.length > 0) {
-      setIsLoading(false)
-    }
-  }, [parkId, attractions, isLoading])
 
   // Update wait times based on consensus every 30 seconds
   useEffect(() => {
@@ -150,8 +159,8 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
         </div>
       </div>
 
-      {/* Loading state */}
-      {isLoading || !attractions || attractions.length === 0 ? (
+      {/* Loading state or error */}
+      {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[...Array(6)].map((_, i) => (
             <Card key={i} className="animate-pulse">
@@ -164,6 +173,28 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired }: LiveWaitTimesPr
               </CardContent>
             </Card>
           ))}
+        </div>
+      ) : error ? (
+        <div className="text-center py-8">
+          <h3 className="text-lg font-medium text-destructive mb-2">
+            Error Loading Data
+          </h3>
+          <p className="text-sm text-muted-foreground mb-4">{error}</p>
+          <Button 
+            onClick={() => window.location.reload()}
+            variant="outline"
+          >
+            Reload Page
+          </Button>
+        </div>
+      ) : !attractions || attractions.length === 0 ? (
+        <div className="text-center py-8">
+          <h3 className="text-lg font-medium text-muted-foreground mb-2">
+            No attractions found for this park
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Data might still be loading. Try selecting a different park or refreshing the page.
+          </p>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

@@ -30,15 +30,23 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
       try {
         const data: Record<string, Attraction[]> = {}
         
+        // Try to initialize sample data first
+        const { initializeSampleData } = await import('@/data/sampleData')
+        await initializeSampleData()
+        
         for (const park of parks) {
           const attractions = await window.spark.kv.get<Attraction[]>(`attractions-${park.id}`)
-          if (attractions && attractions.length > 0) {
+          if (attractions && Array.isArray(attractions) && attractions.length > 0) {
             data[park.id] = attractions
+            console.log(`✅ Loaded ${attractions.length} attractions for ${park.name}`)
+          } else {
+            console.warn(`❌ No attractions found for ${park.name} (${park.id})`)
           }
         }
         
         setParkData(data)
-        console.log('✅ Loaded park overview data:', Object.keys(data).length, 'parks')
+        console.log('✅ Loaded park overview data:', Object.keys(data).length, 'parks with data')
+        console.log('📊 Park data loaded:', data)
       } catch (error) {
         console.error('❌ Error loading park overview:', error)
       } finally {

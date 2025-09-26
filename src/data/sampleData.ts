@@ -276,22 +276,32 @@ export async function initializeSampleData() {
   const { kv } = window.spark
   
   try {
-    console.log('Starting sample data initialization...')
+    console.log('🔄 Starting sample data initialization...')
     
-    // Force clear and re-initialize data
+    // Force clear and re-initialize data for all parks
+    let totalSeeded = 0
     for (const [parkId, attractions] of Object.entries(sampleAttractions)) {
       await kv.set(`attractions-${parkId}`, attractions)
-      console.log(`✅ Force seeded ${attractions.length} attractions for ${parkId}`)
+      totalSeeded += attractions.length
+      console.log(`✅ Seeded ${attractions.length} attractions for ${parkId}`)
     }
     
-    // Verify all data was saved correctly
+    console.log(`✅ Sample data initialization completed: ${totalSeeded} total attractions across ${Object.keys(sampleAttractions).length} parks`)
+    
+    // Verify all data was saved correctly with detailed logging
     for (const parkId of Object.keys(sampleAttractions)) {
       const data = await kv.get<Attraction[]>(`attractions-${parkId}`)
-      console.log(`📊 Verified ${parkId}: ${data?.length || 0} attractions stored`)
+      if (data && Array.isArray(data) && data.length > 0) {
+        console.log(`✅ Verified ${parkId}: ${data.length} attractions stored correctly`)
+      } else {
+        console.error(`❌ Verification failed for ${parkId}: ${data?.length || 0} attractions found`)
+      }
     }
     
-    console.log('✅ Sample data initialization completed successfully')
+    console.log('🎉 Sample data initialization and verification completed successfully')
+    return true
   } catch (error) {
     console.error('❌ Error initializing sample data:', error)
+    return false
   }
 }

@@ -61,8 +61,25 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
       return data
     }
 
-    // If we have real historical reports, use those, otherwise use generated data
-    if (historicalReports && historicalReports.length > 10) {
+    const loadChartData = async () => {
+      try {
+        // Always generate data, regardless of historical reports for now
+        // This ensures charts are never empty
+        const generatedData = generateTodayData()
+        setChartData(generatedData)
+        console.log(`📈 Generated chart data for ${attractionId}:`, generatedData.length, 'points')
+      } catch (error) {
+        console.error(`❌ Error generating chart data for ${attractionId}:`, error)
+        // Still try to set some basic data
+        setChartData(generateTodayData())
+      }
+    }
+
+    // Load chart data immediately
+    loadChartData()
+
+    // If we have real historical reports, process those
+    if (historicalReports && Array.isArray(historicalReports) && historicalReports.length > 10) {
       // Process real reports into hourly averages
       const today = new Date()
       const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
@@ -93,13 +110,23 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
       }
       
       setChartData(processedData)
-    } else {
-      // Use generated realistic data
-      setChartData(generateTodayData())
+      console.log(`📈 Using processed historical data for ${attractionId}:`, processedData.length, 'points')
     }
   }, [attractionId, historicalReports])
 
-  if (chartData.length === 0) return null
+  // Always render a chart - never return null
+  if (chartData.length === 0) {
+    // Show a minimal loading state instead of nothing
+    return (
+      <div className={`bg-muted/30 rounded-lg p-3 ${className}`}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-muted-foreground">Today's Pattern</span>
+          <span className="text-xs text-muted-foreground animate-pulse">Loading...</span>
+        </div>
+        <div className="w-full h-16 bg-muted/50 rounded animate-pulse"></div>
+      </div>
+    )
+  }
 
   // Calculate max wait time for scaling
   const maxWaitTime = Math.max(...chartData.map(d => d.waitTime))

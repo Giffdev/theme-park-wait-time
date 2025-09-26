@@ -42,27 +42,45 @@ function App() {
   const [activeTab, setActiveTab] = useState('live-times')
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [currentUser, setCurrentUser] = useKV<User | null>('current-user', null)
+  const [dataInitialized, setDataInitialized] = useState(false)
 
   // Initialize sample data on app load and when park changes
   useEffect(() => {
     const loadData = async () => {
       try {
-        await initializeSampleData()
+        console.log(`🚀 App initializing data for selected park: ${selectedPark}`)
         
-        // Double-check that data was loaded for the selected park
+        // Always try to initialize sample data first
+        const success = await initializeSampleData()
+        if (!success) {
+          console.error('❌ Failed to initialize sample data')
+          return
+        }
+        
+        setDataInitialized(true)
+        
+        // Verify that data was loaded for the selected park
         const data = await window.spark.kv.get<Attraction[]>(`attractions-${selectedPark}`)
         if (!data || !Array.isArray(data) || data.length === 0) {
-          console.warn(`No data found for park ${selectedPark}, reinitializing...`)
+          console.error(`❌ No data found for park ${selectedPark} even after initialization`)
+          // Try one more time
           await initializeSampleData()
+          const retryData = await window.spark.kv.get<Attraction[]>(`attractions-${selectedPark}`)
+          if (retryData && Array.isArray(retryData)) {
+            console.log(`✅ Retry successful: ${retryData.length} attractions for ${selectedPark}`)
+          } else {
+            console.error(`❌ Complete failure to load data for ${selectedPark}`)
+          }
+        } else {
+          console.log(`✅ App verified data for ${selectedPark}: ${data.length} attractions`)
         }
-        console.log(`Verified data for ${selectedPark}:`, data?.length, 'attractions')
       } catch (error) {
-        console.error('Error loading sample data:', error)
+        console.error('❌ App error loading sample data:', error)
       }
     }
     
     loadData()
-  }, [selectedPark]) // Add selectedPark as dependency
+  }, [selectedPark]) // Keep selectedPark as dependency
 
   const handleLogin = (user: User) => {
     setCurrentUser(user)
