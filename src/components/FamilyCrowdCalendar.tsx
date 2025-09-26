@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Calendar, TrendUp, ArrowLeft, ArrowRight, Sun, Cloud, CloudRain, CloudSnow, CloudLightning } from '@phosphor-icons/react'
-import { getWeatherForDate } from '@/services/weatherService'
+import { Calendar, TrendUp, ArrowLeft, ArrowRight } from '@phosphor-icons/react'
 import { parkFamilies, type ParkFamily, type ParkInfo } from '@/data/sampleData'
 
 interface FamilyCrowdCalendarProps {
@@ -13,7 +12,6 @@ interface FamilyCrowdCalendarProps {
 export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
-  const [weatherData, setWeatherData] = useState<Record<string, any>>({})
 
   const family = parkFamilies.find(f => f.id === familyId)
   const themeParks = family?.parks.filter(park => park.type === 'theme-park') || []
@@ -22,56 +20,11 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
     return new Date(year, month + 1, 0).getDate()
   }
 
-  // Load weather data when month changes (using the first theme park as reference for weather)
-  useEffect(() => {
-    const loadWeatherData = async () => {
-      if (themeParks.length === 0) return
-      
-      try {
-        const daysInMonth = getDaysInMonth(currentMonth, currentYear)
-        const newWeatherData: Record<string, any> = {}
-        
-        // Load weather for the first 10 days of the month (to avoid rate limiting)
-        const maxDays = Math.min(daysInMonth, 10)
-        const promises: Promise<void>[] = []
-        
-        for (let day = 1; day <= maxDays; day++) {
-          const date = new Date(currentYear, currentMonth, day)
-          const dateKey = `${currentYear}-${currentMonth}-${day}`
-          
-          // Use the first theme park for weather reference since they're usually in the same area
-          const promise = getWeatherForDate(themeParks[0].id, date)
-            .then(weather => {
-              if (weather) {
-                newWeatherData[dateKey] = weather
-              }
-            })
-            .catch(error => {
-              console.warn(`Failed to load weather for ${dateKey}:`, error)
-              // Continue without crashing
-            })
-          
-          promises.push(promise)
-        }
-        
-        await Promise.allSettled(promises)
-        setWeatherData(newWeatherData)
-      } catch (error) {
-        console.error('Error loading weather data:', error)
-        // Set empty weather data to prevent crashes
-        setWeatherData({})
-      }
-    }
-
-    loadWeatherData()
-  }, [familyId, currentMonth, currentYear, themeParks])
-
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
   ]
 
-  // Generate different crowd levels for each park based on park type and characteristics
   const getCrowdLevel = (date: number, parkId: string): number => {
     try {
       // Create a more predictable seed
@@ -100,57 +53,6 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
       console.warn('Error calculating crowd level:', error)
       // Return a safe default
       return 50
-    }
-  }
-
-  const getWeatherType = (date: number): 'sunny' | 'cloudy' | 'rainy' | 'stormy' | 'snowy' => {
-    try {
-      const dateKey = `${currentYear}-${currentMonth}-${date}`
-      const weather = weatherData[dateKey]
-      
-      if (weather && weather.condition) {
-        switch (weather.condition) {
-          case 'clear':
-            return 'sunny'
-          case 'clouds':
-            return 'cloudy'
-          case 'rain':
-            return 'rainy'
-          case 'thunderstorm':
-            return 'stormy'
-          case 'snow':
-            return 'snowy'
-          default:
-            return 'cloudy'
-        }
-      }
-    } catch (error) {
-      console.warn('Error getting weather type:', error)
-    }
-    
-    // Fallback to fake data for dates without real weather data
-    const seed = (date * currentMonth * currentYear) % 100
-    if (seed < 50) return 'sunny'
-    if (seed < 70) return 'cloudy'
-    if (seed < 85) return 'rainy'
-    if (seed < 95) return 'stormy'
-    return 'snowy'
-  }
-
-  const getWeatherIcon = (weatherType: 'sunny' | 'cloudy' | 'rainy' | 'stormy' | 'snowy') => {
-    switch (weatherType) {
-      case 'sunny':
-        return <Sun size={12} className="text-yellow-500" />
-      case 'cloudy':
-        return <Cloud size={12} className="text-gray-500" />
-      case 'rainy':
-        return <CloudRain size={12} className="text-blue-500" />
-      case 'stormy':
-        return <CloudLightning size={12} className="text-purple-600" />
-      case 'snowy':
-        return <CloudSnow size={12} className="text-blue-300" />
-      default:
-        return <Sun size={12} className="text-yellow-500" />
     }
   }
 
@@ -204,7 +106,6 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
       // Add calendar days
       for (let day = 1; day <= daysInMonth; day++) {
         try {
-          const weatherType = getWeatherType(day)
           days.push(
             <div
               key={day}
@@ -213,7 +114,6 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">{day}</span>
-                  {getWeatherIcon(weatherType)}
                 </div>
                 <div className="flex-1 space-y-1">
                   {themeParks.slice(0, 4).map((park) => {
