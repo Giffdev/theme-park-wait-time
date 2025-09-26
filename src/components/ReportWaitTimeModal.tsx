@@ -105,6 +105,7 @@ export function ReportWaitTimeModal({
             variant={mode === 'report' ? 'default' : 'outline'}
             onClick={() => setMode('report')}
             size="sm"
+            className={mode === 'report' ? 'bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground' : 'text-foreground hover:text-foreground hover:bg-accent'}
           >
             Report Wait Time
           </Button>
@@ -113,6 +114,7 @@ export function ReportWaitTimeModal({
             onClick={() => setMode('verify')}
             size="sm"
             disabled={unverifiedReports.length === 0}
+            className={mode === 'verify' ? 'bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground' : 'text-foreground hover:text-foreground hover:bg-accent disabled:text-muted-foreground'}
           >
             Verify Reports ({unverifiedReports.length})
           </Button>
@@ -138,13 +140,13 @@ export function ReportWaitTimeModal({
             </div>
             
             <div className="flex justify-end gap-2 pt-4">
-              <Button type="button" variant="outline" onClick={onClose}>
+              <Button type="button" variant="outline" onClick={onClose} className="text-foreground hover:text-foreground hover:bg-accent">
                 Cancel
               </Button>
               <Button 
                 type="submit" 
                 disabled={isSubmitting || !waitTime}
-                className="bg-primary hover:bg-primary/90"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
               >
                 {isSubmitting ? 'Reporting...' : 'Submit Report'}
               </Button>
@@ -194,7 +196,7 @@ export function ReportWaitTimeModal({
                         variant="outline"
                         onClick={() => handleVerifyReport(report, true)}
                         disabled={isSubmitting}
-                        className="flex items-center gap-1"
+                        className="flex items-center gap-1 text-foreground hover:text-foreground hover:bg-accent"
                       >
                         <CheckCircle size={14} />
                         Accurate
@@ -204,7 +206,7 @@ export function ReportWaitTimeModal({
                         variant="outline"
                         onClick={() => handleVerifyReport(report, false)}
                         disabled={isSubmitting}
-                        className="flex items-center gap-1"
+                        className="flex items-center gap-1 text-foreground hover:text-foreground hover:bg-accent"
                       >
                         <XCircle size={14} />
                         Inaccurate
@@ -216,7 +218,7 @@ export function ReportWaitTimeModal({
             )}
             
             <div className="flex justify-end pt-4">
-              <Button variant="outline" onClick={onClose}>
+              <Button variant="outline" onClick={onClose} className="text-foreground hover:text-foreground hover:bg-accent">
                 Close
               </Button>
             </div>

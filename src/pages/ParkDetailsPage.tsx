@@ -104,7 +104,7 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
         <Button 
           variant="ghost" 
           onClick={() => navigate('/')}
-          className="gap-2"
+          className="gap-2 text-foreground hover:text-foreground hover:bg-accent"
         >
           <CaretLeft size={16} />
           Back to Home

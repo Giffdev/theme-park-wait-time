@@ -82,7 +82,7 @@ export function ParkSelectorPage() {
 
                       {/* Action Button */}
                       <Button 
-                        className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                        className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors text-foreground hover:text-primary-foreground hover:bg-primary"
                         variant="outline"
                         onClick={(e) => {
                           e.stopPropagation()

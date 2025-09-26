@@ -77,7 +77,10 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
                 </Button>
               </div>
             ) : (
-              <Button onClick={onLoginClick} className="bg-primary hover:bg-primary/90">
+              <Button 
+                onClick={onLoginClick} 
+                className="bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
+              >
                 <UserIcon size={16} className="mr-2" />
                 Sign In
               </Button>

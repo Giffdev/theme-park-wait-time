@@ -296,7 +296,11 @@ export function AttractionDetailsPage() {
     return (
       <div className="container mx-auto px-4 py-8 text-center">
         <h1 className="text-2xl font-bold mb-4">Attraction Not Found</h1>
-        <Button onClick={() => navigate('/')} variant="outline">
+        <Button 
+          onClick={() => navigate('/')} 
+          variant="outline"
+          className="text-foreground hover:text-foreground hover:bg-accent"
+        >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Home
         </Button>
@@ -312,6 +316,7 @@ export function AttractionDetailsPage() {
           <Button 
             variant="outline" 
             onClick={() => navigate(`/park/${parkId}`)}
+            className="text-foreground hover:text-foreground hover:bg-accent"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to {park.name}

@@ -314,7 +314,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
                       size="sm"
                       variant="outline"
                       onClick={() => handleReportClick(attraction.id)}
-                      className="flex-1 hover:bg-primary hover:text-primary-foreground hover:border-primary"
+                      className="flex-1 text-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary"
                     >
                       <Plus size={14} className="mr-1" />
                       {user ? 'Report Time' : 'Login to Report'}
@@ -323,7 +323,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
                       size="sm"
                       variant="ghost"
                       onClick={() => handleTrendsClick(attraction.id)}
-                      className="flex items-center space-x-1"
+                      className="flex items-center space-x-1 text-foreground hover:text-foreground hover:bg-accent"
                     >
                       <TrendUp size={14} />
                       <span>Trends</span>

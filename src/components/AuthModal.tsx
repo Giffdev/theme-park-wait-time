@@ -107,7 +107,7 @@ export function AuthModal({ onLogin, onClose }: AuthModalProps) {
               </div>
               <Button 
                 type="submit" 
-                className="w-full bg-primary hover:bg-primary/90"
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
                 disabled={isLoading}
               >
                 {isLoading ? 'Signing In...' : 'Sign In'}
@@ -158,7 +158,7 @@ export function AuthModal({ onLogin, onClose }: AuthModalProps) {
               </div>
               <Button 
                 type="submit" 
-                className="w-full bg-primary hover:bg-primary/90"
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
                 disabled={isLoading}
               >
                 {isLoading ? 'Creating Account...' : 'Sign Up'}
