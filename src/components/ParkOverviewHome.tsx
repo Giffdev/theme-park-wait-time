@@ -114,11 +114,11 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
     : PARK_FAMILIES.filter(family => family.name === selectedFamily)
 
   const getWaitTimeBadge = (avgWaitTime: number, maxWaitTime: number) => {
-    if (avgWaitTime === 0) return { color: 'bg-green-500', text: 'Great Day!', textColor: 'text-green-600' }
-    if (avgWaitTime <= 15) return { color: 'bg-green-400', text: 'Low Crowds', textColor: 'text-green-600' }
-    if (avgWaitTime <= 30) return { color: 'bg-yellow-400', text: 'Moderate', textColor: 'text-yellow-600' }
-    if (avgWaitTime <= 45) return { color: 'bg-orange-400', text: 'Busy', textColor: 'text-orange-600' }
-    return { color: 'bg-red-500', text: 'Very Busy', textColor: 'text-red-600' }
+    if (avgWaitTime === 0) return { color: 'bg-green-100', text: 'Great Day!', textColor: 'text-green-800' }
+    if (avgWaitTime <= 15) return { color: 'bg-green-100', text: 'Low Crowds', textColor: 'text-green-800' }
+    if (avgWaitTime <= 30) return { color: 'bg-yellow-100', text: 'Moderate', textColor: 'text-yellow-800' }
+    if (avgWaitTime <= 45) return { color: 'bg-orange-100', text: 'Busy', textColor: 'text-orange-800' }
+    return { color: 'bg-red-100', text: 'Very Busy', textColor: 'text-red-800' }
   }
 
   if (isLoading) {
@@ -206,7 +206,7 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
                         <div className="space-y-3">
                           <div className="flex justify-between items-start">
                             <h4 className="font-medium text-sm leading-tight">{data.name}</h4>
-                            <Badge variant="secondary" className={`text-xs ${waitBadge.textColor}`}>
+                            <Badge variant="secondary" className={`text-xs ${waitBadge.color} ${waitBadge.textColor} border-0`}>
                               {waitBadge.text}
                             </Badge>
                           </div>
