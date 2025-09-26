@@ -11,14 +11,15 @@ interface RealtimeIndicatorProps {
 }
 
 export function RealtimeIndicator({ parkId }: RealtimeIndicatorProps) {
-  const { reports, verifications } = useReporting()
+  // Temporarily disable the hook call to isolate the error
+  const { reports = [], verifications = [] } = useReporting()
   const [lastReportTime, setLastReportTime] = useState<string | null>(null)
   const [newReportsCount, setNewReportsCount] = useState(0)
   const [showNotifications, setShowNotifications] = useState(true)
 
   // Monitor for new reports
   useEffect(() => {
-    if (!reports || reports.length === 0) return
+    if (!reports || !Array.isArray(reports) || reports.length === 0) return
 
     const parkReports = reports.filter(report => report.parkId === parkId)
     if (parkReports.length === 0) return
@@ -52,7 +53,7 @@ export function RealtimeIndicator({ parkId }: RealtimeIndicatorProps) {
 
   // Monitor for new verifications
   useEffect(() => {
-    if (!verifications || verifications.length === 0) return
+    if (!verifications || !Array.isArray(verifications) || verifications.length === 0) return
 
     // Filter for recent verifications (last 5 minutes)
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
@@ -77,7 +78,7 @@ export function RealtimeIndicator({ parkId }: RealtimeIndicatorProps) {
 
   // Get activity stats for the last hour
   const getRecentActivity = () => {
-    if (!reports) return { reports: 0, verifications: 0 }
+    if (!reports || !Array.isArray(reports)) return { reports: 0, verifications: 0 }
 
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
     const recentReports = reports.filter(

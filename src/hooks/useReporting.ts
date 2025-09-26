@@ -8,6 +8,11 @@ export function useReporting() {
   const [contributions, setContributions] = useKV<UserContribution[]>('user-contributions', [])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Ensure arrays are properly initialized
+  const safeReports = Array.isArray(reports) ? reports : []
+  const safeVerifications = Array.isArray(verifications) ? verifications : []
+  const safeContributions = Array.isArray(contributions) ? contributions : []
+
   // Submit a new wait time report
   const submitReport = useCallback(async (
     attractionId: string,
@@ -31,11 +36,11 @@ export function useReporting() {
         status: 'pending'
       }
 
-      await setReports(current => [...(current || []), newReport])
+      await setReports(current => [...(Array.isArray(current) ? current : []), newReport])
 
       // Update user contributions
       await setContributions(current => {
-        const contributions = current || []
+        const contributions = Array.isArray(current) ? current : []
         const userIndex = contributions.findIndex(c => c.userId === userId)
         if (userIndex >= 0) {
           const updated = [...contributions]
@@ -82,11 +87,11 @@ export function useReporting() {
       confidence
     }
 
-    await setVerifications(current => [...(current || []), newVerification])
+    await setVerifications(current => [...(Array.isArray(current) ? current : []), newVerification])
 
     // Update the report with the new verification
     await setReports(current => {
-      const reports = current || []
+      const reports = Array.isArray(current) ? current : []
       return reports.map(report => {
         if (report.id === reportId) {
           const updatedVerifications = [...report.verifications, newVerification]
@@ -106,7 +111,7 @@ export function useReporting() {
 
     // Update user contributions
     await setContributions(current => {
-      const contributions = current || []
+      const contributions = Array.isArray(current) ? current : []
       const userIndex = contributions.findIndex(c => c.userId === userId)
       if (userIndex >= 0) {
         const updated = [...contributions]
@@ -132,17 +137,18 @@ export function useReporting() {
 
   // Get recent reports for an attraction
   const getRecentReports = useCallback((attractionId: string, limit: number = 10) => {
-    const allReports = reports || []
-    return allReports
+    if (!Array.isArray(safeReports)) return []
+    
+    return safeReports
       .filter(report => report.attractionId === attractionId)
       .sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime())
       .slice(0, limit)
-  }, [reports])
+  }, [safeReports])
 
   // Calculate consensus wait time for an attraction
   const getConsensusWaitTime = useCallback((attractionId: string) => {
     const recentReports = getRecentReports(attractionId, 20)
-    if (recentReports.length === 0) return null
+    if (!recentReports || recentReports.length === 0) return null
 
     // Filter for recent reports (last 30 minutes)
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000)
@@ -164,7 +170,7 @@ export function useReporting() {
       if (report.accuracy && report.accuracy > 0.8) weight *= 1.3
 
       // Get user trust level and adjust weight
-      const userContrib = (contributions || []).find(c => c.userId === report.userId)
+      const userContrib = safeContributions.find(c => c.userId === report.userId)
       if (userContrib) {
         const trustMultiplier = {
           'new': 0.8,
@@ -181,12 +187,12 @@ export function useReporting() {
     })
 
     return Math.round(weightedSum / totalWeight)
-  }, [reports, contributions, getRecentReports])
+  }, [safeReports, safeContributions, getRecentReports])
 
   return {
-    reports,
-    verifications,
-    contributions,
+    reports: safeReports,
+    verifications: safeVerifications,
+    contributions: safeContributions,
     isSubmitting,
     submitReport,
     verifyReport,
