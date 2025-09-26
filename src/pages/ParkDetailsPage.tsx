@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useKV } from '@github/spark/hooks'
 import { ParkSelector } from '@/components/ParkSelector' 
 import { LiveWaitTimes } from '@/components/LiveWaitTimes'
+import { ParkDetailsOverview } from '@/components/ParkOverview'
 import { CrowdCalendar } from '@/components/CrowdCalendar'
 import { UserStats } from '@/components/UserStats'
 import { RealtimeIndicator } from '@/components/RealtimeIndicator'
@@ -21,7 +22,7 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
   const { parkId } = useParams<{ parkId: string }>()
   const navigate = useNavigate()
   const [selectedPark, setSelectedPark] = useState<string>(parkId || 'magic-kingdom')
-  const [activeTab, setActiveTab] = useState('live-times')
+  const [activeTab, setActiveTab] = useState('overview')
   const [dataInitialized, setDataInitialized] = useState(false)
 
   // Update selected park when URL param changes
@@ -125,11 +126,16 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3">
-            <TabsTrigger value="live-times">Live Wait Times</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="live-times">Live Times</TabsTrigger>
             <TabsTrigger value="crowd-calendar">Crowd Calendar</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="overview">
+            <ParkDetailsOverview parkId={selectedPark} />
+          </TabsContent>
 
           <TabsContent value="live-times">
             <LiveWaitTimes 

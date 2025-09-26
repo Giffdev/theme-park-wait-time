@@ -1,4 +1,4 @@
-import { ParkOverview } from '@/components/ParkOverview'
+import { ParkOverview } from '@/components/ParkOverviewHome'
 import { useNavigate } from 'react-router-dom'
 
 export function HomePage() {
