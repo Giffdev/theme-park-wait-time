@@ -138,8 +138,8 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       lastUpdated: new Date().toISOString()
     },
     {
-      id: 'diagon-alley',
-      name: 'Diagon Alley Experience',
+      id: 'ollivanders',
+      name: 'Ollivanders',
       type: 'experience',
       currentWaitTime: 15,
       status: 'operating',
@@ -158,6 +158,22 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       name: 'Fast & Furious - Supercharged',
       type: 'thrill',
       currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'et-adventure',
+      name: 'E.T. Adventure',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'hogwarts-express-kings-cross',
+      name: 'Hogwarts Express - King\'s Cross Station',
+      type: 'experience',
+      currentWaitTime: 10,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     }
@@ -210,25 +226,33 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       currentWaitTime: 25,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'flight-of-hippogriff',
+      name: 'Flight of the Hippogriff',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'cat-in-hat',
+      name: 'The Cat in the Hat',
+      type: 'family',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'hogwarts-express-hogsmeade',
+      name: 'Hogwarts Express - Hogsmeade Station',
+      type: 'experience',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
     }
   ],
   'epic-universe': [
-    {
-      id: 'dark-universe',
-      name: 'Dark Universe Experience',
-      type: 'thrill',
-      currentWaitTime: 55,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'super-nintendo-world',
-      name: 'Super Nintendo World',
-      type: 'experience',
-      currentWaitTime: 40,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
     {
       id: 'mario-kart',
       name: 'Mario Kart: Bowser\'s Challenge',
@@ -238,10 +262,42 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       lastUpdated: new Date().toISOString()
     },
     {
-      id: 'how-to-train-dragon',
-      name: 'How to Train Your Dragon',
+      id: 'donkey-kong-mine-cart',
+      name: 'Donkey Kong\'s Mine Cart Madness',
+      type: 'thrill',
+      currentWaitTime: 45,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'yoshi-adventure',
+      name: 'Yoshi\'s Adventure',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'dark-universe-monsters',
+      name: 'Monsters Unchained',
+      type: 'thrill',
+      currentWaitTime: 55,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'how-to-train-dragon-riders',
+      name: 'How to Train Your Dragon - Isle of Berk',
       type: 'family',
       currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'celestial-park',
+      name: 'Stardust Racers',
+      type: 'thrill',
+      currentWaitTime: 40,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     }
