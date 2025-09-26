@@ -128,8 +128,25 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
     )
   }
 
-  // Calculate max wait time for scaling
-  const maxWaitTime = Math.max(...chartData.map(d => d.waitTime))
+  // Calculate normalized max wait time for better scaling
+  const rawMaxWaitTime = Math.max(...chartData.map(d => d.waitTime))
+  
+  // Normalize to nearest 5, 10, or 20 minutes for clean, readable axis labels
+  // This prevents awkward scales like 0-77 minutes and creates more intuitive charts
+  const normalizeMaxWaitTime = (max: number) => {
+    if (max <= 30) {
+      // For low values (≤30min), round to nearest 5 minutes
+      return Math.ceil(max / 5) * 5
+    } else if (max <= 100) {
+      // For medium values (30-100min), round to nearest 10 minutes
+      return Math.ceil(max / 10) * 10
+    } else {
+      // For high values (>100min), round to nearest 20 minutes
+      return Math.ceil(max / 20) * 20
+    }
+  }
+  
+  const maxWaitTime = normalizeMaxWaitTime(rawMaxWaitTime)
   const chartHeight = 60
   const chartWidth = 200
 
@@ -176,11 +193,25 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
         >
           {/* Grid lines */}
           <defs>
-            <pattern id="grid" width="20" height="15" patternUnits="userSpaceOnUse">
-              <path d="M 20 0 L 0 0 0 15" fill="none" stroke="currentColor" strokeWidth="0.5" opacity="0.1"/>
+            <pattern id="grid" width="20" height={chartHeight / 4} patternUnits="userSpaceOnUse">
+              <path d={`M 20 0 L 0 0 0 ${chartHeight / 4}`} fill="none" stroke="currentColor" strokeWidth="0.5" opacity="0.1"/>
             </pattern>
           </defs>
           <rect width="100%" height="100%" fill="url(#grid)" />
+          
+          {/* Horizontal reference lines */}
+          {maxWaitTime >= 20 && (
+            <line 
+              x1="0" 
+              y1={chartHeight / 2} 
+              x2={chartWidth} 
+              y2={chartHeight / 2} 
+              stroke="currentColor" 
+              strokeWidth="0.5" 
+              opacity="0.2"
+              strokeDasharray="2,2"
+            />
+          )}
           
           {/* Area under curve */}
           <path
@@ -220,10 +251,15 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
           <span>10PM</span>
         </div>
         
-        {/* Y-axis hint */}
+        {/* Y-axis labels */}
         <div className="absolute -left-2 top-0 text-xs text-muted-foreground">
           {maxWaitTime}m
         </div>
+        {maxWaitTime >= 20 && (
+          <div className="absolute -left-2 text-xs text-muted-foreground" style={{ top: '50%', transform: 'translateY(-50%)' }}>
+            {Math.round(maxWaitTime / 2)}m
+          </div>
+        )}
         <div className="absolute -left-1 bottom-0 text-xs text-muted-foreground">
           0m
         </div>
