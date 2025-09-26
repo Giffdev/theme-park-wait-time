@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,6 +18,7 @@ interface LiveWaitTimesProps {
 }
 
 export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRideViewed }: LiveWaitTimesProps) {
+  const navigate = useNavigate()
   const [showReportModal, setShowReportModal] = useState(false)
   const [selectedAttraction, setSelectedAttraction] = useState<string | null>(null)
   const [lastUpdate, setLastUpdate] = useState(new Date())
@@ -186,6 +188,10 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
     setShowReportModal(true)
   }
 
+  const handleTrendsClick = (attractionId: string) => {
+    navigate(`/park/${parkId}/attraction/${attractionId}`)
+  }
+
   const handleReportSubmit = async (waitTime: number) => {
     // The submission is handled in the modal via the useReporting hook
     setShowReportModal(false)
@@ -315,6 +321,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
                     <Button
                       size="sm"
                       variant="ghost"
+                      onClick={() => handleTrendsClick(attraction.id)}
                       className="flex items-center space-x-1"
                     >
                       <TrendUp size={14} />

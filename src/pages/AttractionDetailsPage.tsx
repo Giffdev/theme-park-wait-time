@@ -1,0 +1,421 @@
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ArrowLeft, Clock, TrendUp, Calendar } from '@phosphor-icons/react'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import type { Park, Attraction } from '@/App'
+
+type TimeRange = 'week' | 'month' | 'year'
+
+type HistoricalData = {
+  timestamp: string
+  waitTime: number
+  dayOfWeek?: string
+  hour?: number
+  month?: string
+}
+
+export function AttractionDetailsPage() {
+  const { parkId, attractionId } = useParams<{ parkId: string; attractionId: string }>()
+  const navigate = useNavigate()
+  const [park, setPark] = useState<Park | null>(null)
+  const [attraction, setAttraction] = useState<Attraction | null>(null)
+  const [timeRange, setTimeRange] = useState<TimeRange>('week')
+  const [historicalData, setHistoricalData] = useState<HistoricalData[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true)
+        
+        if (!parkId || !attractionId) return
+        
+        // Load park data
+        const parkData = await window.spark.kv.get<Park>(`park-${parkId}`)
+        if (parkData) {
+          setPark(parkData)
+          const foundAttraction = parkData.attractions.find(a => a.id === attractionId)
+          setAttraction(foundAttraction || null)
+        }
+
+        // Generate historical data based on time range
+        const data = generateHistoricalData(timeRange)
+        setHistoricalData(data)
+        
+      } catch (error) {
+        console.error('Error loading attraction data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+  }, [parkId, attractionId, timeRange])
+
+  const generateHistoricalData = (range: TimeRange): HistoricalData[] => {
+    const data: HistoricalData[] = []
+    const now = new Date()
+    
+    if (range === 'week') {
+      // Generate hourly data for the past week
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(now)
+        date.setDate(date.getDate() - i)
+        
+        for (let hour = 9; hour <= 21; hour++) {
+          const baseWait = 15 + Math.sin(hour / 3) * 20 // Peak times during day
+          const randomVariation = Math.random() * 30 - 15
+          const weekendMultiplier = date.getDay() === 0 || date.getDay() === 6 ? 1.3 : 1
+          
+          data.push({
+            timestamp: `${date.getMonth() + 1}/${date.getDate()} ${hour}:00`,
+            waitTime: Math.max(5, Math.round((baseWait + randomVariation) * weekendMultiplier)),
+            dayOfWeek: date.toLocaleDateString('en-US', { weekday: 'short' }),
+            hour
+          })
+        }
+      }
+    } else if (range === 'month') {
+      // Generate daily averages for the past month
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date(now)
+        date.setDate(date.getDate() - i)
+        
+        const baseWait = 35 + Math.sin(i / 5) * 15
+        const randomVariation = Math.random() * 20 - 10
+        const weekendMultiplier = date.getDay() === 0 || date.getDay() === 6 ? 1.4 : 1
+        
+        data.push({
+          timestamp: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          waitTime: Math.max(10, Math.round((baseWait + randomVariation) * weekendMultiplier)),
+          dayOfWeek: date.toLocaleDateString('en-US', { weekday: 'short' })
+        })
+      }
+    } else {
+      // Generate monthly averages for the past year
+      for (let i = 11; i >= 0; i--) {
+        const date = new Date(now)
+        date.setMonth(date.getMonth() - i)
+        
+        // Seasonal variations (higher in summer, lower in winter)
+        const seasonalMultiplier = Math.sin((date.getMonth() - 2) * Math.PI / 6) * 0.3 + 1
+        const baseWait = 30 * seasonalMultiplier
+        const randomVariation = Math.random() * 15 - 7.5
+        
+        data.push({
+          timestamp: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+          waitTime: Math.max(15, Math.round(baseWait + randomVariation)),
+          month: date.toLocaleDateString('en-US', { month: 'short' })
+        })
+      }
+    }
+    
+    return data
+  }
+
+  const getAverageWaitTime = () => {
+    if (historicalData.length === 0) return 0
+    return Math.round(historicalData.reduce((sum, item) => sum + item.waitTime, 0) / historicalData.length)
+  }
+
+  const getPeakTime = () => {
+    if (timeRange !== 'week') return null
+    
+    const hourlyAverages = new Map<number, number[]>()
+    historicalData.forEach(item => {
+      if (item.hour !== undefined) {
+        if (!hourlyAverages.has(item.hour)) {
+          hourlyAverages.set(item.hour, [])
+        }
+        hourlyAverages.get(item.hour)!.push(item.waitTime)
+      }
+    })
+    
+    let peakHour = 9
+    let maxAverage = 0
+    
+    hourlyAverages.forEach((times, hour) => {
+      const average = times.reduce((sum, time) => sum + time, 0) / times.length
+      if (average > maxAverage) {
+        maxAverage = average
+        peakHour = hour
+      }
+    })
+    
+    return `${peakHour}:00 - ${peakHour + 1}:00`
+  }
+
+  const getBestTime = () => {
+    if (timeRange !== 'week') return null
+    
+    const hourlyAverages = new Map<number, number[]>()
+    historicalData.forEach(item => {
+      if (item.hour !== undefined) {
+        if (!hourlyAverages.has(item.hour)) {
+          hourlyAverages.set(item.hour, [])
+        }
+        hourlyAverages.get(item.hour)!.push(item.waitTime)
+      }
+    })
+    
+    let bestHour = 9
+    let minAverage = Infinity
+    
+    hourlyAverages.forEach((times, hour) => {
+      const average = times.reduce((sum, time) => sum + time, 0) / times.length
+      if (average < minAverage) {
+        minAverage = average
+        bestHour = hour
+      }
+    })
+    
+    return `${bestHour}:00 - ${bestHour + 1}:00`
+  }
+
+  const normalizeYAxisDomain = (data: HistoricalData[]) => {
+    const values = data.map(d => d.waitTime)
+    const min = Math.min(...values)
+    const max = Math.max(...values)
+    
+    // Snap to nearest 10 minutes for better readability
+    const minSnap = Math.floor(Math.max(0, min - 5) / 10) * 10
+    const maxSnap = Math.ceil((max + 5) / 10) * 10
+    
+    return [minSnap, maxSnap]
+  }
+
+  const getStatusColor = (waitTime: number) => {
+    if (waitTime <= 20) return 'bg-success text-success-foreground'
+    if (waitTime <= 45) return 'bg-accent text-accent-foreground'
+    return 'bg-destructive text-destructive-foreground'
+  }
+
+  const getStatusText = (waitTime: number) => {
+    if (waitTime <= 20) return 'Short Wait'
+    if (waitTime <= 45) return 'Moderate Wait'
+    return 'Long Wait'
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-muted rounded w-1/3 mb-6"></div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              <div className="h-96 bg-muted rounded"></div>
+            </div>
+            <div className="space-y-4">
+              <div className="h-32 bg-muted rounded"></div>
+              <div className="h-32 bg-muted rounded"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!park || !attraction) {
+    return (
+      <div className="container mx-auto px-4 py-8 text-center">
+        <h1 className="text-2xl font-bold mb-4">Attraction Not Found</h1>
+        <Button onClick={() => navigate('/')} variant="outline">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Home
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline" 
+            onClick={() => navigate(`/park/${parkId}`)}
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to {park.name}
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold">{attraction.name}</h1>
+            <p className="text-muted-foreground">{park.name}</p>
+          </div>
+        </div>
+        
+        <Badge className={getStatusColor(attraction.currentWaitTime)}>
+          <Clock className="w-4 h-4 mr-1" />
+          {attraction.currentWaitTime} min - {getStatusText(attraction.currentWaitTime)}
+        </Badge>
+      </div>
+
+      {/* Time Range Selector */}
+      <div className="flex items-center gap-4">
+        <span className="text-sm font-medium">Time Range:</span>
+        <Select value={timeRange} onValueChange={(value: TimeRange) => setTimeRange(value)}>
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="week">Past Week (Hourly)</SelectItem>
+            <SelectItem value="month">Past Month (Daily)</SelectItem>
+            <SelectItem value="year">Past Year (Monthly)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Chart */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendUp className="w-5 h-5" />
+                Wait Time Trends
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-96">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={historicalData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis 
+                      dataKey="timestamp" 
+                      stroke="#6b7280"
+                      fontSize={12}
+                      angle={-45}
+                      textAnchor="end"
+                      height={60}
+                    />
+                    <YAxis 
+                      stroke="#6b7280"
+                      fontSize={12}
+                      domain={normalizeYAxisDomain(historicalData)}
+                      tickFormatter={(value) => `${value}m`}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [`${value} minutes`, 'Wait Time']}
+                      labelFormatter={(label) => `Time: ${label}`}
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="waitTime"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={2}
+                      dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 4 }}
+                      activeDot={{ r: 6, stroke: 'hsl(var(--primary))', strokeWidth: 2 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Statistics */}
+        <div className="space-y-6">
+          {/* Current Status */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Current Status</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-primary">
+                  {attraction.currentWaitTime}
+                </div>
+                <div className="text-sm text-muted-foreground">minutes</div>
+                <Badge 
+                  variant="secondary" 
+                  className={`mt-2 ${attraction.status === 'operating' ? 'bg-success text-success-foreground' : 'bg-destructive text-destructive-foreground'}`}
+                >
+                  {attraction.status === 'operating' ? 'Operating' : 'Closed'}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Statistics */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Calendar className="w-5 h-5" />
+                {timeRange === 'week' ? 'This Week' : timeRange === 'month' ? 'This Month' : 'This Year'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Average Wait</span>
+                  <span className="font-medium">{getAverageWaitTime()} min</span>
+                </div>
+                
+                {timeRange === 'week' && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Peak Time</span>
+                      <span className="font-medium">{getPeakTime()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Best Time</span>
+                      <span className="font-medium">{getBestTime()}</span>
+                    </div>
+                  </>
+                )}
+                
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Max Wait</span>
+                  <span className="font-medium">{Math.max(...historicalData.map(d => d.waitTime))} min</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Min Wait</span>
+                  <span className="font-medium">{Math.min(...historicalData.map(d => d.waitTime))} min</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Trip Planning Tips */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Planning Tips</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="p-3 bg-success/10 rounded-lg border border-success/20">
+                <div className="font-medium text-success-foreground mb-1">💡 Pro Tip</div>
+                <div className="text-xs text-muted-foreground">
+                  {timeRange === 'week' 
+                    ? `Visit during ${getBestTime()} for the shortest waits`
+                    : timeRange === 'month'
+                    ? 'Weekdays typically have shorter wait times'
+                    : 'Winter months often have the shortest wait times'
+                  }
+                </div>
+              </div>
+              
+              {getAverageWaitTime() > 30 && (
+                <div className="p-3 bg-accent/10 rounded-lg border border-accent/20">
+                  <div className="font-medium text-accent-foreground mb-1">⚠️ Popular Ride</div>
+                  <div className="text-xs text-muted-foreground">
+                    This is a popular attraction. Consider using Express Pass or visiting during off-peak hours.
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
+}

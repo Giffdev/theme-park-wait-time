@@ -50,10 +50,8 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
 
   // Handle ride selection from overview
   const handleRideSelect = (rideId: string) => {
-    setTargetRide(rideId)
-    setActiveTab('live-times')
-    // Update URL to reflect the selected ride
-    setSearchParams({ ride: rideId })
+    // Navigate to the detailed attraction trends page
+    navigate(`/park/${selectedPark}/attraction/${rideId}`)
   }
 
   // Initialize sample data on park load
