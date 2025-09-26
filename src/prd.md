@@ -28,7 +28,22 @@
 - Live wait times with reporting functionality  
 - Crowd calendar and historical analytics
 - Park selector to switch between parks
+- "Log Your Rides" button for signed-in users
 - Back navigation to previous page
+
+**Ride Log Page** (`/park/:parkId/log`):
+- Comprehensive ride logging interface for signed-in users
+- Track rides, shows, and experiences with counts and variants
+- Separate sections for active, seasonal, and defunct attractions
+- Support for multi-track rides (variants)
+- Notes field for personal memories
+- Visit date selection and session management
+
+**My Ride Logs Page** (`/my-logs`):
+- Historical view of all user's park visits and ride logs
+- Search and filter by park, attraction type, or content
+- Statistics dashboard showing total rides, parks visited, etc.
+- Detailed view of each park visit with ride counts
 
 ## Essential Features
 
@@ -66,6 +81,26 @@
 - **What**: User accounts with contribution tracking and reputation system
 - **Why**: Encourages accurate reporting and builds community trust
 - **Success Criteria**: Active user base contributing regular updates
+
+### Personal Ride Logging System
+- **What**: Comprehensive logging system for users to track their park visits and ride counts throughout a day
+- **Why**: Engages users beyond just wait time checking, creates personal value and historical memories, encourages account creation
+- **Success Criteria**: Users actively log their rides during park visits and return to view historical data
+
+### Multi-Track and Variant Support
+- **What**: Ability to log different tracks or variations of rides (e.g., Battlestar Galactica HUMAN vs CYLON, Stardust Racers Star vs Nova tracks)
+- **Why**: Provides detailed tracking for enthusiasts who care about experiencing all variations
+- **Success Criteria**: Users can accurately track specific ride experiences including variants
+
+### Seasonal and Historical Attraction Management
+- **What**: Separate organization of active rides, seasonal events (Halloween, Christmas), and defunct/historical attractions
+- **Why**: Allows users to log experiences from different time periods and seasonal visits
+- **Success Criteria**: Clear categorization that helps users find relevant attractions for their visit timing
+
+### Visit Session Management
+- **What**: Ability to start a "park visit" for a specific date and continuously add rides throughout the day
+- **Why**: Provides structure for day-long logging and creates meaningful visit records
+- **Success Criteria**: Seamless experience for adding rides during a park visit with easy session management
 
 ## Design Direction
 

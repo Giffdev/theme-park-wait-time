@@ -1,4 +1,5 @@
 import type { Attraction } from '@/App'
+import type { ExtendedAttraction } from '@/types'
 
 // Park family and location structure
 export interface ParkFamily {
@@ -806,7 +807,305 @@ export const sampleAttractions: Record<string, Attraction[]> = {
   ]
 }
 
-// Function to initialize sample data
+// Extended attraction data with additional properties for ride logging
+export const extendedAttractions: Record<string, ExtendedAttraction[]> = {
+  'universal-studios-orlando': [
+    {
+      id: 'harry-potter-escape-gringotts',
+      name: 'Harry Potter and the Escape from Gringotts',
+      type: 'thrill',
+      currentWaitTime: 45,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'transformers-3d',
+      name: 'Transformers: The Ride 3D',
+      type: 'thrill',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'simpsons-ride',
+      name: 'The Simpsons Ride',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'mummy-revenge',
+      name: 'Revenge of the Mummy',
+      type: 'thrill',
+      currentWaitTime: 60,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'horror-nights-house-1',
+      name: 'Halloween Horror Nights House #1',
+      type: 'experience',
+      currentWaitTime: 45,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      isSeasonal: true,
+      seasonalPeriod: 'Halloween (Sept-Nov)'
+    },
+    {
+      id: 'horror-nights-house-2',
+      name: 'Halloween Horror Nights House #2',
+      type: 'experience',
+      currentWaitTime: 50,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      isSeasonal: true,
+      seasonalPeriod: 'Halloween (Sept-Nov)'
+    },
+    {
+      id: 'jaws',
+      name: 'Jaws',
+      type: 'thrill',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      isDefunct: true
+    },
+    {
+      id: 'back-to-the-future',
+      name: 'Back to the Future: The Ride',
+      type: 'thrill',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      isDefunct: true
+    },
+    {
+      id: 'ollivanders',
+      name: 'Ollivanders',
+      type: 'experience',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'men-in-black',
+      name: 'Men in Black: Alien Attack',
+      type: 'family',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'fast-furious',
+      name: 'Fast & Furious - Supercharged',
+      type: 'thrill',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'et-adventure',
+      name: 'E.T. Adventure',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'hogwarts-express-kings-cross',
+      name: 'Hogwarts Express - King\'s Cross Station',
+      type: 'experience',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    }
+  ],
+  'islands-of-adventure': [
+    {
+      id: 'hagrid-motorbike',
+      name: "Hagrid's Magical Creatures Motorbike Adventure",
+      type: 'thrill',
+      currentWaitTime: 90,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'velocicoaster',
+      name: 'VelociCoaster',
+      type: 'thrill',
+      currentWaitTime: 75,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'forbidden-journey',
+      name: 'Harry Potter and the Forbidden Journey',
+      type: 'thrill',
+      currentWaitTime: 55,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'incredible-hulk',
+      name: 'The Incredible Hulk Coaster',
+      type: 'thrill',
+      currentWaitTime: 40,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'jurassic-park-river-adventure',
+      name: 'Jurassic Park River Adventure',
+      type: 'family',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'amazing-adventures-spiderman',
+      name: 'The Amazing Adventures of Spider-Man',
+      type: 'thrill',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    }
+  ],
+  'epic-universe': [
+    {
+      id: 'stardust-racers',
+      name: 'Stardust Racers',
+      type: 'thrill',
+      currentWaitTime: 85,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      variants: [
+        { id: 'star-track', name: 'Star Track', description: 'Blue track themed to celestial racing' },
+        { id: 'nova-track', name: 'Nova Track', description: 'Red track themed to cosmic speed' }
+      ]
+    },
+    {
+      id: 'ministry-of-magic',
+      name: 'Harry Potter and the Battle at the Ministry',
+      type: 'thrill',
+      currentWaitTime: 70,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'donkey-kong-mine-cart',
+      name: 'Mine-Cart Madness',
+      type: 'family',
+      currentWaitTime: 65,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    }
+  ],
+  'battlestar-galactica': [
+    {
+      id: 'battlestar-galactica-dueling',
+      name: 'Battlestar Galactica: HUMAN vs CYLON',
+      type: 'thrill',
+      currentWaitTime: 60,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      variants: [
+        { id: 'human-track', name: 'HUMAN (Sit-down)', description: 'Traditional sit-down coaster experience' },
+        { id: 'cylon-track', name: 'CYLON (Inverted)', description: 'Feet-dangling inverted coaster experience' }
+      ]
+    }
+  ],
+  'magic-kingdom': [
+    {
+      id: 'space-mountain',
+      name: 'Space Mountain',
+      type: 'thrill',
+      currentWaitTime: 65,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'seven-dwarfs-mine-train',
+      name: 'Seven Dwarfs Mine Train',
+      type: 'family',
+      currentWaitTime: 80,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'pirates-caribbean',
+      name: 'Pirates of the Caribbean',
+      type: 'family',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'haunted-mansion',
+      name: 'Haunted Mansion',
+      type: 'family',
+      currentWaitTime: 40,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'big-thunder-mountain',
+      name: 'Big Thunder Mountain Railroad',
+      type: 'thrill',
+      currentWaitTime: 45,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'splash-mountain',
+      name: 'Tiana\'s Bayou Adventure',
+      type: 'thrill',
+      currentWaitTime: 70,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'mickeys-very-merry-christmas-party',
+      name: 'Mickey\'s Very Merry Christmas Party',
+      type: 'show',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      isSeasonal: true,
+      seasonalPeriod: 'Christmas (Nov-Dec)'
+    },
+    {
+      id: 'mickeys-not-so-scary-halloween-party',
+      name: 'Mickey\'s Not-So-Scary Halloween Party',
+      type: 'show',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      isSeasonal: true,
+      seasonalPeriod: 'Halloween (Aug-Nov)'
+    },
+    {
+      id: 'old-splash-mountain',
+      name: 'Splash Mountain (Original)',
+      type: 'thrill',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      isDefunct: true
+    },
+    {
+      id: 'mr-toads-wild-ride',
+      name: 'Mr. Toad\'s Wild Ride',
+      type: 'family',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      isDefunct: true
+    }
+  ]
+}
+
+// Function to initialize sample data (updated to use extended attractions)
 export async function initializeSampleData() {
   try {
     // Ensure spark is available
@@ -824,7 +1123,7 @@ export async function initializeSampleData() {
     const attractionKeys = existingKeys.filter(key => key.startsWith('attractions-'))
     
     // If we already have data for most parks, skip re-initialization
-    const expectedParks = Object.keys(sampleAttractions)
+    const expectedParks = Object.keys(extendedAttractions)
     const existingParks = attractionKeys.map(key => key.replace('attractions-', ''))
     const missingParks = expectedParks.filter(park => !existingParks.includes(park))
     
@@ -841,7 +1140,7 @@ export async function initializeSampleData() {
     
     for (const parkId of parksToInit) {
       try {
-        const attractions = sampleAttractions[parkId]
+        const attractions = extendedAttractions[parkId]
         if (attractions && Array.isArray(attractions)) {
           await kv.set(`attractions-${parkId}`, attractions)
           totalSeeded += attractions.length
@@ -861,7 +1160,7 @@ export async function initializeSampleData() {
     const keyParks = ['universal-studios-orlando', 'islands-of-adventure', 'magic-kingdom']
     for (const parkId of keyParks) {
       try {
-        const data = await kv.get<Attraction[]>(`attractions-${parkId}`)
+        const data = await kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
         if (data && Array.isArray(data) && data.length > 0) {
           console.log(`✅ Verified ${parkId}: ${data.length} attractions`)
         } else {

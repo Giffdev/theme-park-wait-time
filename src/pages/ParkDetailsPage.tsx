@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useKV } from '@github/spark/hooks'
 import { ParkSelector } from '@/components/ParkSelector' 
 import { LiveWaitTimes } from '@/components/LiveWaitTimes'
@@ -118,6 +118,23 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
         />
       </div>
 
+      {/* Log Rides Button */}
+      <div className="mb-6 flex justify-center">
+        {user ? (
+          <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
+            <Link to={`/park/${selectedPark}/log`}>
+              🎢 Log Your Rides Today
+            </Link>
+          </Button>
+        ) : (
+          <Button 
+            onClick={onLoginRequired}
+            className="bg-accent hover:bg-accent/90 text-accent-foreground"
+          >
+            🎢 Sign In to Log Rides
+          </Button>
+        )}
+      </div>
 
 
       {/* User Stats - Show only when logged in */}

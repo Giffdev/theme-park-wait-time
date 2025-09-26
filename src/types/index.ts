@@ -36,3 +36,47 @@ export type UserContribution = {
   trustLevel: 'new' | 'bronze' | 'silver' | 'gold' | 'platinum'
   badges: string[]
 }
+
+export type RideLog = {
+  id: string
+  userId: string
+  parkId: string
+  attractionId: string
+  attractionName: string
+  attractionType: 'thrill' | 'family' | 'show' | 'experience'
+  rideCount: number
+  trackVariant?: string // For rides with multiple tracks
+  loggedAt: string
+  visitDate: string // The date of the park visit
+  notes?: string
+}
+
+export type ParkVisit = {
+  id: string
+  userId: string
+  parkId: string
+  parkName: string
+  visitDate: string
+  rideLogs: RideLog[]
+  createdAt: string
+  updatedAt: string
+}
+
+export type AttractionVariant = {
+  id: string
+  name: string
+  description?: string
+}
+
+export type ExtendedAttraction = {
+  id: string
+  name: string
+  type: 'thrill' | 'family' | 'show' | 'experience'
+  currentWaitTime: number
+  status: 'operating' | 'closed' | 'delayed'
+  lastUpdated: string
+  isDefunct?: boolean
+  isSeasonal?: boolean
+  seasonalPeriod?: string // e.g., "Halloween", "Christmas"
+  variants?: AttractionVariant[] // For multi-track rides
+}

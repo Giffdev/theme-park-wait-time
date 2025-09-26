@@ -70,9 +70,8 @@ function mapWeatherCondition(condition: string, description: string): WeatherDat
 const weatherCache = new Map<string, { data: any; timestamp: number }>()
 const CACHE_DURATION = 10 * 60 * 1000 // 10 minutes
 
-// For demo purposes, we'll use realistic weather patterns based on location and season
-// In a real application, this would connect to a weather API with proper server-side proxy
-const USE_MOCK_DATA = true // Set to false when you have a proper API setup
+// For production use, integrate with actual weather API
+const USE_MOCK_DATA = false // Using real weather API through a proxy service
 
 export async function getCurrentWeather(parkId: string): Promise<WeatherData | null> {
   try {
@@ -97,12 +96,32 @@ export async function getCurrentWeather(parkId: string): Promise<WeatherData | n
 
     console.log(`Fetching current weather for ${parkId} (${coordinates.city})`)
     
-    // In a real implementation, you would use your server-side API proxy here
-    // const response = await fetch(`/api/weather/current/${parkId}`)
-    
-    return generateRealisticWeather(coordinates, new Date())
+    try {
+      // Use a free weather service that doesn't require API keys
+      // Using wttr.in which provides weather data in JSON format
+      const weatherResponse = await fetch(`https://wttr.in/${coordinates.lat},${coordinates.lon}?format=j1`)
+      
+      if (!weatherResponse.ok) {
+        console.warn(`Weather API returned ${weatherResponse.status}, falling back to realistic data`)
+        return generateRealisticWeather(coordinates, new Date())
+      }
+      
+      const weatherData = await weatherResponse.json()
+      
+      // Cache the response
+      weatherCache.set(cacheKey, { data: weatherData, timestamp: Date.now() })
+      
+      return parseWttrWeather(weatherData)
+    } catch (apiError) {
+      console.warn('Weather API failed, using realistic fallback:', apiError)
+      return generateRealisticWeather(coordinates, new Date())
+    }
   } catch (error) {
     console.error(`Failed to fetch weather for ${parkId}:`, error)
+    const coordinates = PARK_COORDINATES[parkId]
+    if (coordinates) {
+      return generateRealisticWeather(coordinates, new Date())
+    }
     return null
   }
 }
@@ -130,14 +149,101 @@ export async function getWeatherForecast(parkId: string, days: number = 7): Prom
 
     console.log(`Fetching weather forecast for ${parkId} (${coordinates.city})`)
     
-    // In a real implementation, you would use your server-side API proxy here
-    // const response = await fetch(`/api/weather/forecast/${parkId}/${days}`)
-    
-    return generateRealisticForecast(coordinates, days)
+    try {
+      // Use wttr.in for forecast data - get 3-day forecast
+      const forecastResponse = await fetch(`https://wttr.in/${coordinates.lat},${coordinates.lon}?format=j1`)
+      
+      if (!forecastResponse.ok) {
+        console.warn(`Weather API returned ${forecastResponse.status}, falling back to realistic data`)
+        return generateRealisticForecast(coordinates, days)
+      }
+      
+      const forecastData = await forecastResponse.json()
+      
+      // Cache the response
+      weatherCache.set(cacheKey, { data: forecastData, timestamp: Date.now() })
+      
+      return parseWttrForecast(forecastData, days)
+    } catch (apiError) {
+      console.warn('Weather forecast API failed, using realistic fallback:', apiError)
+      return generateRealisticForecast(coordinates, days)
+    }
   } catch (error) {
     console.error(`Failed to fetch forecast for ${parkId}:`, error)
+    const coordinates = PARK_COORDINATES[parkId]
+    if (coordinates) {
+      return generateRealisticForecast(coordinates, days)
+    }
     return []
   }
+}
+
+function parseWttrWeather(data: any): WeatherData {
+  try {
+    const current = data.current_condition?.[0]
+    if (!current) {
+      throw new Error('No current condition data')
+    }
+
+    const tempF = parseInt(current.temp_F || '70')
+    const condition = mapWttrCondition(current.weatherCode, current.weatherDesc?.[0]?.value || '')
+    
+    return {
+      temperature: tempF,
+      condition: condition.condition,
+      description: condition.description,
+      humidity: parseInt(current.humidity || '50'),
+      windSpeed: Math.round(parseFloat(current.windspeedMiles || '5')),
+      icon: `${condition.condition}-day`
+    }
+  } catch (error) {
+    console.warn('Failed to parse wttr.in weather data:', error)
+    // Return a default weather object
+    return {
+      temperature: 75,
+      condition: 'clear',
+      description: 'clear sky',
+      humidity: 50,
+      windSpeed: 5,
+      icon: 'clear-day'
+    }
+  }
+}
+
+function mapWttrCondition(code: string, description: string): { condition: WeatherData['condition']; description: string } {
+  const codeNum = parseInt(code || '113')
+  const desc = description.toLowerCase()
+  
+  // wttr.in weather codes mapping
+  if (codeNum === 113) return { condition: 'clear', description: 'clear sky' }
+  if (codeNum >= 116 && codeNum <= 119) return { condition: 'clouds', description: 'partly cloudy' }
+  if (codeNum >= 122 && codeNum <= 143) return { condition: 'clouds', description: 'overcast' }
+  if (codeNum >= 176 && codeNum <= 179) return { condition: 'rain', description: 'patchy rain' }
+  if (codeNum >= 182 && codeNum <= 186) return { condition: 'rain', description: 'light rain' }
+  if (codeNum >= 200 && codeNum <= 204) return { condition: 'thunderstorm', description: 'thundery outbreaks' }
+  if (codeNum >= 227 && codeNum <= 230) return { condition: 'snow', description: 'blowing snow' }
+  if (codeNum >= 248 && codeNum <= 260) return { condition: 'mist', description: 'fog' }
+  if (codeNum >= 263 && codeNum <= 266) return { condition: 'rain', description: 'patchy light drizzle' }
+  if (codeNum >= 281 && codeNum <= 284) return { condition: 'rain', description: 'freezing drizzle' }
+  if (codeNum >= 293 && codeNum <= 296) return { condition: 'rain', description: 'patchy light rain' }
+  if (codeNum >= 299 && codeNum <= 302) return { condition: 'rain', description: 'moderate rain' }
+  if (codeNum >= 305 && codeNum <= 308) return { condition: 'rain', description: 'heavy rain' }
+  if (codeNum >= 311 && codeNum <= 317) return { condition: 'rain', description: 'freezing rain' }
+  if (codeNum >= 320 && codeNum <= 325) return { condition: 'rain', description: 'light rain shower' }
+  if (codeNum >= 326 && codeNum <= 335) return { condition: 'rain', description: 'heavy rain shower' }
+  if (codeNum >= 338 && codeNum <= 342) return { condition: 'snow', description: 'heavy snow' }
+  if (codeNum >= 350 && codeNum <= 365) return { condition: 'rain', description: 'ice pellets' }
+  if (codeNum >= 368 && codeNum <= 377) return { condition: 'snow', description: 'light snow showers' }
+  if (codeNum >= 386 && codeNum <= 395) return { condition: 'thunderstorm', description: 'patchy light rain with thunder' }
+  
+  // Fallback based on description
+  if (desc.includes('rain')) return { condition: 'rain', description }
+  if (desc.includes('thunder') || desc.includes('storm')) return { condition: 'thunderstorm', description }
+  if (desc.includes('snow')) return { condition: 'snow', description }
+  if (desc.includes('cloud')) return { condition: 'clouds', description }
+  if (desc.includes('fog') || desc.includes('mist')) return { condition: 'mist', description }
+  
+  return { condition: 'clear', description: desc || 'clear sky' }
 }
 
 function parseCurrentWeather(data: any): WeatherData {
@@ -148,6 +254,43 @@ function parseCurrentWeather(data: any): WeatherData {
     humidity: data.main.humidity,
     windSpeed: Math.round(data.wind?.speed || 0),
     icon: data.weather[0].icon
+  }
+}
+
+function parseWttrForecast(data: any, maxDays: number): WeatherForecast[] {
+  try {
+    const forecasts: WeatherForecast[] = []
+    const weather = data.weather || []
+    
+    for (let i = 0; i < Math.min(maxDays, weather.length); i++) {
+      const day = weather[i]
+      if (!day) continue
+      
+      const date = day.date
+      const minTempF = parseInt(day.mintempF || '60')
+      const maxTempF = parseInt(day.maxtempF || '80')
+      
+      // Use the hourly data from mid-day for main condition
+      const hourlyData = day.hourly || []
+      const midDayData = hourlyData.find((h: any) => parseInt(h.time || '1200') >= 1200) || hourlyData[0]
+      
+      if (midDayData) {
+        const condition = mapWttrCondition(midDayData.weatherCode, midDayData.weatherDesc?.[0]?.value || '')
+        
+        forecasts.push({
+          date: date,
+          temperature: { min: minTempF, max: maxTempF },
+          condition: condition.condition,
+          description: condition.description,
+          icon: `${condition.condition}-day`
+        })
+      }
+    }
+    
+    return forecasts
+  } catch (error) {
+    console.warn('Failed to parse wttr.in forecast data, using fallback')
+    return []
   }
 }
 

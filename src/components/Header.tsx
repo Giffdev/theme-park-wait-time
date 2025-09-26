@@ -47,6 +47,16 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
             >
               Parks
             </Link>
+            {user && (
+              <Link 
+                to="/my-logs" 
+                className={`text-sm font-medium transition-colors hover:text-foreground ${
+                  isActive('/my-logs') ? 'text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                My Logs
+              </Link>
+            )}
             <span className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
               Calendar
             </span>
