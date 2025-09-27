@@ -1,11 +1,11 @@
-# ParkFlow - Smart Theme Park Wait Times
+# ParkForecaster - Smart Theme Park Predictions
 
 ## Core Purpose & Success
-**Mission Statement**: Help theme park visitors make informed decisions through real-time wait times, crowd-sourced data, and historical analytics to optimize their park experience.
+**Mission Statement**: Help theme park visitors make informed decisions through predictive analytics, real-time wait times, crowd forecasting, and historical data to optimize their park experience.
 
 **Success Indicators**: Users successfully plan their park visits, spend less time waiting in lines, and contribute accurate wait time data to help the community.
 
-**Experience Qualities**: Trustworthy, Efficient, Community-driven
+**Experience Qualities**: Predictive, Intelligent, Community-driven
 
 ## Project Classification & Approach
 **Complexity Level**: Complex Application (advanced functionality, user accounts, real-time data, multi-page navigation)

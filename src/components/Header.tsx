@@ -4,8 +4,8 @@ import { SignOut, User as UserIcon } from '@phosphor-icons/react'
 import { Link, useLocation } from 'react-router-dom'
 import type { User } from '@/App'
 
-// Enhanced Theme Park Roller Coaster Icon
-function RollerCoasterIcon({ size = 18, className }: { size?: number; className?: string }) {
+// Park Forecaster Icon - Crystal ball with theme park elements
+function ParkForecasterIcon({ size = 18, className }: { size?: number; className?: string }) {
   return (
     <svg 
       width={size} 
@@ -15,61 +15,67 @@ function RollerCoasterIcon({ size = 18, className }: { size?: number; className?
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      {/* Track structure with curves */}
-      <path 
-        d="M2 20h20" 
+      {/* Crystal ball base */}
+      <ellipse 
+        cx="12" 
+        cy="19" 
+        rx="6" 
+        ry="2" 
+        fill="currentColor" 
+        opacity="0.2"
+      />
+      
+      {/* Crystal ball */}
+      <circle 
+        cx="12" 
+        cy="12" 
+        r="8" 
         stroke="currentColor" 
         strokeWidth="1.5" 
-        strokeLinecap="round"
+        fill="none"
       />
-      {/* Support pillars */}
-      <path 
-        d="M4 16v4M8 12v8M12 8v12M16 10v10M20 14v6" 
-        stroke="currentColor" 
-        strokeWidth="1.5" 
-        strokeLinecap="round"
+      
+      {/* Inner reflection highlight */}
+      <circle 
+        cx="10" 
+        cy="8" 
+        r="2" 
+        fill="currentColor" 
+        opacity="0.3"
       />
-      {/* Roller coaster track curves */}
+      
+      {/* Miniature roller coaster inside the crystal ball */}
       <path 
-        d="M2 16c2-4 4-4 6 0s4 4 6 0 4-6 6-2" 
+        d="M8 14c1-2 2-2 3 0s2 2 3 0" 
         stroke="currentColor" 
-        strokeWidth="2" 
+        strokeWidth="1.2" 
         fill="none"
         strokeLinecap="round"
       />
-      {/* Small cart on the track */}
-      <rect 
-        x="7" 
-        y="14" 
-        width="3" 
-        height="2" 
-        rx="1" 
-        fill="currentColor"
-      />
-      {/* Cart wheels */}
-      <circle 
-        cx="7.5" 
-        cy="17" 
-        r="0.8" 
+      
+      {/* Support pillars for mini coaster */}
+      <path 
+        d="M9 12v2M12 10v4M15 12v2" 
         stroke="currentColor" 
         strokeWidth="1" 
-        fill="none"
+        strokeLinecap="round"
+        opacity="0.7"
       />
-      <circle 
-        cx="9.5" 
-        cy="17" 
-        r="0.8" 
-        stroke="currentColor" 
-        strokeWidth="1" 
-        fill="none"
-      />
-      {/* Excitement lines */}
+      
+      {/* Forecast trend lines around the crystal ball */}
       <path 
-        d="M11 6l1-2M13 4l1-2M15 6l1-2" 
+        d="M3 8l2 1M5 5l1 2M19 8l2-1M19 5l1 2" 
         stroke="currentColor" 
         strokeWidth="1.5" 
         strokeLinecap="round"
+        opacity="0.6"
       />
+      
+      {/* Data points/sparkles */}
+      <circle cx="6" cy="10" r="0.8" fill="currentColor" opacity="0.5" />
+      <circle cx="18" cy="10" r="0.8" fill="currentColor" opacity="0.5" />
+      <circle cx="4" cy="16" r="0.8" fill="currentColor" opacity="0.5" />
+      <circle cx="20" cy="16" r="0.8" fill="currentColor" opacity="0.5" />
     </svg>
   )
 }
@@ -95,9 +101,9 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <RollerCoasterIcon size={18} className="text-primary-foreground" />
+              <ParkForecasterIcon size={18} className="text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold text-foreground">ParkFlow</span>
+            <span className="text-xl font-bold text-foreground">ParkForecaster</span>
           </Link>
           
           <nav className="hidden md:flex items-center space-x-6">
