@@ -32,17 +32,17 @@ export function HomePage() {
 
       {/* Filter Controls */}
       <div className="mb-8 bg-card border rounded-lg p-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-4">
             <Funnel size={20} className="text-muted-foreground" />
             <h3 className="text-lg font-semibold text-foreground">Filter by Resort Group</h3>
           </div>
-          <div className="w-64">
+          <div className="w-80">
             <Select
               value={selectedFamily || 'all'}
               onValueChange={(value) => setSelectedFamily(value === 'all' ? null : value)}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full h-11">
                 <SelectValue placeholder="Select a resort group" />
               </SelectTrigger>
               <SelectContent>
