@@ -8,9 +8,10 @@ import { CaretLeft } from '@phosphor-icons/react'
 export function CrowdCalendarPage() {
   const navigate = useNavigate()
   const [selectedFamily, setSelectedFamily] = useState<string>('disney-world-orlando')
+  const [selectedParks, setSelectedParks] = useState<string[]>([])
 
   return (
-    <main className="container mx-auto px-4 py-8 max-w-[1400px]">
+    <main className="container mx-auto px-4 py-8 max-w-[1600px]">
       {/* Back Button */}
       <div className="mb-6">
         <Button 
@@ -34,16 +35,18 @@ export function CrowdCalendarPage() {
 
         {/* Park Family Selector */}
         <div className="flex justify-center">
-          <div className="w-full max-w-md">
+          <div className="w-full max-w-2xl">
             <ParkFamilySelector 
               selectedFamily={selectedFamily}
+              selectedParks={selectedParks}
               onFamilyChange={setSelectedFamily}
+              onParksChange={setSelectedParks}
             />
           </div>
         </div>
 
         {/* Family Crowd Calendar */}
-        <FamilyCrowdCalendar familyId={selectedFamily} />
+        <FamilyCrowdCalendar familyId={selectedFamily} selectedParks={selectedParks} />
       </div>
     </main>
   )

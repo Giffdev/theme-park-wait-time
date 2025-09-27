@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -7,14 +8,21 @@ import { parkFamilies, type ParkFamily, type ParkInfo } from '@/data/sampleData'
 
 interface FamilyCrowdCalendarProps {
   familyId: string
+  selectedParks: string[]
 }
 
-export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
+export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCalendarProps) {
+  const navigate = useNavigate()
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
 
   const family = parkFamilies.find(f => f.id === familyId)
-  const themeParks = family?.parks.filter(park => park.type === 'theme-park') || []
+  const allThemeParks = family?.parks.filter(park => park.type === 'theme-park') || []
+  
+  // Filter parks based on selection - if no parks selected, show all
+  const themeParks = selectedParks.length === 0 
+    ? allThemeParks 
+    : allThemeParks.filter(park => selectedParks.includes(park.id))
 
   const getDaysInMonth = (month: number, year: number): number => {
     return new Date(year, month + 1, 0).getDate()
@@ -116,7 +124,7 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
 
       // Add empty cells for days before the first day of the month
       for (let i = 0; i < firstDay; i++) {
-        days.push(<div key={`empty-${i}`} className="h-40" />)
+        days.push(<div key={`empty-${i}`} className="h-48" />)
       }
 
       // Add calendar days
@@ -128,19 +136,19 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
           days.push(
             <div
               key={day}
-              className={`h-40 border rounded-lg p-2 hover:shadow-md transition-shadow cursor-pointer ${dayCardColor}`}
+              className={`h-48 border rounded-lg p-3 hover:shadow-md transition-shadow cursor-pointer ${dayCardColor}`}
             >
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">{day}</span>
                 </div>
-                <div className="flex-1 space-y-1 overflow-y-auto">
+                <div className="flex-1 space-y-1.5">
                   {themeParks.slice(0, 4).map((park) => {
                     try {
                       const crowdLevel = getCrowdLevel(day, park.id)
                       return (
                         <div key={park.id} className="flex items-center justify-between text-xs gap-2">
-                          <span className="text-muted-foreground flex-1" title={`${park.shortName} (${crowdLevel})`}>
+                          <span className="text-muted-foreground flex-1 truncate" title={`${park.shortName} (${crowdLevel})`}>
                             {park.shortName}
                             <span className="font-medium text-foreground ml-1">({crowdLevel})</span>
                           </span>
@@ -156,7 +164,7 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
                       console.warn(`Error rendering park ${park.id}:`, parkError)
                       return (
                         <div key={park.id} className="flex items-center justify-between text-xs gap-2">
-                          <span className="text-muted-foreground flex-1" title={park.shortName}>
+                          <span className="text-muted-foreground flex-1 truncate" title={park.shortName}>
                             {park.shortName}
                           </span>
                           <Badge className="text-xs px-2 py-0.5 bg-muted text-muted-foreground min-w-[70px] text-center shrink-0">
@@ -167,7 +175,7 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
                     }
                   })}
                   {themeParks.length > 4 && (
-                    <div className="text-xs text-muted-foreground text-center">
+                    <div className="text-xs text-muted-foreground text-center pt-1">
                       +{themeParks.length - 4} more
                     </div>
                   )}
@@ -181,7 +189,7 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
           days.push(
             <div
               key={day}
-              className="h-40 border rounded-lg p-2 bg-card flex items-center justify-center"
+              className="h-48 border rounded-lg p-3 bg-card flex items-center justify-center"
             >
               <div className="text-muted-foreground text-sm">{day}</div>
             </div>
@@ -293,19 +301,28 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
       </Card>
 
       {/* Park Legend */}
-      {themeParks.length > 1 && (
+      {themeParks.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">
               Parks in {family.name}
+              {selectedParks.length > 0 && selectedParks.length < allThemeParks.length && (
+                <span className="text-sm font-normal text-muted-foreground ml-2">
+                  ({selectedParks.length} of {allThemeParks.length} selected)
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {themeParks.map((park) => (
-                <div key={park.id} className="flex items-center space-x-2">
+                <div 
+                  key={park.id} 
+                  className="flex items-center space-x-2 cursor-pointer hover:bg-muted rounded-md p-2 transition-colors"
+                  onClick={() => navigate(`/park/${park.id}`)}
+                >
                   <div className="w-2 h-2 bg-primary rounded-full" />
-                  <span className="text-sm">{park.shortName}</span>
+                  <span className="text-sm hover:text-primary transition-colors">{park.shortName}</span>
                 </div>
               ))}
             </div>
