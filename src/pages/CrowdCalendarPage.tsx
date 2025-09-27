@@ -10,7 +10,7 @@ export function CrowdCalendarPage() {
   const [selectedFamily, setSelectedFamily] = useState<string>('disney-world-orlando')
 
   return (
-    <main className="container mx-auto px-4 py-8 max-w-7xl">
+    <main className="container mx-auto px-4 py-8 max-w-[1400px]">
       {/* Back Button */}
       <div className="mb-6">
         <Button 

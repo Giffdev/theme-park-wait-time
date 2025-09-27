@@ -140,12 +140,12 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
                       const crowdLevel = getCrowdLevel(day, park.id)
                       return (
                         <div key={park.id} className="flex items-center justify-between text-xs gap-2">
-                          <span className="truncate text-muted-foreground flex-1" title={`${park.shortName} (${crowdLevel})`}>
-                            {park.shortName.length > 6 ? park.shortName.substring(0, 6) + '...' : park.shortName}
+                          <span className="text-muted-foreground flex-1" title={`${park.shortName} (${crowdLevel})`}>
+                            {park.shortName}
                             <span className="font-medium text-foreground ml-1">({crowdLevel})</span>
                           </span>
                           <Badge 
-                            className={`text-xs px-2 py-0.5 ${getCrowdColor(crowdLevel)} min-w-[60px] text-center shrink-0`}
+                            className={`text-xs px-2 py-0.5 ${getCrowdColor(crowdLevel)} min-w-[70px] text-center shrink-0`}
                             variant="secondary"
                           >
                             {getCrowdLabel(crowdLevel)}
@@ -156,10 +156,10 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
                       console.warn(`Error rendering park ${park.id}:`, parkError)
                       return (
                         <div key={park.id} className="flex items-center justify-between text-xs gap-2">
-                          <span className="truncate text-muted-foreground flex-1" title={park.shortName}>
-                            {park.shortName.length > 6 ? park.shortName.substring(0, 6) + '...' : park.shortName}
+                          <span className="text-muted-foreground flex-1" title={park.shortName}>
+                            {park.shortName}
                           </span>
-                          <Badge className="text-xs px-2 py-0.5 bg-muted text-muted-foreground min-w-[60px] text-center shrink-0">
+                          <Badge className="text-xs px-2 py-0.5 bg-muted text-muted-foreground min-w-[70px] text-center shrink-0">
                             --
                           </Badge>
                         </div>
