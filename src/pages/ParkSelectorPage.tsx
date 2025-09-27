@@ -1,67 +1,30 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { MapPin, Users, Calendar, Funnel } from '@phosphor-icons/react'
+import { MapPin, Users, Calendar } from '@phosphor-icons/react'
 import { parkFamilies } from '@/data/sampleData'
 
-export function HomePage() {
+export function ParkSelectorPage() {
   const navigate = useNavigate()
-  const [selectedFamily, setSelectedFamily] = useState<string | null>(null)
 
   const handleParkSelect = (parkId: string) => {
     navigate(`/park/${parkId}`)
   }
 
-  const filteredFamilies = selectedFamily 
-    ? parkFamilies.filter(family => family.id === selectedFamily)
-    : parkFamilies
-
   return (
     <main className="container mx-auto px-4 py-8 max-w-7xl">
-      <div className="mb-8 text-center space-y-4">
-        <h1 className="text-4xl font-bold text-foreground mb-2">
-          Smart Theme Park Planning
+      <div className="mb-8 text-center">
+        <h1 className="text-4xl font-bold text-foreground mb-4">
+          Select a Theme Park
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Real-time wait times and crowd insights for your perfect park day across major theme park destinations
+          Choose a park to view detailed wait times, crowd predictions, and plan your perfect visit
         </p>
       </div>
 
-      {/* Filter Controls */}
-      <div className="mb-8 bg-card border rounded-lg p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Funnel size={20} className="text-muted-foreground" />
-            <h3 className="text-lg font-semibold text-foreground">Filter by Resort Group</h3>
-          </div>
-          <div className="w-64">
-            <Select
-              value={selectedFamily || 'all'}
-              onValueChange={(value) => setSelectedFamily(value === 'all' ? null : value)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a resort group" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">
-                  All Parks ({parkFamilies.length} groups)
-                </SelectItem>
-                {parkFamilies.map((family) => (
-                  <SelectItem key={family.id} value={family.id}>
-                    {family.name} ({family.parks.length} parks)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </div>
-
       <div className="space-y-10">
-        {filteredFamilies.map((family) => (
+        {parkFamilies.map((family) => (
           <div key={family.id} className="space-y-6">
             {/* Family Header */}
             <div className="border-b-2 border-primary/20 pb-4">
