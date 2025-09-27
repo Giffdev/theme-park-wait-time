@@ -301,14 +301,6 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       lastUpdated: new Date().toISOString()
     },
     {
-      id: 'jurassic-world-velociraptor',
-      name: 'Jurassic World VelociCoaster',
-      type: 'thrill',
-      currentWaitTime: 75,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
       id: 'seuss-landing-carousel',
       name: 'Caro-Seuss-el',
       type: 'family',
@@ -323,9 +315,42 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       currentWaitTime: 10,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'doctor-doom-fearfall',
+      name: 'Doctor Doom\'s Fearfall',
+      type: 'thrill',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'one-fish-two-fish',
+      name: 'One Fish, Two Fish, Red Fish, Blue Fish',
+      type: 'family',
+      currentWaitTime: 5,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'me-ship-olive',
+      name: 'Me Ship, The Olive',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'jurassic-park-discovery-center',
+      name: 'Jurassic Park Discovery Center',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
     }
   ],
   'epic-universe': [
+    // Super Nintendo World
     {
       id: 'mario-kart',
       name: 'Mario Kart: Bowser\'s Challenge',
@@ -336,7 +361,7 @@ export const sampleAttractions: Record<string, Attraction[]> = {
     },
     {
       id: 'donkey-kong-mine-cart',
-      name: 'Donkey Kong\'s Mine Cart Madness',
+      name: 'Donkey Kong Country Mine-Cart Madness',
       type: 'thrill',
       currentWaitTime: 45,
       status: 'operating',
@@ -350,27 +375,104 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
+    // The Wizarding World of Harry Potter - Ministry of Magic
     {
-      id: 'dark-universe-monsters',
-      name: 'Monsters Unchained',
+      id: 'ministry-of-magic',
+      name: 'Harry Potter and the Battle at the Ministry',
+      type: 'thrill',
+      currentWaitTime: 90,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'floo-network',
+      name: 'The Floo Network',
+      type: 'family',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // How to Train Your Dragon - Isle of Berk
+    {
+      id: 'how-to-train-dragon-riders',
+      name: 'How to Train Your Dragon - Untrainable Dragon',
       type: 'thrill',
       currentWaitTime: 55,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
     {
-      id: 'how-to-train-dragon-riders',
-      name: 'How to Train Your Dragon - Isle of Berk',
+      id: 'hiccup-wing-gliders',
+      name: 'Hiccup\'s Wing Gliders',
       type: 'family',
       currentWaitTime: 30,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
+    // Dark Universe
     {
-      id: 'celestial-park',
+      id: 'dark-universe-monsters',
+      name: 'Monsters Unchained: The Frankenstein Experiment',
+      type: 'thrill',
+      currentWaitTime: 75,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'curse-of-the-werewolf',
+      name: 'Curse of the Werewolf',
+      type: 'thrill',
+      currentWaitTime: 50,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'das-stakehaus',
+      name: 'Das Stakehaus',
+      type: 'experience',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Celestial Park
+    {
+      id: 'stardust-racers',
       name: 'Stardust Racers',
       type: 'thrill',
-      currentWaitTime: 40,
+      currentWaitTime: 85,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'constellation-carousel',
+      name: 'Constellation Carousel',
+      type: 'family',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'moon-base',
+      name: 'Lunar Lander',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Shows and Entertainment
+    {
+      id: 'nintendo-power-up-show',
+      name: 'Nintendo Power-Up Summer',
+      type: 'show',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'dragon-training-academy',
+      name: 'Dragon Training Academy',
+      type: 'show',
+      currentWaitTime: 15,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     }
@@ -1561,453 +1663,7 @@ export const sampleAttractions: Record<string, Attraction[]> = {
 
 // Extended attraction data with additional properties for ride logging
 export const extendedAttractions: Record<string, ExtendedAttraction[]> = {
-  'universal-studios-orlando': [
-    {
-      id: 'harry-potter-escape-gringotts',
-      name: 'Harry Potter and the Escape from Gringotts',
-      type: 'thrill',
-      currentWaitTime: 45,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'transformers-3d',
-      name: 'Transformers: The Ride 3D',
-      type: 'thrill',
-      currentWaitTime: 25,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'simpsons-ride',
-      name: 'The Simpsons Ride',
-      type: 'family',
-      currentWaitTime: 20,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'mummy-revenge',
-      name: 'Revenge of the Mummy',
-      type: 'thrill',
-      currentWaitTime: 60,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'horror-nights-house-1',
-      name: 'Halloween Horror Nights House #1',
-      type: 'experience',
-      currentWaitTime: 45,
-      status: 'operating',
-      lastUpdated: new Date().toISOString(),
-      isSeasonal: true,
-      seasonalPeriod: 'Halloween (Sept-Nov)'
-    },
-    {
-      id: 'horror-nights-house-2',
-      name: 'Halloween Horror Nights House #2',
-      type: 'experience',
-      currentWaitTime: 50,
-      status: 'operating',
-      lastUpdated: new Date().toISOString(),
-      isSeasonal: true,
-      seasonalPeriod: 'Halloween (Sept-Nov)'
-    },
-    {
-      id: 'jaws',
-      name: 'Jaws',
-      type: 'thrill',
-      currentWaitTime: 0,
-      status: 'closed',
-      lastUpdated: new Date().toISOString(),
-      isDefunct: true
-    },
-    {
-      id: 'back-to-the-future',
-      name: 'Back to the Future: The Ride',
-      type: 'thrill',
-      currentWaitTime: 0,
-      status: 'closed',
-      lastUpdated: new Date().toISOString(),
-      isDefunct: true
-    },
-    {
-      id: 'ollivanders',
-      name: 'Ollivanders',
-      type: 'experience',
-      currentWaitTime: 15,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'men-in-black',
-      name: 'Men in Black: Alien Attack',
-      type: 'family',
-      currentWaitTime: 30,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'fast-furious',
-      name: 'Fast & Furious - Supercharged',
-      type: 'thrill',
-      currentWaitTime: 35,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'et-adventure',
-      name: 'E.T. Adventure',
-      type: 'family',
-      currentWaitTime: 20,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'hogwarts-express-kings-cross',
-      name: 'Hogwarts Express - King\'s Cross Station',
-      type: 'experience',
-      currentWaitTime: 10,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    }
-  ],
-  'islands-of-adventure': [
-    {
-      id: 'hagrid-motorbike',
-      name: "Hagrid's Magical Creatures Motorbike Adventure",
-      type: 'thrill',
-      currentWaitTime: 90,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'velocicoaster',
-      name: 'VelociCoaster',
-      type: 'thrill',
-      currentWaitTime: 75,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'forbidden-journey',
-      name: 'Harry Potter and the Forbidden Journey',
-      type: 'thrill',
-      currentWaitTime: 55,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'incredible-hulk',
-      name: 'The Incredible Hulk Coaster',
-      type: 'thrill',
-      currentWaitTime: 40,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'jurassic-park-river-adventure',
-      name: 'Jurassic Park River Adventure',
-      type: 'family',
-      currentWaitTime: 35,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'amazing-adventures-spiderman',
-      name: 'The Amazing Adventures of Spider-Man',
-      type: 'thrill',
-      currentWaitTime: 30,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    }
-  ],
-  'epic-universe': [
-    {
-      id: 'stardust-racers',
-      name: 'Stardust Racers',
-      type: 'thrill',
-      currentWaitTime: 85,
-      status: 'operating',
-      lastUpdated: new Date().toISOString(),
-      variants: [
-        { id: 'star-track', name: 'Star Track', description: 'Blue track themed to celestial racing' },
-        { id: 'nova-track', name: 'Nova Track', description: 'Red track themed to cosmic speed' }
-      ]
-    },
-    {
-      id: 'ministry-of-magic',
-      name: 'Harry Potter and the Battle at the Ministry',
-      type: 'thrill',
-      currentWaitTime: 70,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'donkey-kong-mine-cart',
-      name: 'Mine-Cart Madness',
-      type: 'family',
-      currentWaitTime: 65,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    }
-  ],
-  'battlestar-galactica': [
-    {
-      id: 'battlestar-galactica-dueling',
-      name: 'Battlestar Galactica: HUMAN vs CYLON',
-      type: 'thrill',
-      currentWaitTime: 60,
-      status: 'operating',
-      lastUpdated: new Date().toISOString(),
-      variants: [
-        { id: 'human-track', name: 'HUMAN (Sit-down)', description: 'Traditional sit-down coaster experience' },
-        { id: 'cylon-track', name: 'CYLON (Inverted)', description: 'Feet-dangling inverted coaster experience' }
-      ]
-    }
-  ],
-  'magic-kingdom': [
-    // Major Thrill Rides
-    {
-      id: 'space-mountain',
-      name: 'Space Mountain',
-      type: 'thrill',
-      currentWaitTime: 65,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'seven-dwarfs-mine-train',
-      name: 'Seven Dwarfs Mine Train',
-      type: 'family',
-      currentWaitTime: 80,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'big-thunder-mountain',
-      name: 'Big Thunder Mountain Railroad',
-      type: 'thrill',
-      currentWaitTime: 45,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'tianas-bayou-adventure',
-      name: 'Tiana\'s Bayou Adventure',
-      type: 'thrill',
-      currentWaitTime: 70,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    // Classic Dark Rides
-    {
-      id: 'pirates-caribbean',
-      name: 'Pirates of the Caribbean',
-      type: 'family',
-      currentWaitTime: 35,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'haunted-mansion',
-      name: 'Haunted Mansion',
-      type: 'family',
-      currentWaitTime: 40,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'its-a-small-world',
-      name: 'it\'s a small world',
-      type: 'family',
-      currentWaitTime: 15,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'jungle-cruise',
-      name: 'Jungle Cruise',
-      type: 'family',
-      currentWaitTime: 30,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'peter-pans-flight',
-      name: 'Peter Pan\'s Flight',
-      type: 'family',
-      currentWaitTime: 55,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    // Fantasyland Attractions
-    {
-      id: 'winnie-the-pooh',
-      name: 'The Many Adventures of Winnie the Pooh',
-      type: 'family',
-      currentWaitTime: 25,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'under-the-sea',
-      name: 'Under the Sea ~ Journey of The Little Mermaid',
-      type: 'family',
-      currentWaitTime: 20,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'dumbo-flying-elephant',
-      name: 'Dumbo the Flying Elephant',
-      type: 'family',
-      currentWaitTime: 15,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'mad-tea-party',
-      name: 'Mad Tea Party',
-      type: 'family',
-      currentWaitTime: 10,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'its-tough-bug',
-      name: 'it\'s tough to be a bug!',
-      type: 'show',
-      currentWaitTime: 5,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    // Tomorrowland Attractions
-    {
-      id: 'buzz-lightyear',
-      name: 'Buzz Lightyear\'s Space Ranger Spin',
-      type: 'family',
-      currentWaitTime: 30,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'monsters-inc-laugh-floor',
-      name: 'Monsters, Inc. Laugh Floor',
-      type: 'show',
-      currentWaitTime: 10,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'carousel-of-progress',
-      name: 'Walt Disney\'s Carousel of Progress',
-      type: 'experience',
-      currentWaitTime: 5,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'peoplemover',
-      name: 'Tomorrowland Transit Authority PeopleMover',
-      type: 'experience',
-      currentWaitTime: 5,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'astro-orbitor',
-      name: 'Astro Orbitor',
-      type: 'family',
-      currentWaitTime: 15,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    // Adventureland
-    {
-      id: 'tiki-room',
-      name: 'Walt Disney\'s Enchanted Tiki Room',
-      type: 'show',
-      currentWaitTime: 5,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'swiss-family-treehouse',
-      name: 'Swiss Family Treehouse',
-      type: 'experience',
-      currentWaitTime: 0,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    // Liberty Square
-    {
-      id: 'liberty-square-riverboat',
-      name: 'Liberty Square Riverboat',
-      type: 'experience',
-      currentWaitTime: 10,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'hall-of-presidents',
-      name: 'The Hall of Presidents',
-      type: 'show',
-      currentWaitTime: 5,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    // Main Street USA
-    {
-      id: 'walt-disney-railroad',
-      name: 'Walt Disney World Railroad',
-      type: 'experience',
-      currentWaitTime: 10,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    // Seasonal Events
-    {
-      id: 'mickeys-very-merry-christmas-party',
-      name: 'Mickey\'s Very Merry Christmas Party',
-      type: 'show',
-      currentWaitTime: 0,
-      status: 'operating',
-      lastUpdated: new Date().toISOString(),
-      isSeasonal: true,
-      seasonalPeriod: 'Christmas (Nov-Dec)'
-    },
-    {
-      id: 'mickeys-not-so-scary-halloween-party',
-      name: 'Mickey\'s Not-So-Scary Halloween Party',
-      type: 'show',
-      currentWaitTime: 0,
-      status: 'operating',
-      lastUpdated: new Date().toISOString(),
-      isSeasonal: true,
-      seasonalPeriod: 'Halloween (Aug-Nov)'
-    },
-    // Defunct Attractions
-    {
-      id: 'old-splash-mountain',
-      name: 'Splash Mountain (Original)',
-      type: 'thrill',
-      currentWaitTime: 0,
-      status: 'closed',
-      lastUpdated: new Date().toISOString(),
-      isDefunct: true
-    },
-    {
-      id: 'mr-toads-wild-ride',
-      name: 'Mr. Toad\'s Wild Ride',
-      type: 'family',
-      currentWaitTime: 0,
-      status: 'closed',
-      lastUpdated: new Date().toISOString(),
-      isDefunct: true
-    }
-  ]
+  // Extended attractions for special features - not currently used by main app
 }
 
 export async function initializeSampleData() {
@@ -2048,7 +1704,7 @@ export async function initializeSampleData() {
     console.log(`✅ Sample data initialization completed: ${totalSeeded} attractions seeded for ${expectedParks.length} parks`)
     
     // Quick verification for a few key parks
-    const keyParks = ['universal-studios-orlando', 'islands-of-adventure', 'magic-kingdom', 'hollywood-studios']
+    const keyParks = ['universal-studios-orlando', 'islands-of-adventure', 'epic-universe', 'magic-kingdom', 'hollywood-studios']
     for (const parkId of keyParks) {
       try {
         const data = await kv.get<Attraction[]>(`attractions-${parkId}`)
