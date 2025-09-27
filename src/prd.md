@@ -1,4 +1,4 @@
-# ParkForecaster - Smart Theme Park Predictions
+# Crowd Forecaster - Smart Theme Park Predictions
 
 ## Core Purpose & Success
 **Mission Statement**: Help theme park visitors make informed decisions through predictive analytics, real-time wait times, crowd forecasting, and historical data to optimize their park experience.

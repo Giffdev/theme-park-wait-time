@@ -4,8 +4,8 @@ import { SignOut, User as UserIcon } from '@phosphor-icons/react'
 import { Link, useLocation } from 'react-router-dom'
 import type { User } from '@/App'
 
-// Park Forecaster Icon - Crystal ball with theme park elements
-function ParkForecasterIcon({ size = 18, className }: { size?: number; className?: string }) {
+// Crowd Forecaster Icon - Crystal ball with theme park elements
+function CrowdForecasterIcon({ size = 18, className }: { size?: number; className?: string }) {
   return (
     <svg 
       width={size} 
@@ -101,9 +101,9 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <ParkForecasterIcon size={18} className="text-primary-foreground" />
+              <CrowdForecasterIcon size={18} className="text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold text-foreground">ParkForecaster</span>
+            <span className="text-xl font-bold text-foreground">Crowd Forecaster</span>
           </Link>
           
           <nav className="hidden md:flex items-center space-x-6">
