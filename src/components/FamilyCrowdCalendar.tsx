@@ -17,6 +17,7 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
   const [currentDate, setCurrentDate] = useState(new Date().getDate()) // For mobile week view
   const [isMobile, setIsMobile] = useState(false)
+  const [expandedDays, setExpandedDays] = useState(new Set<string>()) // Track expanded days
 
   // Check if mobile on mount and resize
   useEffect(() => {
@@ -147,6 +148,31 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
     setCurrentDate(newDate.getDate())
   }
 
+  // Toggle expanded state for a day
+  const toggleDayExpansion = (day: number) => {
+    const dayKey = `${currentYear}-${currentMonth}-${day}`
+    const newExpandedDays = new Set(expandedDays)
+    
+    if (expandedDays.has(dayKey)) {
+      newExpandedDays.delete(dayKey)
+    } else {
+      newExpandedDays.add(dayKey)
+    }
+    
+    setExpandedDays(newExpandedDays)
+  }
+
+  // Check if a day is expanded
+  const isDayExpanded = (day: number): boolean => {
+    const dayKey = `${currentYear}-${currentMonth}-${day}`
+    return expandedDays.has(dayKey)
+  }
+
+  // Clear expanded days when navigating months/days
+  useEffect(() => {
+    setExpandedDays(new Set())
+  }, [currentMonth, currentYear, currentDate])
+
   // Get 3 consecutive days starting from current date for mobile
   const getMobileDays = (): number[] => {
     const daysInMonth = getDaysInMonth(currentMonth, currentYear)
@@ -169,18 +195,26 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
     return days.map((day) => {
       const overallCrowdLevel = getOverallCrowdLevel(day)
       const dayCardColor = getDayCardColor(overallCrowdLevel)
+      const isExpanded = isDayExpanded(day)
+      const hasMore = displayParks.length > 3
       
       return (
         <div
           key={day}
-          className={`flex-1 min-h-[200px] border rounded-lg p-3 ${dayCardColor}`}
+          className={`flex-1 ${isExpanded ? 'min-h-[300px]' : 'min-h-[200px]'} border rounded-lg p-3 ${dayCardColor} ${hasMore ? 'cursor-pointer' : ''} transition-all duration-300`}
+          onClick={hasMore ? () => toggleDayExpansion(day) : undefined}
         >
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">{day}</span>
+              {hasMore && (
+                <span className="text-xs text-muted-foreground">
+                  {isExpanded ? 'Click to collapse' : 'Click to expand'}
+                </span>
+              )}
             </div>
             <div className="flex-1 space-y-1.5">
-              {displayParks.slice(0, 3).map((park) => {
+              {(isExpanded ? displayParks : displayParks.slice(0, 3)).map((park) => {
                 const crowdLevel = getCrowdLevel(day, park.id)
                 return (
                   <div key={park.id} className="flex flex-col text-xs gap-1">
@@ -199,8 +233,8 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                   </div>
                 )
               })}
-              {displayParks.length > 3 && (
-                <div className="text-xs text-muted-foreground text-center pt-1">
+              {hasMore && !isExpanded && (
+                <div className="text-xs text-accent font-medium text-center pt-1 cursor-pointer hover:text-accent/80">
                   +{displayParks.length - 3} more
                 </div>
               )}
@@ -227,18 +261,26 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
         try {
           const overallCrowdLevel = getOverallCrowdLevel(day)
           const dayCardColor = getDayCardColor(overallCrowdLevel)
+          const isExpanded = isDayExpanded(day)
+          const hasMore = displayParks.length > 4
           
           days.push(
             <div
               key={day}
-              className={`h-48 border rounded-lg p-3 hover:shadow-md transition-shadow cursor-pointer ${dayCardColor}`}
+              className={`${isExpanded ? 'h-auto min-h-[300px]' : 'h-48'} border rounded-lg p-3 hover:shadow-md transition-all duration-300 ${hasMore ? 'cursor-pointer' : ''} ${dayCardColor}`}
+              onClick={hasMore ? () => toggleDayExpansion(day) : undefined}
             >
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">{day}</span>
+                  {hasMore && (
+                    <span className="text-xs text-muted-foreground">
+                      {isExpanded ? '▼' : '▶'}
+                    </span>
+                  )}
                 </div>
                 <div className="flex-1 space-y-1.5">
-                  {displayParks.slice(0, 4).map((park) => {
+                  {(isExpanded ? displayParks : displayParks.slice(0, 4)).map((park) => {
                     try {
                       const crowdLevel = getCrowdLevel(day, park.id)
                       return (
@@ -271,8 +313,14 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                       )
                     }
                   })}
-                  {displayParks.length > 4 && (
-                    <div className="text-xs text-muted-foreground text-center pt-1">
+                  {hasMore && !isExpanded && (
+                    <div 
+                      className="text-xs text-accent font-medium text-center pt-1 cursor-pointer hover:text-accent/80"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleDayExpansion(day)
+                      }}
+                    >
                       +{displayParks.length - 4} more
                     </div>
                   )}
@@ -354,8 +402,8 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
                 {isMobile 
-                  ? "Compare busy levels across parks. Swipe to view different days."
-                  : "Compare busy levels across all parks to plan your visit. Day colors reflect overall business."
+                  ? "Compare busy levels across parks. Swipe to view different days. Click days with 'more' to expand."
+                  : "Compare busy levels across all parks to plan your visit. Day colors reflect overall business. Click days with 'more' to expand."
                 }
               </p>
             </div>
