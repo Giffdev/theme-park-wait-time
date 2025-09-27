@@ -134,7 +134,7 @@ export function HomePage() {
 
                       {/* Action Button */}
                       <Button 
-                        className="w-full group-hover:bg-primary group-hover:text-primary-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
+                        className="w-full group-hover:bg-primary group-hover:text-primary-foreground hover:bg-accent hover:text-accent-foreground hover:shadow-sm transition-all duration-200"
                         variant="outline"
                         onClick={(e) => {
                           e.stopPropagation()
