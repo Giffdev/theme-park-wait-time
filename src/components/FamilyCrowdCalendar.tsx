@@ -148,23 +148,25 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                       const crowdLevel = getCrowdLevel(day, park.id)
                       return (
                         <div key={park.id} className="flex items-center justify-between text-xs gap-2">
-                          <span className="text-muted-foreground flex-1 truncate" title={`${park.shortName} (${crowdLevel})`}>
+                          <span className="text-muted-foreground truncate min-w-0" title={`${park.shortName} (${crowdLevel})`}>
                             {park.shortName}
-                            <span className="font-medium text-foreground ml-1">({crowdLevel})</span>
                           </span>
-                          <Badge 
-                            className={`text-xs px-2 py-0.5 ${getCrowdColor(crowdLevel)} min-w-[70px] text-center shrink-0`}
-                            variant="secondary"
-                          >
-                            {getCrowdLabel(crowdLevel)}
-                          </Badge>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="font-medium text-foreground">({crowdLevel})</span>
+                            <Badge 
+                              className={`text-xs px-2 py-0.5 ${getCrowdColor(crowdLevel)} min-w-[70px] text-center`}
+                              variant="secondary"
+                            >
+                              {getCrowdLabel(crowdLevel)}
+                            </Badge>
+                          </div>
                         </div>
                       )
                     } catch (parkError) {
                       console.warn(`Error rendering park ${park.id}:`, parkError)
                       return (
                         <div key={park.id} className="flex items-center justify-between text-xs gap-2">
-                          <span className="text-muted-foreground flex-1 truncate" title={park.shortName}>
+                          <span className="text-muted-foreground truncate min-w-0" title={park.shortName}>
                             {park.shortName}
                           </span>
                           <Badge className="text-xs px-2 py-0.5 bg-muted text-muted-foreground min-w-[70px] text-center shrink-0">
@@ -300,26 +302,27 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
         </CardContent>
       </Card>
 
-      {/* Park Legend */}
-      {themeParks.length > 0 && (
+      {/* Park Legend - Always shows all theme parks */}
+      {allThemeParks.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">
               Parks in {family.name}
-              {selectedParks.length > 0 && selectedParks.length < allThemeParks.length && (
-                <span className="text-sm font-normal text-muted-foreground ml-2">
-                  ({selectedParks.length} of {allThemeParks.length} selected)
-                </span>
-              )}
+              <span className="text-sm font-normal text-muted-foreground ml-2">
+                ({allThemeParks.length} park{allThemeParks.length !== 1 ? 's' : ''})
+              </span>
             </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Click any park to view its detailed calendar with weather and individual crowd patterns.
+            </p>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {themeParks.map((park) => (
+              {allThemeParks.map((park) => (
                 <div 
                   key={park.id} 
                   className="flex items-center space-x-2 cursor-pointer hover:bg-muted rounded-md p-2 transition-colors"
-                  onClick={() => navigate(`/park/${park.id}`)}
+                  onClick={() => navigate(`/park/${park.id}?tab=crowd-calendar`)}
                 >
                   <div className="w-2 h-2 bg-primary rounded-full" />
                   <span className="text-sm hover:text-primary transition-colors">{park.shortName}</span>
