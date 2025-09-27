@@ -65,9 +65,25 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
 
   const getCrowdLabel = (level: number): string => {
     if (level <= 30) return 'Low'
-    if (level <= 60) return 'Mod'
+    if (level <= 60) return 'Moderate'
     if (level <= 80) return 'High'
-    return 'Ext'
+    return 'Extreme'
+  }
+
+  // Calculate overall busy-ness for a day (average of all parks)
+  const getOverallCrowdLevel = (date: number): number => {
+    const totalCrowd = themeParks.reduce((sum, park) => {
+      return sum + getCrowdLevel(date, park.id)
+    }, 0)
+    return Math.round(totalCrowd / themeParks.length)
+  }
+
+  // Get background color for day card based on overall busy-ness
+  const getDayCardColor = (level: number): string => {
+    if (level <= 30) return 'bg-success/10 border-success/20'
+    if (level <= 60) return 'bg-accent/10 border-accent/20' 
+    if (level <= 80) return 'bg-secondary/10 border-secondary/20'
+    return 'bg-destructive/10 border-destructive/20'
   }
 
   const getFirstDayOfMonth = (month: number, year: number): number => {
@@ -100,32 +116,36 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
 
       // Add empty cells for days before the first day of the month
       for (let i = 0; i < firstDay; i++) {
-        days.push(<div key={`empty-${i}`} className="h-32" />)
+        days.push(<div key={`empty-${i}`} className="h-40" />)
       }
 
       // Add calendar days
       for (let day = 1; day <= daysInMonth; day++) {
         try {
+          const overallCrowdLevel = getOverallCrowdLevel(day)
+          const dayCardColor = getDayCardColor(overallCrowdLevel)
+          
           days.push(
             <div
               key={day}
-              className="h-32 border rounded-lg p-2 hover:shadow-md transition-shadow cursor-pointer bg-card"
+              className={`h-40 border rounded-lg p-2 hover:shadow-md transition-shadow cursor-pointer ${dayCardColor}`}
             >
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">{day}</span>
                 </div>
-                <div className="flex-1 space-y-1">
+                <div className="flex-1 space-y-1 overflow-y-auto">
                   {themeParks.slice(0, 4).map((park) => {
                     try {
                       const crowdLevel = getCrowdLevel(day, park.id)
                       return (
-                        <div key={park.id} className="flex items-center justify-between text-xs">
-                          <span className="truncate text-muted-foreground pr-1" title={park.shortName}>
-                            {park.shortName.length > 8 ? park.shortName.substring(0, 8) + '...' : park.shortName}
+                        <div key={park.id} className="flex items-center justify-between text-xs gap-2">
+                          <span className="truncate text-muted-foreground flex-1" title={`${park.shortName} (${crowdLevel})`}>
+                            {park.shortName.length > 6 ? park.shortName.substring(0, 6) + '...' : park.shortName}
+                            <span className="font-medium text-foreground ml-1">({crowdLevel})</span>
                           </span>
                           <Badge 
-                            className={`text-xs px-1 py-0 ${getCrowdColor(crowdLevel)} min-w-[32px] text-center`}
+                            className={`text-xs px-2 py-0.5 ${getCrowdColor(crowdLevel)} min-w-[60px] text-center shrink-0`}
                             variant="secondary"
                           >
                             {getCrowdLabel(crowdLevel)}
@@ -135,11 +155,11 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
                     } catch (parkError) {
                       console.warn(`Error rendering park ${park.id}:`, parkError)
                       return (
-                        <div key={park.id} className="flex items-center justify-between text-xs">
-                          <span className="truncate text-muted-foreground pr-1" title={park.shortName}>
-                            {park.shortName.length > 8 ? park.shortName.substring(0, 8) + '...' : park.shortName}
+                        <div key={park.id} className="flex items-center justify-between text-xs gap-2">
+                          <span className="truncate text-muted-foreground flex-1" title={park.shortName}>
+                            {park.shortName.length > 6 ? park.shortName.substring(0, 6) + '...' : park.shortName}
                           </span>
-                          <Badge className="text-xs px-1 py-0 bg-muted text-muted-foreground min-w-[32px] text-center">
+                          <Badge className="text-xs px-2 py-0.5 bg-muted text-muted-foreground min-w-[60px] text-center shrink-0">
                             --
                           </Badge>
                         </div>
@@ -161,7 +181,7 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
           days.push(
             <div
               key={day}
-              className="h-32 border rounded-lg p-2 bg-card flex items-center justify-center"
+              className="h-40 border rounded-lg p-2 bg-card flex items-center justify-center"
             >
               <div className="text-muted-foreground text-sm">{day}</div>
             </div>
@@ -189,6 +209,36 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
 
   return (
     <div className="space-y-6">
+      {/* Crowd Level Guide - Moved to top */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendUp size={20} />
+            Crowd Level Guide
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="flex items-center space-x-2">
+              <Badge className="bg-success text-success-foreground px-3 py-1">Low</Badge>
+              <span className="text-sm text-muted-foreground">1-30</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Badge className="bg-accent text-accent-foreground px-3 py-1">Moderate</Badge>
+              <span className="text-sm text-muted-foreground">31-60</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Badge className="bg-secondary text-secondary-foreground px-3 py-1">High</Badge>
+              <span className="text-sm text-muted-foreground">61-80</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Badge className="bg-destructive text-destructive-foreground px-3 py-1">Extreme</Badge>
+              <span className="text-sm text-muted-foreground">81-100</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -198,7 +248,7 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
                 {family.name} Crowd Calendar
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                Compare busy levels across all parks to plan your visit
+                Compare busy levels across all parks to plan your visit. Day colors reflect overall business.
               </p>
             </div>
             <div className="flex items-center space-x-2">
@@ -262,35 +312,6 @@ export function FamilyCrowdCalendar({ familyId }: FamilyCrowdCalendarProps) {
           </CardContent>
         </Card>
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendUp size={20} />
-            Crowd Level Guide
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="flex items-center space-x-2">
-              <Badge className="bg-success text-success-foreground">Low</Badge>
-              <span className="text-sm text-muted-foreground">1-30</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge className="bg-accent text-accent-foreground">Moderate</Badge>
-              <span className="text-sm text-muted-foreground">31-60</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge className="bg-secondary text-secondary-foreground">High</Badge>
-              <span className="text-sm text-muted-foreground">61-80</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge className="bg-destructive text-destructive-foreground">Extreme</Badge>
-              <span className="text-sm text-muted-foreground">81-100</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
   } catch (error) {
