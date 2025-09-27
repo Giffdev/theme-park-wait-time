@@ -1473,6 +1473,86 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       currentWaitTime: 45,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'mario-kart-bowsers-challenge-hollywood',
+      name: 'Mario Kart: Bowser\'s Challenge',
+      type: 'family',
+      currentWaitTime: 75,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'flight-of-hippogriff-hollywood',
+      name: 'Flight of the Hippogriff',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'ollivanders-hollywood',
+      name: 'Ollivanders',
+      type: 'experience',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'simpsons-ride-hollywood',
+      name: 'The Simpsons Ride',
+      type: 'family',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'despicable-me-minion-mayhem-hollywood',
+      name: 'Despicable Me Minion Mayhem',
+      type: 'family',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'super-nintendo-world-power-up-band',
+      name: 'Super Nintendo World Experience',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'walking-dead-attractions',
+      name: 'The Walking Dead Attractions',
+      type: 'experience',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'waterworld',
+      name: 'Waterworld',
+      type: 'show',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'animal-actors',
+      name: 'Universal\'s Animal Actors',
+      type: 'show',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'special-effects-show',
+      name: 'Special Effects Show',
+      type: 'show',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
     }
   ],
   'six-flags-magic-mountain': [
@@ -1523,6 +1603,134 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       currentWaitTime: 50,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'ninja-mm',
+      name: 'Ninja',
+      type: 'thrill',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'revolution',
+      name: 'Revolution',
+      type: 'thrill',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'viper-mm',
+      name: 'Viper',
+      type: 'thrill',
+      currentWaitTime: 40,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'riddlers-revenge',
+      name: 'Riddler\'s Revenge',
+      type: 'thrill',
+      currentWaitTime: 45,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'scream-mm',
+      name: 'Scream!',
+      type: 'thrill',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'apocalypse',
+      name: 'Apocalypse',
+      type: 'thrill',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'green-lantern',
+      name: 'Green Lantern: First Flight',
+      type: 'thrill',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'magic-mountain-skycoaster',
+      name: 'Lex Luthor: Drop of Doom',
+      type: 'thrill',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'superman-escape',
+      name: 'Superman: Escape from Krypton',
+      type: 'thrill',
+      currentWaitTime: 55,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'gold-rusher',
+      name: 'Gold Rusher',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'canyon-blaster',
+      name: 'Canyon Blaster',
+      type: 'family',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'magic-flyer',
+      name: 'Magic Flyer',
+      type: 'family',
+      currentWaitTime: 5,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'swashbuckler',
+      name: 'Swashbuckler',
+      type: 'family',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'wonder-woman-flight-of-courage',
+      name: 'Wonder Woman Flight of Courage',
+      type: 'thrill',
+      currentWaitTime: 70,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'west-coast-racers',
+      name: 'West Coast Racers',
+      type: 'thrill',
+      currentWaitTime: 60,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'crazanity',
+      name: 'CraZanity',
+      type: 'thrill',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
     }
   ],
   'six-flags-great-adventure': [
@@ -1563,6 +1771,126 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       name: 'Superman: Ultimate Flight',
       type: 'thrill',
       currentWaitTime: 40,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'the-joker-ga',
+      name: 'The Joker',
+      type: 'thrill',
+      currentWaitTime: 50,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'green-lantern-ga',
+      name: 'Green Lantern',
+      type: 'thrill',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'bizarro-ga',
+      name: 'Bizarro',
+      type: 'thrill',
+      currentWaitTime: 40,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'nitro-ga',
+      name: 'Nitro',
+      type: 'thrill',
+      currentWaitTime: 55,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'skull-mountain',
+      name: 'Skull Mountain',
+      type: 'thrill',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'dark-knight-coaster',
+      name: 'The Dark Knight Coaster',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'runaway-mine-train',
+      name: 'Runaway Mine Train',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'justice-league-battle',
+      name: 'Justice League: Battle for Metropolis',
+      type: 'family',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'safari-off-road',
+      name: 'Safari Off Road Adventure',
+      type: 'experience',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'skyway',
+      name: 'Six Flags Skyway',
+      type: 'experience',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'log-flume',
+      name: 'Log Flume',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'parachuters',
+      name: 'Parachuter\'s Perch',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'tea-cups',
+      name: 'Tea Cups',
+      type: 'family',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'wonder-woman-lasso',
+      name: 'Wonder Woman Lasso of Truth',
+      type: 'thrill',
+      currentWaitTime: 65,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'jersey-devil-coaster',
+      name: 'Jersey Devil Coaster',
+      type: 'thrill',
+      currentWaitTime: 75,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     }
@@ -1615,6 +1943,118 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       currentWaitTime: 50,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'magnum-xl-200',
+      name: 'Magnum XL-200',
+      type: 'thrill',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'rougarou',
+      name: 'Rougarou',
+      type: 'thrill',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'power-tower',
+      name: 'Power Tower',
+      type: 'thrill',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'top-thrill-2',
+      name: 'Top Thrill 2',
+      type: 'thrill',
+      currentWaitTime: 120,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'blue-streak',
+      name: 'Blue Streak',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'iron-dragon',
+      name: 'Iron Dragon',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'mine-ride',
+      name: 'Cedar Creek Mine Ride',
+      type: 'family',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'gemini',
+      name: 'Gemini',
+      type: 'thrill',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'corkscrew',
+      name: 'Corkscrew',
+      type: 'thrill',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'skyhawk',
+      name: 'Skyhawk',
+      type: 'thrill',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'windseeker',
+      name: 'WindSeeker',
+      type: 'thrill',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'wild-mouse',
+      name: 'Wild Mouse',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'snake-river-expedition',
+      name: 'Snake River Expedition',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'cp-midway-carousel',
+      name: 'Cedar Point & Lake Erie Railroad',
+      type: 'experience',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
     }
   ],
   'knotts-berry-farm': [
@@ -1655,6 +2095,554 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       name: 'Knott\'s Berry Tales',
       type: 'family',
       currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'jaguar',
+      name: 'Jaguar!',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'montezoomas-revenge',
+      name: 'MonteZOOMa\'s Revenge',
+      type: 'thrill',
+      currentWaitTime: 55,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'timber-mountain-log-ride',
+      name: 'Timber Mountain Log Ride',
+      type: 'family',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'calico-river-rapids',
+      name: 'Calico River Rapids',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'pony-express',
+      name: 'Pony Express',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'coast-rider',
+      name: 'Coast Rider',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'calico-mine-ride',
+      name: 'Calico Mine Ride',
+      type: 'experience',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'waveswinger',
+      name: 'Waveswinger',
+      type: 'family',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'grand-sierra-railroad',
+      name: 'Knott\'s Bear-y Tales: Return to the Fair',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'bigfoot-rapids',
+      name: 'Bigfoot Rapids',
+      type: 'family',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'sierra-sidewinder',
+      name: 'Sierra Sidewinder',
+      type: 'thrill',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'spinning-coaster',
+      name: 'Spinning Coaster',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'fiesta-village-carousel',
+      name: 'Fiesta Village Carousel',
+      type: 'family',
+      currentWaitTime: 5,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    }
+  ],
+  'blizzard-beach': [
+    {
+      id: 'summit-plummet',
+      name: 'Summit Plummet',
+      type: 'thrill',
+      currentWaitTime: 45,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'slush-gusher',
+      name: 'Slush Gusher',
+      type: 'thrill',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'teamboat-springs',
+      name: 'Teamboat Springs',
+      type: 'family',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'runoff-rapids',
+      name: 'Runoff Rapids',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'toboggan-racers',
+      name: 'Toboggan Racers',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'snow-stormers',
+      name: 'Snow Stormers',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'downhill-double-dipper',
+      name: 'Downhill Double Dipper',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'ski-patrol-training-camp',
+      name: 'Ski Patrol Training Camp',
+      type: 'family',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'tikes-peak',
+      name: 'Tike\'s Peak',
+      type: 'family',
+      currentWaitTime: 5,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'cross-country-creek',
+      name: 'Cross Country Creek',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'melt-away-bay',
+      name: 'Melt-Away Bay',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    }
+  ],
+  'typhoon-lagoon': [
+    {
+      id: 'crush-n-gusher',
+      name: 'Crush \'n\' Gusher',
+      type: 'thrill',
+      currentWaitTime: 50,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'humunga-kowabunga',
+      name: 'Humunga Kowabunga',
+      type: 'thrill',
+      currentWaitTime: 40,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'mayday-falls',
+      name: 'Mayday Falls',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'keelhaul-falls',
+      name: 'Keelhaul Falls',
+      type: 'family',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'gangway-falls',
+      name: 'Gangway Falls',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'storm-slides',
+      name: 'Storm Slides',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'bay-slides',
+      name: 'Bay Slides',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'ketchakiddee-creek',
+      name: 'Ketchakiddee Creek',
+      type: 'family',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'castaway-creek',
+      name: 'Castaway Creek',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'typhoon-lagoon-surf-pool',
+      name: 'Typhoon Lagoon Surf Pool',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    }
+  ],
+  'volcano-bay': [
+    {
+      id: 'krakatau-aqua-coaster',
+      name: 'Krakatau Aqua Coaster',
+      type: 'thrill',
+      currentWaitTime: 60,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'ko-okiri-body-plunge',
+      name: 'Ko\'okiri Body Plunge',
+      type: 'thrill',
+      currentWaitTime: 45,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'kala-serpentine-body-slides',
+      name: 'Kala & Ta Nui Serpentine Body Slides',
+      type: 'thrill',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'punga-racers',
+      name: 'Punga Racers',
+      type: 'family',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'ohyah-ohno-drop-slides',
+      name: 'Ohyah and Ohno Drop Slides',
+      type: 'thrill',
+      currentWaitTime: 40,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'maku-round-raft-rides',
+      name: 'Maku & Puihi Round Raft Rides',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'taniwha-tubes',
+      name: 'Taniwha Tubes',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'honu-ika-moana',
+      name: 'Honu & Ika Moana',
+      type: 'family',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'kopiko-wai-winding-river',
+      name: 'Kopiko Wai Winding River',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'waturi-beach',
+      name: 'Waturi Beach',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'runamukka-reef',
+      name: 'Runamukka Reef',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'tot-tiki-reef',
+      name: 'Tot Tiki Reef',
+      type: 'family',
+      currentWaitTime: 5,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    }
+  ],
+  'six-flags-hurricane-harbor-nj': [
+    {
+      id: 'tornado',
+      name: 'Tornado',
+      type: 'thrill',
+      currentWaitTime: 45,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'cannonball-falls',
+      name: 'Cannonball Falls',
+      type: 'thrill',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'zambezi-zinger',
+      name: 'Zambezi Zinger',
+      type: 'family',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'python-plunge',
+      name: 'Python Plunge',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'bahama-blaster',
+      name: 'Bahama Blaster',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'adventure-river',
+      name: 'Adventure River',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'buccaneer-beach-wave-pool',
+      name: 'Buccaneer Beach Wave Pool',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    }
+  ],
+  'cedar-point-shores': [
+    {
+      id: 'magnum-walk',
+      name: 'Magnum Walk',
+      type: 'thrill',
+      currentWaitTime: 40,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'pipeline-paradise',
+      name: 'Pipeline Paradise',
+      type: 'family',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'breakwater-falls',
+      name: 'Breakwater Falls',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'lakeside-landing',
+      name: 'Lakeside Landing',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'point-plummet',
+      name: 'Point Plummet',
+      type: 'thrill',
+      currentWaitTime: 50,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'splashzone',
+      name: 'SplashZone',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'lazy-river',
+      name: 'Lazy River',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'wave-pool-shores',
+      name: 'Wave Pool',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    }
+  ],
+  'knotts-soak-city': [
+    {
+      id: 'the-wedge',
+      name: 'The Wedge',
+      type: 'thrill',
+      currentWaitTime: 45,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'pacific-spin',
+      name: 'Pacific Spin',
+      type: 'thrill',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'shore-break',
+      name: 'Shore Break',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'sunset-river',
+      name: 'Sunset River',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'tidal-wave-bay',
+      name: 'Tidal Wave Bay',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'gremmie-lagoon',
+      name: 'Gremmie Lagoon',
+      type: 'family',
+      currentWaitTime: 10,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     }

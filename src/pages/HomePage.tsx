@@ -11,8 +11,17 @@ export function HomePage() {
   const navigate = useNavigate()
   const [selectedFamily, setSelectedFamily] = useState<string | null>(null)
 
-  const handleParkSelect = (parkId: string) => {
-    navigate(`/park/${parkId}`)
+  const handleParkSelect = (parkId: string, tab?: string) => {
+    if (tab) {
+      navigate(`/park/${parkId}?tab=${tab}`)
+    } else {
+      navigate(`/park/${parkId}`)
+    }
+  }
+
+  const handleFeatureClick = (parkId: string, feature: 'live-times' | 'crowd-calendar', e: React.MouseEvent) => {
+    e.stopPropagation()
+    handleParkSelect(parkId, feature)
   }
 
   const filteredFamilies = selectedFamily 
@@ -107,14 +116,20 @@ export function HomePage() {
                     <div className="space-y-4">
                       {/* Park Features */}
                       <div className="flex items-center justify-between text-sm text-muted-foreground">
-                        <div className="flex items-center">
+                        <button 
+                          className="flex items-center hover:text-primary transition-colors cursor-pointer"
+                          onClick={(e) => handleFeatureClick(park.id, 'live-times', e)}
+                        >
                           <Users size={14} className="mr-2" />
                           <span>Live Wait Times</span>
-                        </div>
-                        <div className="flex items-center">
+                        </button>
+                        <button 
+                          className="flex items-center hover:text-primary transition-colors cursor-pointer"
+                          onClick={(e) => handleFeatureClick(park.id, 'crowd-calendar', e)}
+                        >
                           <Calendar size={14} className="mr-2" />
                           <span>Crowd Calendar</span>
-                        </div>
+                        </button>
                       </div>
 
                       {/* Action Button */}

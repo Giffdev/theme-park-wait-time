@@ -33,12 +33,20 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
     }
   }, [parkId])
 
-  // Handle ride navigation via URL parameters
+  // Handle tab switching from URL parameters and search params
   useEffect(() => {
+    const tabParam = searchParams.get('tab')
     const rideParam = searchParams.get('ride')
+    
+    if (tabParam && ['overview', 'live-times', 'crowd-calendar'].includes(tabParam)) {
+      setActiveTab(tabParam)
+    }
+    
     if (rideParam) {
       setTargetRide(rideParam)
-      setActiveTab('live-times')
+      if (tabParam !== 'live-times') {
+        setActiveTab('live-times')
+      }
     }
   }, [searchParams])
 
@@ -157,9 +165,15 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
 
         <Tabs value={activeTab} onValueChange={(newTab) => {
           setActiveTab(newTab)
-          // Clear ride parameter when leaving live-times tab
-          if (newTab !== 'live-times' && searchParams.has('ride')) {
+          // Update URL with tab parameter
+          if (newTab === 'overview') {
             setSearchParams({})
+          } else {
+            setSearchParams({ tab: newTab })
+          }
+          // Clear ride parameter when leaving live-times tab
+          if (newTab !== 'live-times' && targetRide) {
+            setTargetRide(null)
           }
         }} className="space-y-6">
           <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-3">
