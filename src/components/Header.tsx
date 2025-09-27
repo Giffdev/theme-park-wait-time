@@ -1,8 +1,55 @@
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { SignOut, User as UserIcon, Lightning } from '@phosphor-icons/react'
+import { SignOut, User as UserIcon } from '@phosphor-icons/react'
 import { Link, useLocation } from 'react-router-dom'
 import type { User } from '@/App'
+
+// Custom Roller Coaster Icon
+function RollerCoasterIcon({ size = 18, className }: { size?: number; className?: string }) {
+  return (
+    <svg 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path 
+        d="M2 16c0-3.5 2.5-6 6-6s6 2.5 6 6-2.5 6-6 6-6-2.5-6-6z" 
+        stroke="currentColor" 
+        strokeWidth="2" 
+        fill="none"
+      />
+      <path 
+        d="M14 16c0-3.5 2.5-6 6-6s6 2.5 6 6" 
+        stroke="currentColor" 
+        strokeWidth="2" 
+        fill="none"
+      />
+      <path 
+        d="M2 20h20" 
+        stroke="currentColor" 
+        strokeWidth="2" 
+        strokeLinecap="round"
+      />
+      <circle 
+        cx="8" 
+        cy="8" 
+        r="2" 
+        stroke="currentColor" 
+        strokeWidth="2" 
+        fill="none"
+      />
+      <path 
+        d="M6 12v4M10 12v4" 
+        stroke="currentColor" 
+        strokeWidth="2" 
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
 
 interface HeaderProps {
   user: User | null
@@ -25,7 +72,7 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Lightning size={18} className="text-primary-foreground" />
+              <RollerCoasterIcon size={18} className="text-primary-foreground" />
             </div>
             <span className="text-xl font-bold text-foreground">ParkFlow</span>
           </Link>

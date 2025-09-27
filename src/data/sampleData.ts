@@ -499,6 +499,31 @@ export const sampleAttractions: Record<string, Attraction[]> = {
       currentWaitTime: 20,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    // Additional Attractions
+    {
+      id: 'voyage-little-mermaid',
+      name: 'The Little Mermaid - A Musical Adventure',
+      type: 'show',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'walt-disney-one-mans-dream',
+      name: 'Walt Disney: One Man\'s Dream',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'disney-junior-play-dance-party',
+      name: 'Disney Junior Play and Dance Party!',
+      type: 'show',
+      currentWaitTime: 5,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
     }
   ],
   'animal-kingdom': [
@@ -1997,33 +2022,20 @@ export async function initializeSampleData() {
     
     console.log('🔄 Starting sample data initialization...')
     
-    // Check if data is already initialized to avoid unnecessary re-seeding
-    const existingKeys = await kv.keys()
-    const attractionKeys = existingKeys.filter(key => key.startsWith('attractions-'))
+    // Force refresh of sample data to ensure all current attractions are loaded
+    console.log(`🔄 Force refreshing all park data with latest attractions...`)
     
-    // If we already have data for most parks, skip re-initialization
-    const expectedParks = Object.keys(sampleAttractions)
-    const existingParks = attractionKeys.map(key => key.replace('attractions-', ''))
-    const missingParks = expectedParks.filter(park => !existingParks.includes(park))
-    
-    if (missingParks.length === 0 && attractionKeys.length > 0) {
-      console.log('✅ Sample data already initialized, skipping...')
-      return true
-    }
-    
-    console.log(`🔄 Initializing missing parks: ${missingParks.length > 0 ? missingParks.join(', ') : 'all parks'}`)
-    
-    // Initialize data for missing or all parks using the comprehensive sample attractions
+    // Initialize data for ALL parks using the comprehensive sample attractions
     let totalSeeded = 0
-    const parksToInit = missingParks.length > 0 ? missingParks : expectedParks
+    const expectedParks = Object.keys(sampleAttractions)
     
-    for (const parkId of parksToInit) {
+    for (const parkId of expectedParks) {
       try {
         const attractions = sampleAttractions[parkId]
         if (attractions && Array.isArray(attractions)) {
           await kv.set(`attractions-${parkId}`, attractions)
           totalSeeded += attractions.length
-          console.log(`✅ Seeded ${attractions.length} attractions for ${parkId}`)
+          console.log(`✅ Force seeded ${attractions.length} attractions for ${parkId}`)
           
           // Add a small delay to prevent overwhelming the storage system
           await new Promise(resolve => setTimeout(resolve, 10))
@@ -2033,15 +2045,18 @@ export async function initializeSampleData() {
       }
     }
     
-    console.log(`✅ Sample data initialization completed: ${totalSeeded} attractions seeded for ${parksToInit.length} parks`)
+    console.log(`✅ Sample data initialization completed: ${totalSeeded} attractions seeded for ${expectedParks.length} parks`)
     
     // Quick verification for a few key parks
-    const keyParks = ['universal-studios-orlando', 'islands-of-adventure', 'magic-kingdom']
+    const keyParks = ['universal-studios-orlando', 'islands-of-adventure', 'magic-kingdom', 'hollywood-studios']
     for (const parkId of keyParks) {
       try {
         const data = await kv.get<Attraction[]>(`attractions-${parkId}`)
         if (data && Array.isArray(data) && data.length > 0) {
           console.log(`✅ Verified ${parkId}: ${data.length} attractions`)
+          // Show a few attraction names for verification
+          const sampleNames = data.slice(0, 3).map(a => a.name).join(', ')
+          console.log(`   Sample attractions: ${sampleNames}...`)
         } else {
           console.warn(`⚠️ Verification concern for ${parkId}: ${data?.length || 0} attractions`)
         }
