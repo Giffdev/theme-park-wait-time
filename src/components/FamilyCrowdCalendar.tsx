@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +15,20 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
   const navigate = useNavigate()
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
+  const [currentDate, setCurrentDate] = useState(new Date().getDate()) // For mobile week view
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Check if mobile on mount and resize
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   const family = parkFamilies.find(f => f.id === familyId)
   const allThemeParks = family?.parks.filter(park => park.type === 'theme-park') || []
@@ -114,6 +128,86 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
         setCurrentMonth(currentMonth + 1)
       }
     }
+  }
+
+  // Mobile navigation by days
+  const navigateDay = (direction: 'prev' | 'next') => {
+    const currentDateObj = new Date(currentYear, currentMonth, currentDate)
+    const newDate = new Date(currentDateObj)
+    
+    if (direction === 'prev') {
+      newDate.setDate(currentDateObj.getDate() - 3) // Go back 3 days
+    } else {
+      newDate.setDate(currentDateObj.getDate() + 3) // Go forward 3 days
+    }
+    
+    setCurrentYear(newDate.getFullYear())
+    setCurrentMonth(newDate.getMonth())
+    setCurrentDate(newDate.getDate())
+  }
+
+  // Get 3 consecutive days starting from current date for mobile
+  const getMobileDays = (): number[] => {
+    const daysInMonth = getDaysInMonth(currentMonth, currentYear)
+    const days: number[] = []
+    
+    for (let i = 0; i < 3; i++) {
+      let day = currentDate + i
+      if (day > daysInMonth) {
+        day = day - daysInMonth
+      }
+      days.push(day)
+    }
+    
+    return days
+  }
+
+  // Render mobile day cards (3 days side by side)
+  const renderMobileDays = (): React.ReactElement[] => {
+    const days = getMobileDays()
+    return days.map((day) => {
+      const overallCrowdLevel = getOverallCrowdLevel(day)
+      const dayCardColor = getDayCardColor(overallCrowdLevel)
+      
+      return (
+        <div
+          key={day}
+          className={`flex-1 min-h-[200px] border rounded-lg p-3 ${dayCardColor}`}
+        >
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">{day}</span>
+            </div>
+            <div className="flex-1 space-y-1.5">
+              {themeParks.slice(0, 3).map((park) => {
+                const crowdLevel = getCrowdLevel(day, park.id)
+                return (
+                  <div key={park.id} className="flex flex-col text-xs gap-1">
+                    <span className="text-muted-foreground truncate" title={park.shortName}>
+                      {park.shortName}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium text-foreground text-xs">({crowdLevel})</span>
+                      <Badge 
+                        className={`text-xs px-1.5 py-0.5 ${getCrowdColor(crowdLevel)} text-center`}
+                        variant="secondary"
+                      >
+                        {getCrowdLabel(crowdLevel)}
+                      </Badge>
+                    </div>
+                  </div>
+                )
+              })}
+              {themeParks.length > 3 && (
+                <div className="text-xs text-muted-foreground text-center pt-1">
+                  +{themeParks.length - 3} more
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )
+    })
   }
 
   const renderCalendarDays = (): React.ReactElement[] => {
@@ -258,25 +352,31 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                 {family.name} Crowd Calendar
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                Compare busy levels across all parks to plan your visit. Day colors reflect overall business.
+                {isMobile 
+                  ? "Compare busy levels across parks. Swipe to view different days."
+                  : "Compare busy levels across all parks to plan your visit. Day colors reflect overall business."
+                }
               </p>
             </div>
             <div className="flex items-center space-x-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigateMonth('prev')}
+                onClick={() => isMobile ? navigateDay('prev') : navigateMonth('prev')}
                 className="hover:bg-muted hover:text-foreground"
               >
                 <ArrowLeft size={16} />
               </Button>
               <h3 className="text-lg font-semibold min-w-[180px] text-center">
-                {monthNames[currentMonth]} {currentYear}
+                {isMobile 
+                  ? `${monthNames[currentMonth]} ${currentDate}, ${currentYear}`
+                  : `${monthNames[currentMonth]} ${currentYear}`
+                }
               </h3>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigateMonth('next')}
+                onClick={() => isMobile ? navigateDay('next') : navigateMonth('next')}
                 className="hover:bg-muted hover:text-foreground"
               >
                 <ArrowRight size={16} />
@@ -286,18 +386,28 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="grid grid-cols-7 gap-2 text-center text-sm font-medium text-muted-foreground">
-              <div>Sun</div>
-              <div>Mon</div>
-              <div>Tue</div>
-              <div>Wed</div>
-              <div>Thu</div>
-              <div>Fri</div>
-              <div>Sat</div>
-            </div>
-            <div className="grid grid-cols-7 gap-2">
-              {renderCalendarDays()}
-            </div>
+            {isMobile ? (
+              // Mobile view: 3 days side by side
+              <div className="flex gap-2">
+                {renderMobileDays()}
+              </div>
+            ) : (
+              // Desktop view: Full month calendar
+              <>
+                <div className="grid grid-cols-7 gap-2 text-center text-sm font-medium text-muted-foreground">
+                  <div>Sun</div>
+                  <div>Mon</div>
+                  <div>Tue</div>
+                  <div>Wed</div>
+                  <div>Thu</div>
+                  <div>Fri</div>
+                  <div>Sat</div>
+                </div>
+                <div className="grid grid-cols-7 gap-2">
+                  {renderCalendarDays()}
+                </div>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>

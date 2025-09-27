@@ -4,7 +4,7 @@ import { SignOut, User as UserIcon } from '@phosphor-icons/react'
 import { Link, useLocation } from 'react-router-dom'
 import type { User } from '@/App'
 
-// Custom Roller Coaster Icon
+// Enhanced Theme Park Roller Coaster Icon
 function RollerCoasterIcon({ size = 18, className }: { size?: number; className?: string }) {
   return (
     <svg 
@@ -15,36 +15,59 @@ function RollerCoasterIcon({ size = 18, className }: { size?: number; className?
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      <path 
-        d="M2 16c0-3.5 2.5-6 6-6s6 2.5 6 6-2.5 6-6 6-6-2.5-6-6z" 
-        stroke="currentColor" 
-        strokeWidth="2" 
-        fill="none"
-      />
-      <path 
-        d="M14 16c0-3.5 2.5-6 6-6s6 2.5 6 6" 
-        stroke="currentColor" 
-        strokeWidth="2" 
-        fill="none"
-      />
+      {/* Track structure with curves */}
       <path 
         d="M2 20h20" 
         stroke="currentColor" 
-        strokeWidth="2" 
+        strokeWidth="1.5" 
         strokeLinecap="round"
       />
-      <circle 
-        cx="8" 
-        cy="8" 
-        r="2" 
+      {/* Support pillars */}
+      <path 
+        d="M4 16v4M8 12v8M12 8v12M16 10v10M20 14v6" 
+        stroke="currentColor" 
+        strokeWidth="1.5" 
+        strokeLinecap="round"
+      />
+      {/* Roller coaster track curves */}
+      <path 
+        d="M2 16c2-4 4-4 6 0s4 4 6 0 4-6 6-2" 
         stroke="currentColor" 
         strokeWidth="2" 
         fill="none"
+        strokeLinecap="round"
       />
-      <path 
-        d="M6 12v4M10 12v4" 
+      {/* Small cart on the track */}
+      <rect 
+        x="7" 
+        y="14" 
+        width="3" 
+        height="2" 
+        rx="1" 
+        fill="currentColor"
+      />
+      {/* Cart wheels */}
+      <circle 
+        cx="7.5" 
+        cy="17" 
+        r="0.8" 
         stroke="currentColor" 
-        strokeWidth="2" 
+        strokeWidth="1" 
+        fill="none"
+      />
+      <circle 
+        cx="9.5" 
+        cy="17" 
+        r="0.8" 
+        stroke="currentColor" 
+        strokeWidth="1" 
+        fill="none"
+      />
+      {/* Excitement lines */}
+      <path 
+        d="M11 6l1-2M13 4l1-2M15 6l1-2" 
+        stroke="currentColor" 
+        strokeWidth="1.5" 
         strokeLinecap="round"
       />
     </svg>

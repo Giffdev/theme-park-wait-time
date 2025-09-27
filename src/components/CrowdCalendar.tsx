@@ -12,7 +12,21 @@ interface CrowdCalendarProps {
 export function CrowdCalendar({ parkId }: CrowdCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth())
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear())
+  const [currentDate, setCurrentDate] = useState(new Date().getDate()) // For mobile week view
   const [weatherData, setWeatherData] = useState<Record<string, any>>({})
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Check if mobile on mount and resize
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   const getDaysInMonth = (month: number, year: number): number => {
     return new Date(year, month + 1, 0).getDate()
@@ -146,6 +160,67 @@ export function CrowdCalendar({ parkId }: CrowdCalendarProps) {
     }
   }
 
+  // Mobile navigation by days
+  const navigateDay = (direction: 'prev' | 'next') => {
+    const currentDateObj = new Date(currentYear, currentMonth, currentDate)
+    const newDate = new Date(currentDateObj)
+    
+    if (direction === 'prev') {
+      newDate.setDate(currentDateObj.getDate() - 5) // Go back 5 days
+    } else {
+      newDate.setDate(currentDateObj.getDate() + 5) // Go forward 5 days
+    }
+    
+    setCurrentYear(newDate.getFullYear())
+    setCurrentMonth(newDate.getMonth())
+    setCurrentDate(newDate.getDate())
+  }
+
+  // Get 5 consecutive days starting from current date for mobile
+  const getMobileDays = (): number[] => {
+    const daysInMonth = getDaysInMonth(currentMonth, currentYear)
+    const days: number[] = []
+    
+    for (let i = 0; i < 5; i++) {
+      let day = currentDate + i
+      if (day > daysInMonth) {
+        day = day - daysInMonth
+      }
+      days.push(day)
+    }
+    
+    return days
+  }
+
+  // Render mobile day cards (5 days in a row)
+  const renderMobileDays = (): React.ReactElement[] => {
+    const days = getMobileDays()
+    return days.map((day) => {
+      const crowdLevel = getCrowdLevel(day)
+      const weatherType = getWeatherType(day)
+      
+      return (
+        <div
+          key={day}
+          className="flex-1 min-h-[120px] border rounded-lg p-2 hover:shadow-md transition-shadow"
+        >
+          <div className="flex flex-col h-full justify-between">
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-sm font-medium">{day}</span>
+              {getWeatherIcon(weatherType)}
+            </div>
+            <Badge 
+              className={`text-xs ${getCrowdColor(crowdLevel)} w-fit mx-auto`}
+              variant="secondary"
+            >
+              {getCrowdLabel(crowdLevel)}
+            </Badge>
+          </div>
+        </div>
+      )
+    })
+  }
+
   const renderCalendarDays = (): React.ReactElement[] => {
     const daysInMonth = getDaysInMonth(currentMonth, currentYear)
     const firstDay = getFirstDayOfMonth(currentMonth, currentYear)
@@ -195,17 +270,20 @@ export function CrowdCalendar({ parkId }: CrowdCalendarProps) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigateMonth('prev')}
+                onClick={() => isMobile ? navigateDay('prev') : navigateMonth('prev')}
               >
                 <ArrowLeft size={16} />
               </Button>
               <h3 className="text-lg font-semibold min-w-[180px] text-center">
-                {monthNames[currentMonth]} {currentYear}
+                {isMobile 
+                  ? `${monthNames[currentMonth]} ${currentDate}, ${currentYear}`
+                  : `${monthNames[currentMonth]} ${currentYear}`
+                }
               </h3>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigateMonth('next')}
+                onClick={() => isMobile ? navigateDay('next') : navigateMonth('next')}
               >
                 <ArrowRight size={16} />
               </Button>
@@ -214,18 +292,28 @@ export function CrowdCalendar({ parkId }: CrowdCalendarProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="grid grid-cols-7 gap-2 text-center text-sm font-medium text-muted-foreground">
-              <div>Sun</div>
-              <div>Mon</div>
-              <div>Tue</div>
-              <div>Wed</div>
-              <div>Thu</div>
-              <div>Fri</div>
-              <div>Sat</div>
-            </div>
-            <div className="grid grid-cols-7 gap-2">
-              {renderCalendarDays()}
-            </div>
+            {isMobile ? (
+              // Mobile view: 5 days in a row
+              <div className="flex gap-2 overflow-x-auto">
+                {renderMobileDays()}
+              </div>
+            ) : (
+              // Desktop view: Full month calendar
+              <>
+                <div className="grid grid-cols-7 gap-2 text-center text-sm font-medium text-muted-foreground">
+                  <div>Sun</div>
+                  <div>Mon</div>
+                  <div>Tue</div>
+                  <div>Wed</div>
+                  <div>Thu</div>
+                  <div>Fri</div>
+                  <div>Sat</div>
+                </div>
+                <div className="grid grid-cols-7 gap-2">
+                  {renderCalendarDays()}
+                </div>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
