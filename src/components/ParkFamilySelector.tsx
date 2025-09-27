@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { MapPin, CaretDown } from '@phosphor-icons/react'
 import { parkFamilies } from '@/data/sampleData'
@@ -15,7 +16,8 @@ interface ParkFamilySelectorProps {
 export function ParkFamilySelector({ selectedFamily, selectedParks, onFamilyChange, onParksChange }: ParkFamilySelectorProps) {
   const [showParkFilter, setShowParkFilter] = useState(false)
   const currentFamily = parkFamilies.find(family => family.id === selectedFamily)
-  const themeParks = currentFamily?.parks.filter(park => park.type === 'theme-park') || []
+  // Include both theme parks and water parks for crowd calendar
+  const allParks = currentFamily?.parks || []
 
   const handleParkToggle = (parkId: string, checked: boolean) => {
     if (checked) {
@@ -26,7 +28,7 @@ export function ParkFamilySelector({ selectedFamily, selectedParks, onFamilyChan
   }
 
   const handleSelectAll = () => {
-    onParksChange(themeParks.map(park => park.id))
+    onParksChange(allParks.map(park => park.id))
   }
 
   const handleDeselectAll = () => {
@@ -74,7 +76,7 @@ export function ParkFamilySelector({ selectedFamily, selectedParks, onFamilyChan
       </div>
 
       {/* Park Filter */}
-      {themeParks.length > 1 && (
+      {allParks.length > 1 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium text-foreground">
@@ -98,7 +100,7 @@ export function ParkFamilySelector({ selectedFamily, selectedParks, onFamilyChan
                   variant="outline"
                   size="sm"
                   onClick={handleSelectAll}
-                  disabled={selectedParks.length === themeParks.length}
+                  disabled={selectedParks.length === allParks.length}
                 >
                   Select All
                 </Button>
@@ -113,7 +115,7 @@ export function ParkFamilySelector({ selectedFamily, selectedParks, onFamilyChan
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {themeParks.map((park) => (
+                {allParks.map((park) => (
                   <div key={park.id} className="flex items-center space-x-2">
                     <Checkbox
                       id={park.id}
@@ -122,9 +124,14 @@ export function ParkFamilySelector({ selectedFamily, selectedParks, onFamilyChan
                     />
                     <label
                       htmlFor={park.id}
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-2"
                     >
                       {park.name}
+                      {park.type === 'water-park' && (
+                        <Badge variant="secondary" className="text-xs">
+                          Water Park
+                        </Badge>
+                      )}
                     </label>
                   </div>
                 ))}

@@ -31,12 +31,13 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
   }, [])
 
   const family = parkFamilies.find(f => f.id === familyId)
-  const allThemeParks = family?.parks.filter(park => park.type === 'theme-park') || []
+  // Include both theme parks and water parks in crowd calendar
+  const allParks = family?.parks || []
   
   // Filter parks based on selection - if no parks selected, show all
-  const themeParks = selectedParks.length === 0 
-    ? allThemeParks 
-    : allThemeParks.filter(park => selectedParks.includes(park.id))
+  const displayParks = selectedParks.length === 0 
+    ? allParks 
+    : allParks.filter(park => selectedParks.includes(park.id))
 
   const getDaysInMonth = (month: number, year: number): number => {
     return new Date(year, month + 1, 0).getDate()
@@ -94,10 +95,10 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
 
   // Calculate overall busy-ness for a day (average of all parks)
   const getOverallCrowdLevel = (date: number): number => {
-    const totalCrowd = themeParks.reduce((sum, park) => {
+    const totalCrowd = displayParks.reduce((sum, park) => {
       return sum + getCrowdLevel(date, park.id)
     }, 0)
-    return Math.round(totalCrowd / themeParks.length)
+    return Math.round(totalCrowd / displayParks.length)
   }
 
   // Get background color for day card based on overall busy-ness
@@ -179,12 +180,12 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
               <span className="text-sm font-medium">{day}</span>
             </div>
             <div className="flex-1 space-y-1.5">
-              {themeParks.slice(0, 3).map((park) => {
+              {displayParks.slice(0, 3).map((park) => {
                 const crowdLevel = getCrowdLevel(day, park.id)
                 return (
                   <div key={park.id} className="flex flex-col text-xs gap-1">
                     <span className="text-muted-foreground truncate" title={park.shortName}>
-                      {park.shortName}
+                      {park.shortName} {park.type === 'water-park' && '💧'}
                     </span>
                     <div className="flex items-center gap-1">
                       <span className="font-medium text-foreground text-xs">({crowdLevel})</span>
@@ -198,9 +199,9 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                   </div>
                 )
               })}
-              {themeParks.length > 3 && (
+              {displayParks.length > 3 && (
                 <div className="text-xs text-muted-foreground text-center pt-1">
-                  +{themeParks.length - 3} more
+                  +{displayParks.length - 3} more
                 </div>
               )}
             </div>
@@ -237,13 +238,13 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                   <span className="text-sm font-medium">{day}</span>
                 </div>
                 <div className="flex-1 space-y-1.5">
-                  {themeParks.slice(0, 4).map((park) => {
+                  {displayParks.slice(0, 4).map((park) => {
                     try {
                       const crowdLevel = getCrowdLevel(day, park.id)
                       return (
                         <div key={park.id} className="flex items-center justify-between text-xs gap-2">
                           <span className="text-muted-foreground truncate min-w-0" title={`${park.shortName} (${crowdLevel})`}>
-                            {park.shortName}
+                            {park.shortName} {park.type === 'water-park' && '💧'}
                           </span>
                           <div className="flex items-center gap-1 shrink-0">
                             <span className="font-medium text-foreground">({crowdLevel})</span>
@@ -261,7 +262,7 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                       return (
                         <div key={park.id} className="flex items-center justify-between text-xs gap-2">
                           <span className="text-muted-foreground truncate min-w-0" title={park.shortName}>
-                            {park.shortName}
+                            {park.shortName} {park.type === 'water-park' && '💧'}
                           </span>
                           <Badge className="text-xs px-2 py-0.5 bg-muted text-muted-foreground min-w-[70px] text-center shrink-0">
                             --
@@ -270,9 +271,9 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                       )
                     }
                   })}
-                  {themeParks.length > 4 && (
+                  {displayParks.length > 4 && (
                     <div className="text-xs text-muted-foreground text-center pt-1">
-                      +{themeParks.length - 4} more
+                      +{displayParks.length - 4} more
                     </div>
                   )}
                 </div>
@@ -412,14 +413,14 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
         </CardContent>
       </Card>
 
-      {/* Park Legend - Always shows all theme parks */}
-      {allThemeParks.length > 0 && (
+      {/* Park Legend - Always shows all parks (both theme and water) */}
+      {allParks.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">
               Parks in {family.name}
               <span className="text-sm font-normal text-muted-foreground ml-2">
-                ({allThemeParks.length} park{allThemeParks.length !== 1 ? 's' : ''})
+                ({allParks.length} park{allParks.length !== 1 ? 's' : ''})
               </span>
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
@@ -428,14 +429,16 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {allThemeParks.map((park) => (
+              {allParks.map((park) => (
                 <div 
                   key={park.id} 
                   className="flex items-center space-x-2 cursor-pointer hover:bg-muted rounded-md p-2 transition-colors"
                   onClick={() => navigate(`/park/${park.id}?tab=crowd-calendar`)}
                 >
-                  <div className="w-2 h-2 bg-primary rounded-full" />
-                  <span className="text-sm hover:text-primary transition-colors">{park.shortName}</span>
+                  <div className={`w-2 h-2 rounded-full ${park.type === 'water-park' ? 'bg-secondary' : 'bg-primary'}`} />
+                  <span className="text-sm hover:text-primary transition-colors">
+                    {park.shortName} {park.type === 'water-park' && '💧'}
+                  </span>
                 </div>
               ))}
             </div>
