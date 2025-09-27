@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useKV } from '@github/spark/hooks'
 import { Header } from '@/components/Header'
 import { AuthModal } from '@/components/AuthModal'
@@ -89,7 +89,7 @@ function App() {
   }
 
   return (
-    <Router>
+    <BrowserRouter>
       <div className="min-h-screen bg-background">
         <Header 
           user={currentUser ?? null}
@@ -144,7 +144,7 @@ function App() {
         {/* Toast notifications container */}
         <Toaster position="top-right" richColors />
       </div>
-    </Router>
+    </BrowserRouter>
   )
 }
 
