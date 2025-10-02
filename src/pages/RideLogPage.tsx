@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useKV } from '@github/spark/hooks'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,6 +24,7 @@ interface RideLogPageProps {
 export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const { parkId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [attractions, setAttractions] = useState<Record<string, ExtendedAttraction[]>>({})
   const [currentTrip, setCurrentTrip] = useKV<Trip | null>(
     user ? `current-trip-${user.id}` : 'current-trip-anonymous', 
@@ -37,6 +38,10 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [tripNotes, setTripNotes] = useState('')
   const [activePark, setActivePark] = useState<string>(parkId || '')
+
+  // Get attraction ID from URL search params
+  const searchParams = new URLSearchParams(location.search)
+  const preselectedAttractionId = searchParams.get('attraction')
 
   // Get park info for the initial park (if coming from park page)
   const initialParkInfo = parkFamilies
@@ -56,6 +61,22 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setIsLoading(false)
     }
   }, [user, parkId])
+
+  // Pre-select attraction if specified in URL
+  useEffect(() => {
+    if (preselectedAttractionId && parkId && attractions[parkId]) {
+      const attractionKey = `${parkId}-${preselectedAttractionId}`
+      // Check if the attraction exists in the loaded data
+      const attraction = attractions[parkId].find(a => a.id === preselectedAttractionId)
+      if (attraction && !rideCounts[attractionKey]) {
+        setRideCounts(prev => ({
+          ...prev,
+          [attractionKey]: 1
+        }))
+        toast.success(`Pre-selected ${attraction.name} for logging`)
+      }
+    }
+  }, [preselectedAttractionId, parkId, attractions, rideCounts])
 
   const loadAttractionsForPark = async (targetParkId: string) => {
     setIsLoading(true)

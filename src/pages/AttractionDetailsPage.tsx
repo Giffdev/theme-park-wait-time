@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, Clock, TrendUp, Calendar } from '@phosphor-icons/react'
+import { ArrowLeft, Clock, TrendUp, Calendar, Plus } from '@phosphor-icons/react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { parkFamilies } from '@/data/sampleData'
 import { formatTime12Hour, formatChartTimestamp } from '@/utils/timeFormat'
@@ -312,7 +312,7 @@ export function AttractionDetailsPage() {
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-4">
           <Button 
             variant="outline" 
@@ -328,10 +328,20 @@ export function AttractionDetailsPage() {
           </div>
         </div>
         
-        <Badge className={getStatusColor(attraction.currentWaitTime)}>
-          <Clock className="w-4 h-4 mr-1" />
-          {attraction.currentWaitTime} min - {getStatusText(attraction.currentWaitTime)}
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={() => navigate(`/park/${parkId}/log?attraction=${attractionId}`)}
+            className="bg-accent hover:bg-accent/90 text-accent-foreground"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Log Wait Time
+          </Button>
+          
+          <Badge className={getStatusColor(attraction.currentWaitTime)}>
+            <Clock className="w-4 h-4 mr-1" />
+            {attraction.currentWaitTime} min - {getStatusText(attraction.currentWaitTime)}
+          </Badge>
+        </div>
       </div>
 
       {/* Time Range Selector */}
