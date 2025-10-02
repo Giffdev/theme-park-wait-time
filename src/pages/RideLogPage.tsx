@@ -9,11 +9,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, Plus, Minus, Calendar, Clock, Star, Ticket, Users } from '@phosphor-icons/react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { ArrowLeft, Plus, Minus, Calendar, Clock, Star, Ticket, Users, MapPin } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import type { User } from '@/App'
-import type { RideLog, ParkVisit, ExtendedAttraction } from '@/types'
-import { parkFamilies } from '@/data/sampleData'
+import type { RideLog, Trip, TripPark, ExtendedAttraction } from '@/types'
+import { parkFamilies, ParkFamily, ParkInfo } from '@/data/sampleData'
 
 interface RideLogPageProps {
   user: User | null
@@ -23,15 +24,19 @@ interface RideLogPageProps {
 export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const { parkId } = useParams()
   const navigate = useNavigate()
-  const [attractions, setAttractions] = useState<ExtendedAttraction[]>([])
-  const [currentVisit, setCurrentVisit] = useKV<ParkVisit | null>(`current-visit-${user?.id}`, null)
-  const [rideCounts, setRideCounts] = useState<Record<string, number>>({})
+  const [attractions, setAttractions] = useState<Record<string, ExtendedAttraction[]>>({})
+  const [currentTrip, setCurrentTrip] = useKV<Trip | null>(`current-trip-${user?.id}`, null)
+  const [rideCounts, setRideCounts] = useState<Record<string, number>>({}) // key: "parkId-attractionId"
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [visitDate, setVisitDate] = useState(new Date().toISOString().split('T')[0])
+  const [selectedParks, setSelectedParks] = useState<string[]>(parkId ? [parkId] : [])
   const [isLoading, setIsLoading] = useState(true)
+  const [tripNotes, setTripNotes] = useState('')
+  const [activePark, setActivePark] = useState<string>(parkId || '')
 
-  const parkInfo = parkFamilies
+  // Get park info for the initial park (if coming from park page)
+  const initialParkInfo = parkFamilies
     .flatMap(family => family.parks.map(park => ({ ...park, familyId: family.id, familyName: family.name })))
     .find(park => park.id === parkId)
 
@@ -41,20 +46,23 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       return
     }
 
-    loadAttractions()
+    if (parkId) {
+      loadAttractionsForPark(parkId)
+    }
   }, [user, parkId])
 
-  const loadAttractions = async () => {
-    if (!parkId) return
-
+  const loadAttractionsForPark = async (targetParkId: string) => {
     setIsLoading(true)
     try {
-      const attractionData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
+      const attractionData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${targetParkId}`)
       if (attractionData && Array.isArray(attractionData) && attractionData.length > 0) {
-        setAttractions(attractionData)
-        console.log(`✅ Loaded ${attractionData.length} attractions for ${parkId}`)
+        setAttractions(prev => ({
+          ...prev,
+          [targetParkId]: attractionData
+        }))
+        console.log(`✅ Loaded ${attractionData.length} attractions for ${targetParkId}`)
       } else {
-        console.warn(`⚠️ No attractions found for park ${parkId}`)
+        console.warn(`⚠️ No attractions found for park ${targetParkId}`)
         toast.error(`No attractions found for this park. Please try again or contact support.`)
       }
     } catch (error) {
@@ -64,52 +72,91 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     setIsLoading(false)
   }
 
-  const updateRideCount = (attractionId: string, change: number) => {
+  const loadAllSelectedParksAttractions = async (parks: string[]) => {
+    setIsLoading(true)
+    const newAttractions: Record<string, ExtendedAttraction[]> = {}
+    
+    for (const parkId of parks) {
+      try {
+        const attractionData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
+        if (attractionData && Array.isArray(attractionData) && attractionData.length > 0) {
+          newAttractions[parkId] = attractionData
+        }
+      } catch (error) {
+        console.error(`Failed to load attractions for ${parkId}:`, error)
+      }
+    }
+    
+    setAttractions(newAttractions)
+    setIsLoading(false)
+  }
+
+  const updateRideCount = (parkId: string, attractionId: string, change: number) => {
+    const key = `${parkId}-${attractionId}`
     setRideCounts(prev => ({
       ...prev,
-      [attractionId]: Math.max(0, (prev[attractionId] || 0) + change)
+      [key]: Math.max(0, (prev[key] || 0) + change)
     }))
   }
 
-  const startNewVisit = async () => {
-    if (!user || !parkId || !parkInfo) return
+  const startNewTrip = async () => {
+    if (!user || selectedParks.length === 0) return
 
-    const newVisit: ParkVisit = {
-      id: `visit-${user.id}-${parkId}-${Date.now()}`,
+    // Load attractions for all selected parks
+    await loadAllSelectedParksAttractions(selectedParks)
+
+    // Create trip parks data
+    const tripParks: TripPark[] = selectedParks.map(parkId => {
+      const parkInfo = parkFamilies
+        .flatMap(family => family.parks.map(park => ({ ...park, familyId: family.id, familyName: family.name })))
+        .find(park => park.id === parkId)
+      
+      return {
+        parkId,
+        parkName: parkInfo?.name || parkId,
+        rideCount: 0
+      }
+    })
+
+    const newTrip: Trip = {
+      id: `trip-${user.id}-${Date.now()}`,
       userId: user.id,
-      parkId,
-      parkName: parkInfo.name,
       visitDate,
+      parks: tripParks,
       rideLogs: [],
+      totalRides: 0,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      notes: tripNotes
     }
 
-    setCurrentVisit(newVisit)
-    toast.success(`Started logging for ${parkInfo.name}!`)
+    setCurrentTrip(newTrip)
+    setActivePark(selectedParks[0]) // Set first park as active
+    toast.success(`Started trip log for ${selectedParks.length} park${selectedParks.length > 1 ? 's' : ''}!`)
   }
 
-  const saveRideLogs = async () => {
-    if (!user || !currentVisit) return
+  const saveTrip = async () => {
+    if (!user || !currentTrip) return
 
     const logsToSave: RideLog[] = []
 
-    Object.entries(rideCounts).forEach(([attractionId, count]) => {
+    Object.entries(rideCounts).forEach(([key, count]) => {
       if (count > 0) {
-        const attraction = attractions.find(a => a.id === attractionId)
+        const [parkId, attractionId] = key.split('-')
+        const attraction = attractions[parkId]?.find(a => a.id === attractionId)
         if (attraction) {
           const rideLog: RideLog = {
-            id: `log-${user.id}-${attractionId}-${Date.now()}`,
+            id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             userId: user.id,
-            parkId: currentVisit.parkId,
+            tripId: currentTrip.id,
+            parkId,
             attractionId,
             attractionName: attraction.name,
             attractionType: attraction.type,
             rideCount: count,
-            trackVariant: selectedVariants[attractionId],
+            trackVariant: selectedVariants[key],
             loggedAt: new Date().toISOString(),
-            visitDate: currentVisit.visitDate,
-            notes: notes[attractionId]
+            notes: notes[key]
           }
           logsToSave.push(rideLog)
         }
@@ -121,33 +168,58 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       return
     }
 
-    const updatedVisit: ParkVisit = {
-      ...currentVisit,
+    // Update park ride counts
+    const updatedParks = currentTrip.parks.map(park => ({
+      ...park,
+      rideCount: logsToSave.filter(log => log.parkId === park.parkId).reduce((sum, log) => sum + log.rideCount, 0)
+    }))
+
+    const updatedTrip: Trip = {
+      ...currentTrip,
+      parks: updatedParks,
       rideLogs: logsToSave,
-      updatedAt: new Date().toISOString()
+      totalRides: logsToSave.reduce((sum, log) => sum + log.rideCount, 0),
+      updatedAt: new Date().toISOString(),
+      notes: tripNotes
     }
 
     try {
-      // Save the visit
-      await window.spark.kv.set(`park-visit-${updatedVisit.id}`, updatedVisit)
+      // Save the trip
+      await window.spark.kv.set(`trip-${updatedTrip.id}`, updatedTrip)
       
-      // Update user's visit history
-      const userVisits = await window.spark.kv.get<string[]>(`user-visits-${user.id}`) || []
-      if (!userVisits.includes(updatedVisit.id)) {
-        userVisits.push(updatedVisit.id)
-        await window.spark.kv.set(`user-visits-${user.id}`, userVisits)
+      // Update user's trip history
+      const userTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
+      if (!userTrips.includes(updatedTrip.id)) {
+        userTrips.push(updatedTrip.id)
+        await window.spark.kv.set(`user-trips-${user.id}`, userTrips)
       }
 
-      setCurrentVisit(null)
+      setCurrentTrip(null)
       setRideCounts({})
       setSelectedVariants({})
       setNotes({})
+      setTripNotes('')
       
-      toast.success(`Saved ${logsToSave.length} ride logs!`)
+      toast.success(`Saved trip with ${logsToSave.length} ride logs across ${updatedParks.length} parks!`)
       navigate('/my-logs')
     } catch (error) {
-      console.error('Failed to save ride logs:', error)
-      toast.error('Failed to save your ride logs')
+      console.error('Failed to save trip:', error)
+      toast.error('Failed to save your trip')
+    }
+  }
+
+  const handleParkSelection = (parkId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedParks(prev => [...prev, parkId])
+    } else {
+      setSelectedParks(prev => prev.filter(id => id !== parkId))
+      // Clear ride counts for this park
+      const keysToRemove = Object.keys(rideCounts).filter(key => key.startsWith(`${parkId}-`))
+      setRideCounts(prev => {
+        const updated = { ...prev }
+        keysToRemove.forEach(key => delete updated[key])
+        return updated
+      })
     }
   }
 
@@ -171,7 +243,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     )
   }
 
-  if (isLoading) {
+  if (isLoading && Object.keys(attractions).length === 0) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-center">
@@ -182,36 +254,8 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     )
   }
 
-  if (attractions.length === 0) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle>No Attractions Found</CardTitle>
-            <CardDescription>
-              Unable to load attractions for this park. This might be a temporary issue.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center space-y-4">
-            <Button onClick={loadAttractions}>
-              Try Again
-            </Button>
-            <Button variant="outline" onClick={() => navigate(`/park/${parkId}`)}>
-              Back to Park Overview
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  const activeAttractions = attractions.filter(a => !a.isDefunct)
-  const defunctAttractions = attractions.filter(a => a.isDefunct)
-  const seasonalAttractions = activeAttractions.filter(a => a.isSeasonal)
-  const regularAttractions = activeAttractions.filter(a => !a.isSeasonal)
-
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="container mx-auto px-4 py-8 max-w-6xl">
       <div className="flex items-center gap-4 mb-6">
         <Button 
           variant="ghost" 
@@ -219,31 +263,31 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
           asChild
           className="hover:bg-muted"
         >
-          <Link to={`/park/${parkId}`}>
+          <Link to={parkId ? `/park/${parkId}` : '/'}>
             <ArrowLeft size={16} className="mr-2" />
-            Back to Park
+            {parkId ? 'Back to Park' : 'Back to Home'}
           </Link>
         </Button>
         <div>
-          <h1 className="text-3xl font-bold">Log Your Rides</h1>
+          <h1 className="text-3xl font-bold">Log Your Park Trip</h1>
           <p className="text-muted-foreground">
-            Track your park experience at {parkInfo?.name}
+            Track your rides across multiple parks in a single trip
           </p>
         </div>
       </div>
 
-      {!currentVisit ? (
+      {!currentTrip ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar size={20} />
-              Start Your Visit Log
+              Start Your Trip Log
             </CardTitle>
             <CardDescription>
-              Begin tracking your rides and experiences for today
+              Select your visit date and the parks you plan to visit
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div>
               <Label htmlFor="visit-date">Visit Date</Label>
               <Input
@@ -254,8 +298,49 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                 max={new Date().toISOString().split('T')[0]}
               />
             </div>
-            <Button onClick={startNewVisit} className="w-full">
-              Start Logging Rides
+
+            <div>
+              <Label>Select Parks to Visit</Label>
+              <div className="mt-2 space-y-4">
+                {parkFamilies.map(family => (
+                  <div key={family.id} className="space-y-2">
+                    <h3 className="font-semibold text-sm text-muted-foreground">{family.name}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pl-4">
+                      {family.parks.map(park => (
+                        <div key={park.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={park.id}
+                            checked={selectedParks.includes(park.id)}
+                            onCheckedChange={(checked) => handleParkSelection(park.id, checked as boolean)}
+                          />
+                          <Label htmlFor={park.id} className="text-sm cursor-pointer">
+                            {park.name}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="trip-notes">Trip Notes (optional)</Label>
+              <Textarea
+                id="trip-notes"
+                placeholder="Add any notes about your trip..."
+                value={tripNotes}
+                onChange={(e) => setTripNotes(e.target.value)}
+                rows={3}
+              />
+            </div>
+
+            <Button 
+              onClick={startNewTrip} 
+              className="w-full"
+              disabled={selectedParks.length === 0}
+            >
+              Start Trip Log ({selectedParks.length} park{selectedParks.length !== 1 ? 's' : ''} selected)
             </Button>
           </CardContent>
         </Card>
@@ -266,104 +351,200 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2">
                   <Ticket size={20} />
-                  Current Visit - {new Date(currentVisit.visitDate).toLocaleDateString()}
+                  Trip - {new Date(currentTrip.visitDate).toLocaleDateString()}
                 </span>
                 <Badge variant="secondary">
                   {Object.values(rideCounts).reduce((sum, count) => sum + count, 0)} rides logged
                 </Badge>
               </CardTitle>
+              <CardDescription>
+                Parks: {currentTrip.parks.map(p => p.parkName).join(', ')}
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex gap-2">
-                <Button onClick={saveRideLogs} disabled={Object.values(rideCounts).every(count => count === 0)}>
-                  Save Visit Log
+              <div className="flex gap-2 mb-4">
+                <Button onClick={saveTrip} disabled={Object.values(rideCounts).every(count => count === 0)}>
+                  Save Trip
                 </Button>
                 <Button 
                   variant="outline" 
                   onClick={() => {
-                    setCurrentVisit(null)
+                    setCurrentTrip(null)
                     setRideCounts({})
                     setSelectedVariants({})
                     setNotes({})
+                    setTripNotes('')
                   }}
                 >
-                  Cancel
+                  Cancel Trip
                 </Button>
+              </div>
+
+              {currentTrip.notes && (
+                <div>
+                  <Label>Trip Notes</Label>
+                  <Textarea
+                    value={tripNotes}
+                    onChange={(e) => setTripNotes(e.target.value)}
+                    rows={2}
+                    className="mt-1"
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Park Selection Tabs */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin size={20} />
+                Select Park to Log Rides
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {currentTrip.parks.map(park => (
+                  <Button
+                    key={park.parkId}
+                    variant={activePark === park.parkId ? "default" : "outline"}
+                    onClick={() => setActivePark(park.parkId)}
+                    className="flex items-center gap-2"
+                  >
+                    {park.parkName}
+                    {Object.entries(rideCounts)
+                      .filter(([key]) => key.startsWith(`${park.parkId}-`))
+                      .reduce((sum, [, count]) => sum + count, 0) > 0 && (
+                      <Badge variant="secondary" className="ml-1">
+                        {Object.entries(rideCounts)
+                          .filter(([key]) => key.startsWith(`${park.parkId}-`))
+                          .reduce((sum, [, count]) => sum + count, 0)}
+                      </Badge>
+                    )}
+                  </Button>
+                ))}
               </div>
             </CardContent>
           </Card>
 
-          <Tabs defaultValue="regular" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="regular">Active Attractions</TabsTrigger>
-              {seasonalAttractions.length > 0 && (
-                <TabsTrigger value="seasonal">Seasonal</TabsTrigger>
-              )}
-              {defunctAttractions.length > 0 && (
-                <TabsTrigger value="defunct">Defunct/Historical</TabsTrigger>
-              )}
-            </TabsList>
-
-            <TabsContent value="regular" className="space-y-4">
-              {regularAttractions.map(attraction => (
-                <RideLogCard
-                  key={attraction.id}
-                  attraction={attraction}
-                  count={rideCounts[attraction.id] || 0}
-                  selectedVariant={selectedVariants[attraction.id]}
-                  notes={notes[attraction.id] || ''}
-                  onCountChange={(change) => updateRideCount(attraction.id, change)}
-                  onVariantChange={(variant) => setSelectedVariants(prev => ({ ...prev, [attraction.id]: variant }))}
-                  onNotesChange={(note) => setNotes(prev => ({ ...prev, [attraction.id]: note }))}
-                />
-              ))}
-            </TabsContent>
-
-            {seasonalAttractions.length > 0 && (
-              <TabsContent value="seasonal" className="space-y-4">
-                {seasonalAttractions.map(attraction => (
-                  <RideLogCard
-                    key={attraction.id}
-                    attraction={attraction}
-                    count={rideCounts[attraction.id] || 0}
-                    selectedVariant={selectedVariants[attraction.id]}
-                    notes={notes[attraction.id] || ''}
-                    onCountChange={(change) => updateRideCount(attraction.id, change)}
-                    onVariantChange={(variant) => setSelectedVariants(prev => ({ ...prev, [attraction.id]: variant }))}
-                    onNotesChange={(note) => setNotes(prev => ({ ...prev, [attraction.id]: note }))}
-                  />
-                ))}
-              </TabsContent>
-            )}
-
-            {defunctAttractions.length > 0 && (
-              <TabsContent value="defunct" className="space-y-4">
-                <div className="text-sm text-muted-foreground mb-4">
-                  These attractions are no longer operating but can still be logged for historical visits
-                </div>
-                {defunctAttractions.map(attraction => (
-                  <RideLogCard
-                    key={attraction.id}
-                    attraction={attraction}
-                    count={rideCounts[attraction.id] || 0}
-                    selectedVariant={selectedVariants[attraction.id]}
-                    notes={notes[attraction.id] || ''}
-                    onCountChange={(change) => updateRideCount(attraction.id, change)}
-                    onVariantChange={(variant) => setSelectedVariants(prev => ({ ...prev, [attraction.id]: variant }))}
-                    onNotesChange={(note) => setNotes(prev => ({ ...prev, [attraction.id]: note }))}
-                    isDefunct
-                  />
-                ))}
-              </TabsContent>
-            )}
-          </Tabs>
+          {/* Attractions for Active Park */}
+          {activePark && attractions[activePark] && (
+            <AttractionsForPark
+              parkId={activePark}
+              attractions={attractions[activePark]}
+              rideCounts={rideCounts}
+              selectedVariants={selectedVariants}
+              notes={notes}
+              onUpdateRideCount={updateRideCount}
+              onVariantChange={(key, variant) => setSelectedVariants(prev => ({ ...prev, [key]: variant }))}
+              onNotesChange={(key, note) => setNotes(prev => ({ ...prev, [key]: note }))}
+            />
+          )}
         </div>
       )}
     </div>
   )
 }
 
+interface AttractionsForParkProps {
+  parkId: string
+  attractions: ExtendedAttraction[]
+  rideCounts: Record<string, number>
+  selectedVariants: Record<string, string>
+  notes: Record<string, string>
+  onUpdateRideCount: (parkId: string, attractionId: string, change: number) => void
+  onVariantChange: (key: string, variant: string) => void
+  onNotesChange: (key: string, notes: string) => void
+}
+
+function AttractionsForPark({
+  parkId,
+  attractions,
+  rideCounts,
+  selectedVariants,
+  notes,
+  onUpdateRideCount,
+  onVariantChange,
+  onNotesChange
+}: AttractionsForParkProps) {
+  const activeAttractions = attractions.filter(a => !a.isDefunct)
+  const defunctAttractions = attractions.filter(a => a.isDefunct)
+  const seasonalAttractions = activeAttractions.filter(a => a.isSeasonal)
+  const regularAttractions = activeAttractions.filter(a => !a.isSeasonal)
+
+  return (
+    <Tabs defaultValue="regular" className="space-y-4">
+      <TabsList>
+        <TabsTrigger value="regular">Active Attractions</TabsTrigger>
+        {seasonalAttractions.length > 0 && (
+          <TabsTrigger value="seasonal">Seasonal</TabsTrigger>
+        )}
+        {defunctAttractions.length > 0 && (
+          <TabsTrigger value="defunct">Defunct/Historical</TabsTrigger>
+        )}
+      </TabsList>
+
+      <TabsContent value="regular" className="space-y-4">
+        {regularAttractions.map(attraction => (
+          <RideLogCard
+            key={`${parkId}-${attraction.id}`}
+            parkId={parkId}
+            attraction={attraction}
+            count={rideCounts[`${parkId}-${attraction.id}`] || 0}
+            selectedVariant={selectedVariants[`${parkId}-${attraction.id}`]}
+            notes={notes[`${parkId}-${attraction.id}`] || ''}
+            onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
+            onVariantChange={(variant) => onVariantChange(`${parkId}-${attraction.id}`, variant)}
+            onNotesChange={(note) => onNotesChange(`${parkId}-${attraction.id}`, note)}
+          />
+        ))}
+      </TabsContent>
+
+      {seasonalAttractions.length > 0 && (
+        <TabsContent value="seasonal" className="space-y-4">
+          {seasonalAttractions.map(attraction => (
+            <RideLogCard
+              key={`${parkId}-${attraction.id}`}
+              parkId={parkId}
+              attraction={attraction}
+              count={rideCounts[`${parkId}-${attraction.id}`] || 0}
+              selectedVariant={selectedVariants[`${parkId}-${attraction.id}`]}
+              notes={notes[`${parkId}-${attraction.id}`] || ''}
+              onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
+              onVariantChange={(variant) => onVariantChange(`${parkId}-${attraction.id}`, variant)}
+              onNotesChange={(note) => onNotesChange(`${parkId}-${attraction.id}`, note)}
+            />
+          ))}
+        </TabsContent>
+      )}
+
+      {defunctAttractions.length > 0 && (
+        <TabsContent value="defunct" className="space-y-4">
+          <div className="text-sm text-muted-foreground mb-4">
+            These attractions are no longer operating but can still be logged for historical visits
+          </div>
+          {defunctAttractions.map(attraction => (
+            <RideLogCard
+              key={`${parkId}-${attraction.id}`}
+              parkId={parkId}
+              attraction={attraction}
+              count={rideCounts[`${parkId}-${attraction.id}`] || 0}
+              selectedVariant={selectedVariants[`${parkId}-${attraction.id}`]}
+              notes={notes[`${parkId}-${attraction.id}`] || ''}
+              onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
+              onVariantChange={(variant) => onVariantChange(`${parkId}-${attraction.id}`, variant)}
+              onNotesChange={(note) => onNotesChange(`${parkId}-${attraction.id}`, note)}
+              isDefunct
+            />
+          ))}
+        </TabsContent>
+      )}
+    </Tabs>
+  )
+}
+
 interface RideLogCardProps {
+  parkId: string
   attraction: ExtendedAttraction
   count: number
   selectedVariant?: string
@@ -375,6 +556,7 @@ interface RideLogCardProps {
 }
 
 function RideLogCard({ 
+  parkId,
   attraction, 
   count, 
   selectedVariant, 
@@ -450,7 +632,7 @@ function RideLogCard({
 
         {attraction.variants && attraction.variants.length > 0 && (
           <div className="mb-3">
-            <Label htmlFor={`variant-${attraction.id}`} className="text-sm">Track/Variant</Label>
+            <Label htmlFor={`variant-${parkId}-${attraction.id}`} className="text-sm">Track/Variant</Label>
             <Select value={selectedVariant || ''} onValueChange={onVariantChange}>
               <SelectTrigger>
                 <SelectValue placeholder="Select track/variant" />
@@ -468,9 +650,9 @@ function RideLogCard({
 
         {count > 0 && (
           <div>
-            <Label htmlFor={`notes-${attraction.id}`} className="text-sm">Notes (optional)</Label>
+            <Label htmlFor={`notes-${parkId}-${attraction.id}`} className="text-sm">Notes (optional)</Label>
             <Textarea
-              id={`notes-${attraction.id}`}
+              id={`notes-${parkId}-${attraction.id}`}
               placeholder="Add any notes about your experience..."
               value={notes}
               onChange={(e) => onNotesChange(e.target.value)}

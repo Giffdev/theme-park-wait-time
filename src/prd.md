@@ -31,19 +31,25 @@
 - "Log Your Rides" button for signed-in users
 - Back navigation to previous page
 
-**Ride Log Page** (`/park/:parkId/log`):
-- Comprehensive ride logging interface for signed-in users
-- Track rides, shows, and experiences with counts and variants
-- Separate sections for active, seasonal, and defunct attractions
-- Support for multi-track rides (variants)
-- Notes field for personal memories
-- Visit date selection and session management
+**Ride Log Page** (`/log` or `/park/:parkId/log`):
+- **Trip-based logging system** for signed-in users that supports multi-park visits
+- **Visit date selection** and ability to select multiple parks for a single trip
+- **Trip notes** for overall experience documentation
+- **Park-by-park logging** with tab switching between selected parks
+- **Comprehensive attraction tracking** with separate sections for active, seasonal, and defunct attractions
+- **Multi-track ride support** with variant selection (e.g. left/right track, different experiences)
+- **Individual ride notes** for personal memories and experiences
+- **Real-time ride counting** with increment/decrement controls
+- **Session management** with save/cancel functionality
 
 **My Ride Logs Page** (`/my-logs`):
-- Historical view of all user's park visits and ride logs
-- Search and filter by park, attraction type, or content
-- Statistics dashboard showing total rides, parks visited, etc.
-- Detailed view of each park visit with ride counts
+- **Dual view modes**: Trip-based view and All Rides aggregate view
+- **Trip management** with ability to view details, expand/collapse, and delete trips
+- **Cross-park trip display** showing multiple parks visited on the same date
+- **Advanced search and filtering** by park, attraction type, or content
+- **Statistics dashboard** showing total rides, parks visited, and total trips
+- **Historical timeline** sorted by visit date with detailed breakdowns
+- **Trip details** showing parks visited, ride counts per park, and individual attraction logs
 
 ## Essential Features
 

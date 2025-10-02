@@ -807,7 +807,7 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
     },
     {
       id: 'its-a-small-world',
-      name: 'it\'s a small world',
+      name: 'It\'s A Small World',
       type: 'family',
       currentWaitTime: 15,
       status: 'operating',
@@ -864,7 +864,7 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
     },
     {
       id: 'its-tough-bug',
-      name: 'it\'s tough to be a bug!',
+      name: 'It\'s Tough To Be A Bug!',
       type: 'show',
       currentWaitTime: 5,
       status: 'operating',
@@ -1166,7 +1166,7 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
     },
     {
       id: 'its-a-small-world-dl',
-      name: 'it\'s a small world',
+      name: 'It\'s A Small World',
       type: 'family',
       currentWaitTime: 15,
       status: 'operating',

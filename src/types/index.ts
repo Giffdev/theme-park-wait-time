@@ -40,6 +40,7 @@ export type UserContribution = {
 export type RideLog = {
   id: string
   userId: string
+  tripId: string // Links to the trip
   parkId: string
   attractionId: string
   attractionName: string
@@ -47,20 +48,29 @@ export type RideLog = {
   rideCount: number
   trackVariant?: string // For rides with multiple tracks
   loggedAt: string
-  visitDate: string // The date of the park visit
   notes?: string
 }
 
-export type ParkVisit = {
+export type Trip = {
   id: string
   userId: string
-  parkId: string
-  parkName: string
-  visitDate: string
-  rideLogs: RideLog[]
+  visitDate: string // The date of the trip
+  parks: TripPark[] // Multiple parks can be visited in one trip
+  rideLogs: RideLog[] // All ride logs for this trip
+  totalRides: number // Computed total
   createdAt: string
   updatedAt: string
+  notes?: string
 }
+
+export type TripPark = {
+  parkId: string
+  parkName: string
+  rideCount: number // Number of rides at this park for this trip
+}
+
+// Legacy type for backward compatibility
+export type ParkVisit = Trip
 
 export type AttractionVariant = {
   id: string

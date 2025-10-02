@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useKV } from '@github/spark/hooks'
 import { Header } from '@/components/Header'
 import { AuthModal } from '@/components/AuthModal'
-import { HomePage, ParkDetailsPage, AttractionDetailsPage, RideLogPage, MyRideLogsPage, CrowdCalendarPage } from '@/pages'
+import { HomePage, ParkDetailsPage, AttractionDetailsPage, RideLogPage, MyRideLogsPage, CrowdCalendarPage, ParkSelectorPage } from '@/pages'
 import { Toaster } from 'sonner'
 import { initializeSampleData } from '@/data/sampleData'
 
@@ -99,6 +99,7 @@ function App() {
         
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/parks" element={<ParkSelectorPage />} />
           <Route path="/calendar" element={<CrowdCalendarPage />} />
           <Route 
             path="/park/:parkId" 
@@ -112,6 +113,15 @@ function App() {
           <Route 
             path="/park/:parkId/attraction/:attractionId" 
             element={<AttractionDetailsPage />} 
+          />
+          <Route 
+            path="/log" 
+            element={
+              <RideLogPage 
+                user={currentUser ?? null}
+                onLoginRequired={() => setShowAuthModal(true)}
+              />
+            } 
           />
           <Route 
             path="/park/:parkId/log" 
