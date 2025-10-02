@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Clock, Plus, CheckCircle } from '@phosphor-icons/react'
+import { Clock, Plus, CheckCircle, X } from '@phosphor-icons/react'
 import { useKV } from '@github/spark/hooks'
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
@@ -35,6 +35,7 @@ export function QuickWaitTimeModal({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [addToTrip, setAddToTrip] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [isClosed, setIsClosed] = useState(false)
   const navigate = useNavigate()
 
   const [currentTrip, setCurrentTrip] = useKV<Trip | null>(
@@ -50,11 +51,17 @@ export function QuickWaitTimeModal({
       return
     }
 
-    const time = parseInt(waitTime)
-    
-    if (isNaN(time) || time < 0 || time > 300) {
-      toast.error('Please enter a valid wait time between 0 and 300 minutes')
-      return
+    // If ride is closed, treat as infinite wait time
+    let time: number
+    if (isClosed) {
+      time = -1 // Use -1 to represent closed/infinite wait
+    } else {
+      time = parseInt(waitTime)
+      
+      if (isNaN(time) || time < 0 || time > 300) {
+        toast.error('Please enter a valid wait time between 0 and 300 minutes')
+        return
+      }
     }
 
     setIsSubmitting(true)
@@ -69,7 +76,10 @@ export function QuickWaitTimeModal({
       await submitWaitTimeReport(time)
 
       setIsSuccess(true)
-      toast.success(`Wait time logged: ${time} minutes for ${attractionName}`)
+      const statusMessage = isClosed 
+        ? `Ride status logged as closed for ${attractionName}`
+        : `Wait time logged: ${time} minutes for ${attractionName}`
+      toast.success(statusMessage)
       
       // Auto-close after showing success
       setTimeout(() => {
@@ -138,7 +148,7 @@ export function QuickWaitTimeModal({
         attractionType: attraction?.type || 'experience',
         rideCount: 1,
         loggedAt: new Date().toISOString(),
-        notes: `Wait time: ${waitTimeMinutes} minutes`
+        notes: waitTimeMinutes === -1 ? 'Ride was closed' : `Wait time: ${waitTimeMinutes} minutes`
       }
 
       // Update the trip with the new ride log
@@ -181,6 +191,7 @@ export function QuickWaitTimeModal({
 
   const submitWaitTimeReport = async (waitTimeMinutes: number) => {
     // Submit to wait time reports system for crowd data
+    // waitTimeMinutes of -1 indicates the ride is closed
     const reportId = `report-${user!.id}-${attractionId}-${Date.now()}`
     const report = {
       id: reportId,
@@ -188,7 +199,7 @@ export function QuickWaitTimeModal({
       parkId,
       userId: user!.id,
       username: user!.username,
-      waitTime: waitTimeMinutes,
+      waitTime: waitTimeMinutes, // -1 for closed, actual minutes otherwise
       reportedAt: new Date().toISOString(),
       status: 'pending' as const,
       verifications: [],
@@ -216,7 +227,7 @@ export function QuickWaitTimeModal({
             <CheckCircle size={64} className="text-success mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">Wait Time Logged!</h3>
             <p className="text-muted-foreground mb-4">
-              {waitTime} minutes for {attractionName}
+              {isClosed ? `${attractionName} marked as closed` : `${waitTime} minutes for ${attractionName}`}
             </p>
             {addToTrip && (
               <p className="text-sm text-muted-foreground">
@@ -257,13 +268,31 @@ export function QuickWaitTimeModal({
               value={waitTime}
               onChange={(e) => setWaitTime(e.target.value)}
               placeholder="e.g. 25"
-              required
-              autoFocus
+              required={!isClosed}
+              disabled={isClosed}
+              autoFocus={!isClosed}
               className="text-center text-lg"
             />
             <p className="text-xs text-muted-foreground text-center">
               Enter 0 for walk-on, or actual wait time in line
             </p>
+          </div>
+
+          <div className="flex items-center space-x-2 p-3 bg-muted/30 rounded-lg">
+            <Checkbox
+              id="isClosed"
+              checked={isClosed}
+              onCheckedChange={(checked) => {
+                setIsClosed(checked as boolean)
+                if (checked) {
+                  setWaitTime('') // Clear wait time when marking as closed
+                }
+              }}
+            />
+            <Label htmlFor="isClosed" className="text-sm cursor-pointer flex items-center gap-2">
+              <X size={14} />
+              Ride is closed (infinite wait)
+            </Label>
           </div>
 
           {user && (
@@ -292,10 +321,10 @@ export function QuickWaitTimeModal({
             </Button>
             <Button 
               type="submit" 
-              disabled={isSubmitting || !waitTime}
+              disabled={isSubmitting || (!waitTime && !isClosed)}
               className="flex-1"
             >
-              {isSubmitting ? 'Logging...' : 'Log Wait Time'}
+              {isSubmitting ? 'Logging...' : (isClosed ? 'Log as Closed' : 'Log Wait Time')}
             </Button>
           </div>
         </form>

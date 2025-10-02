@@ -29,8 +29,9 @@ export function useReporting() {
         throw new Error('Missing required parameters for report submission')
       }
       
-      if (waitTime < 0 || waitTime > 300) {
-        throw new Error('Wait time must be between 0 and 300 minutes')
+      // Allow -1 for closed rides, otherwise must be 0-300 minutes
+      if (waitTime !== -1 && (waitTime < 0 || waitTime > 300)) {
+        throw new Error('Wait time must be between 0 and 300 minutes, or -1 for closed rides')
       }
 
       const newReport: WaitTimeReport = {
@@ -185,11 +186,24 @@ export function useReporting() {
 
     if (veryRecentReports.length === 0) return null
 
+    // Check if any recent reports indicate the ride is closed
+    const closedReports = veryRecentReports.filter(report => report.waitTime === -1)
+    
+    // If there are recent closed reports, return -1 (closed)
+    if (closedReports.length > 0) {
+      return -1
+    }
+
+    // Filter out closed reports for wait time calculation
+    const openReports = veryRecentReports.filter(report => report.waitTime !== -1)
+    
+    if (openReports.length === 0) return null
+
     // Weight reports by verification status and user trust level
     let weightedSum = 0
     let totalWeight = 0
 
-    veryRecentReports.forEach(report => {
+    openReports.forEach(report => {
       let weight = 1
 
       // Increase weight for verified reports
