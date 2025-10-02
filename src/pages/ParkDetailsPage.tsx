@@ -5,7 +5,6 @@ import { ParkSelector } from '@/components/ParkSelector'
 import { LiveWaitTimes } from '@/components/LiveWaitTimes'
 import { ParkDetailsOverview } from '@/components/ParkOverview'
 import { CrowdCalendar } from '@/components/CrowdCalendar'
-import { UserStats } from '@/components/UserStats'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { CaretLeft } from '@phosphor-icons/react'
@@ -145,12 +144,7 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
       </div>
 
 
-      {/* User Stats - Show only when logged in */}
-      {user && (
-        <div className="mb-6">
-          <UserStats user={user} />
-        </div>
-      )}
+      {/* User Stats - Removed per user request */}
 
       {/* Park Details */}
       <div className="space-y-6">
