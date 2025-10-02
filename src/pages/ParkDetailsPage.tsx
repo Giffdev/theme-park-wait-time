@@ -60,11 +60,11 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
     navigate(`/park/${selectedPark}/attraction/${rideId}`)
   }
 
-  // Initialize sample data on park load
+  // Initialize sample data once on component mount
   useEffect(() => {
     const loadData = async () => {
       try {
-        console.log(`🚀 Park details initializing data for: ${selectedPark}`)
+        console.log('🚀 Park details initializing data once')
         
         // Ensure spark is available
         if (!window.spark?.kv) {
@@ -79,29 +79,14 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
         }
         
         setDataInitialized(true)
-        
-        // Verify that data was loaded for the selected park with retry
-        let retries = 3
-        let data: any[] | undefined = undefined
-        
-        while (retries > 0 && (!data || !Array.isArray(data) || data.length === 0)) {
-          await new Promise(resolve => setTimeout(resolve, 100))
-          data = await window.spark.kv.get<any[]>(`attractions-${selectedPark}`)
-          retries--
-        }
-        
-        if (!data || !Array.isArray(data) || data.length === 0) {
-          console.error(`❌ No data found for park ${selectedPark} even after initialization with retries`)
-        } else {
-          console.log(`✅ Park details verified data for ${selectedPark}: ${data.length} attractions`)
-        }
+        console.log('✅ Park details data initialization completed')
       } catch (error) {
         console.error('❌ Park details error loading sample data:', error)
       }
     }
     
     loadData()
-  }, [selectedPark])
+  }, [])
 
   return (
     <main className="container mx-auto px-4 py-8 max-w-7xl">

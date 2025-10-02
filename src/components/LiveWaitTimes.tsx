@@ -55,42 +55,16 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
         
         // First try to get data directly
         let parkData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
-        console.log(`📊 Initial check for ${parkId}:`, parkData?.length || 0, 'attractions')
+        console.log(`📊 Check for ${parkId}:`, parkData?.length || 0, 'attractions')
         
-        // If no data found, initialize sample data and try again with retries
+        // If no data found, show error instead of trying to reinitialize
         if (!parkData || !Array.isArray(parkData) || parkData.length === 0) {
-          console.warn(`❌ No data found for ${parkId}, initializing sample data...`)
-          
-          const { initializeSampleData } = await import('@/data/sampleData')
-          const success = await initializeSampleData()
-          
-          if (success) {
-            // Wait a moment for data to be properly saved
-            await new Promise(resolve => setTimeout(resolve, 200))
-            
-            // Try to get data again with retry logic
-            let retries = 3
-            while (retries > 0 && (!parkData || !Array.isArray(parkData) || parkData.length === 0)) {
-              parkData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
-              console.log(`🔄 Retry ${4 - retries} for ${parkId}:`, parkData?.length || 0, 'attractions')
-              
-              if (!parkData || !Array.isArray(parkData) || parkData.length === 0) {
-                await new Promise(resolve => setTimeout(resolve, 100))
-                retries--
-              } else {
-                break
-              }
-            }
-          }
-        }
-        
-        if (parkData && Array.isArray(parkData) && parkData.length > 0) {
+          console.warn(`❌ No data found for ${parkId}`)
+          setError(`No attraction data available for this park. Please try refreshing the page.`)
+          setAttractions([])
+        } else {
           setAttractions(parkData)
           console.log(`✅ Successfully loaded ${parkData.length} attractions for ${parkId}`)
-        } else {
-          console.error(`❌ Still no data found for ${parkId} even after initialization and retries`)
-          setError(`Failed to load attraction data for this park. The data might be corrupted or the park ID "${parkId}" might not exist.`)
-          setAttractions([])
         }
       } catch (error) {
         console.error(`❌ Error loading attractions for ${parkId}:`, error)
@@ -106,11 +80,6 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
 
   // Update wait times based on consensus every 30 seconds
   useEffect(() => {
-    if (!attractions || attractions.length === 0) {
-      console.log('⚠️ LiveWaitTimes skipping consensus update - no attractions')
-      return
-    }
-
     const updateWaitTimes = () => {
       try {
         console.log('🔄 LiveWaitTimes updating consensus wait times')
@@ -151,7 +120,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
     updateWaitTimes()
     const interval = setInterval(updateWaitTimes, 30000)
     return () => clearInterval(interval)
-  }, [attractions, getConsensusWaitTime])
+  }, [getConsensusWaitTime])  // Removed attractions from dependencies and early return
 
   // Handle scrolling to target ride
   useEffect(() => {
