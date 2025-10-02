@@ -457,7 +457,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
                       className="flex-1"
                     >
                       <Plus size={14} className="mr-1" />
-                      Report
+                      Log wait time
                     </Button>
                     <Button
                       size="sm"
