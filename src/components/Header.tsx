@@ -1,5 +1,4 @@
 import { Button } from '@/components/ui/button'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { SignOut, User as UserIcon } from '@phosphor-icons/react'
 import { Link, useLocation } from 'react-router-dom'
 import type { User } from '@/App'
@@ -142,11 +141,6 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
                   <p className="text-sm font-medium text-foreground">{user.username}</p>
                   <p className="text-xs text-muted-foreground">{user.contributionCount} reports</p>
                 </div>
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary text-primary-foreground">
-                    {user.username.substring(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
                 <Button
                   variant="ghost"
                   size="sm"
