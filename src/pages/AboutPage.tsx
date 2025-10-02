@@ -6,7 +6,7 @@ export function AboutPage() {
     <main className="container mx-auto px-4 py-8 max-w-4xl">
       <div className="mb-8 text-center space-y-4">
         <h1 className="text-4xl font-bold text-foreground mb-2">
-          About Crowd Forecaster
+          About ParkFlow
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
           Your intelligent companion for theme park planning, combining real-time data with smart insights to optimize your park experience.
@@ -81,7 +81,7 @@ export function AboutPage() {
               <p className="text-muted-foreground leading-relaxed">
                 Our platform combines official park data with real-time reports from visitors like you. 
                 When you log wait times and attraction experiences, you're helping create the most accurate 
-                crowd forecasting system available.
+                ParkFlow prediction system available.
               </p>
             </CardContent>
           </Card>
