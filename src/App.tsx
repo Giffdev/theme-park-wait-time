@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useKV } from '@github/spark/hooks'
 import { Header } from '@/components/Header'
@@ -79,21 +79,29 @@ function App() {
     return () => clearTimeout(timer)
   }, [])
 
-  const handleLogin = (user: User) => {
+  const handleLogin = useCallback((user: User) => {
     setCurrentUser(user)
     setShowAuthModal(false)
-  }
+  }, [setCurrentUser])
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     setCurrentUser(null)
-  }
+  }, [setCurrentUser])
+
+  const handleLoginModalOpen = useCallback(() => {
+    setShowAuthModal(true)
+  }, [])
+
+  const handleLoginModalClose = useCallback(() => {
+    setShowAuthModal(false)
+  }, [])
 
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-background">
         <Header 
           user={currentUser ?? null}
-          onLoginClick={() => setShowAuthModal(true)}
+          onLoginClick={handleLoginModalOpen}
           onLogout={handleLogout}
         />
         
@@ -106,7 +114,7 @@ function App() {
             element={
               <ParkDetailsPage 
                 user={currentUser ?? null}
-                onLoginRequired={() => setShowAuthModal(true)}
+                onLoginRequired={handleLoginModalOpen}
               />
             } 
           />
@@ -115,7 +123,7 @@ function App() {
             element={
               <AttractionDetailsPage 
                 user={currentUser ?? null}
-                onLoginRequired={() => setShowAuthModal(true)}
+                onLoginRequired={handleLoginModalOpen}
               />
             } 
           />
@@ -124,7 +132,7 @@ function App() {
             element={
               <RideLogPage 
                 user={currentUser ?? null}
-                onLoginRequired={() => setShowAuthModal(true)}
+                onLoginRequired={handleLoginModalOpen}
               />
             } 
           />
@@ -133,7 +141,7 @@ function App() {
             element={
               <RideLogPage 
                 user={currentUser ?? null}
-                onLoginRequired={() => setShowAuthModal(true)}
+                onLoginRequired={handleLoginModalOpen}
               />
             } 
           />
@@ -142,7 +150,7 @@ function App() {
             element={
               <MyRideLogsPage 
                 user={currentUser ?? null}
-                onLoginRequired={() => setShowAuthModal(true)}
+                onLoginRequired={handleLoginModalOpen}
               />
             } 
           />
@@ -152,7 +160,7 @@ function App() {
         {showAuthModal && (
           <AuthModal
             onLogin={handleLogin}
-            onClose={() => setShowAuthModal(false)}
+            onClose={handleLoginModalClose}
           />
         )}
 
