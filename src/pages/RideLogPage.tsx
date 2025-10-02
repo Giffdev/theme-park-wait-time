@@ -243,11 +243,23 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         notes: tripNotes
       }
 
-      // Auto-save to current trip (don't finalize yet)
+      // Update current trip state
       setCurrentTrip(updatedTrip)
       
-      // Also save to persistent storage as work-in-progress
+      // Auto-save to both current trip (work-in-progress) and final trip storage
       await window.spark.kv.set(`current-trip-${user.id}`, updatedTrip)
+      
+      // If there are any rides logged, also save to the finalized trip storage
+      if (logsToSave.length > 0) {
+        await window.spark.kv.set(`trip-${updatedTrip.id}`, updatedTrip)
+        
+        // Update user's trip history
+        const userTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
+        if (!userTrips.includes(updatedTrip.id)) {
+          userTrips.push(updatedTrip.id)
+          await window.spark.kv.set(`user-trips-${user.id}`, userTrips)
+        }
+      }
       
     } catch (error) {
       console.error('Failed to auto-save trip:', error)
@@ -257,79 +269,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     }
   }
 
-  const finishTrip = async () => {
-    if (!user || !currentTrip) return
 
-    const logsToSave: RideLog[] = []
-
-    Object.entries(rideCounts).forEach(([key, count]) => {
-      if (count > 0) {
-        const [parkId, attractionId] = key.split('-')
-        const attraction = attractions[parkId]?.find(a => a.id === attractionId)
-        if (attraction) {
-          const rideLog: RideLog = {
-            id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            userId: user.id,
-            tripId: currentTrip.id,
-            parkId,
-            attractionId,
-            attractionName: attraction.name,
-            attractionType: attraction.type,
-            rideCount: count,
-            trackVariant: selectedVariants[key],
-            loggedAt: new Date().toISOString(),
-            notes: notes[key]
-          }
-          logsToSave.push(rideLog)
-        }
-      }
-    })
-
-    if (logsToSave.length === 0) {
-      toast.error('Add some rides before finishing your trip!')
-      return
-    }
-
-    // Update park ride counts
-    const updatedParks = currentTrip.parks.map(park => ({
-      ...park,
-      rideCount: logsToSave.filter(log => log.parkId === park.parkId).reduce((sum, log) => sum + log.rideCount, 0)
-    }))
-
-    const updatedTrip: Trip = {
-      ...currentTrip,
-      parks: updatedParks,
-      rideLogs: logsToSave,
-      totalRides: logsToSave.reduce((sum, log) => sum + log.rideCount, 0),
-      updatedAt: new Date().toISOString(),
-      notes: tripNotes
-    }
-
-    try {
-      // Save the finalized trip
-      await window.spark.kv.set(`trip-${updatedTrip.id}`, updatedTrip)
-      
-      // Update user's trip history
-      const userTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
-      if (!userTrips.includes(updatedTrip.id)) {
-        userTrips.push(updatedTrip.id)
-        await window.spark.kv.set(`user-trips-${user.id}`, userTrips)
-      }
-
-      // Clear current trip
-      setCurrentTrip(null)
-      setRideCounts({})
-      setSelectedVariants({})
-      setNotes({})
-      setTripNotes('')
-      
-      toast.success(`Trip completed with ${logsToSave.length} ride logs across ${updatedParks.length} parks!`)
-      navigate('/my-logs')
-    } catch (error) {
-      console.error('Failed to finish trip:', error)
-      toast.error('Failed to finish your trip')
-    }
-  }
 
   const handleParksChange = (parks: string[]) => {
     // Find parks that were deselected and clear their ride counts
@@ -469,56 +409,64 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                   <Ticket size={20} />
                   Trip - {new Date(currentTrip.visitDate).toLocaleDateString()}
                 </span>
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  {Object.values(rideCounts).reduce((sum, count) => sum + count, 0)} rides logged
-                  {isSaving ? (
-                    <>
-                      <span>•</span>
-                      <div className="animate-spin h-3 w-3 border border-current border-t-transparent rounded-full"></div>
-                      <span>Saving...</span>
-                    </>
-                  ) : (
-                    Object.values(rideCounts).some(count => count > 0) && (
+                <div className="flex items-center gap-3">
+                  <Badge variant="secondary" className="flex items-center gap-1">
+                    {Object.values(rideCounts).reduce((sum, count) => sum + count, 0)} rides logged
+                    {isSaving ? (
                       <>
                         <span>•</span>
-                        <span>Auto-saved</span>
+                        <div className="animate-spin h-3 w-3 border border-current border-t-transparent rounded-full"></div>
+                        <span>Saving...</span>
                       </>
-                    )
+                    ) : (
+                      Object.values(rideCounts).some(count => count > 0) && (
+                        <>
+                          <span>•</span>
+                          <span>Saved</span>
+                        </>
+                      )
+                    )}
+                  </Badge>
+                  {Object.values(rideCounts).some(count => count > 0) && (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => {
+                        setCurrentTrip(null)
+                        setRideCounts({})
+                        setSelectedVariants({})
+                        setNotes({})
+                        setTripNotes('')
+                        toast.success('Trip session ended. Your rides have been saved!')
+                        navigate('/my-logs')
+                      }}
+                    >
+                      End Trip Session
+                    </Button>
                   )}
-                </Badge>
+                </div>
               </CardTitle>
               <CardDescription>
-                Parks: {currentTrip.parks.map(p => p.parkName).join(', ')}
+                Parks: {currentTrip.parks.map(p => p.parkName).join(', ')} • Rides auto-save as you log them
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex gap-2 mb-4">
-                <Button 
-                  onClick={finishTrip} 
-                  disabled={Object.values(rideCounts).every(count => count === 0)}
-                  className="bg-success hover:bg-success/90"
-                >
-                  Finish Trip
-                </Button>
+              <div>
+                <Label>Trip Notes (auto-saved)</Label>
+                <Textarea
+                  value={tripNotes}
+                  onChange={(e) => {
+                    setTripNotes(e.target.value)
+                    // Auto-save when trip notes change
+                    if (currentTrip && user) {
+                      setTimeout(() => autoSaveTrip(rideCounts), 500) // Debounce for notes
+                    }
+                  }}
+                  placeholder="Add notes about your trip experience..."
+                  rows={2}
+                  className="mt-1"
+                />
               </div>
-
-              {currentTrip.notes && (
-                <div>
-                  <Label>Trip Notes</Label>
-                  <Textarea
-                    value={tripNotes}
-                    onChange={(e) => {
-                      setTripNotes(e.target.value)
-                      // Auto-save when trip notes change
-                      if (currentTrip && user) {
-                        setTimeout(() => autoSaveTrip(rideCounts), 500) // Debounce for notes
-                      }
-                    }}
-                    rows={2}
-                    className="mt-1"
-                  />
-                </div>
-              )}
             </CardContent>
           </Card>
 
