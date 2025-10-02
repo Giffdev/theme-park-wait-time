@@ -25,7 +25,10 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const { parkId } = useParams()
   const navigate = useNavigate()
   const [attractions, setAttractions] = useState<Record<string, ExtendedAttraction[]>>({})
-  const [currentTrip, setCurrentTrip] = useKV<Trip | null>(`current-trip-${user?.id}`, null)
+  const [currentTrip, setCurrentTrip] = useKV<Trip | null>(
+    user ? `current-trip-${user.id}` : 'current-trip-anonymous', 
+    null
+  )
   const [rideCounts, setRideCounts] = useState<Record<string, number>>({}) // key: "parkId-attractionId"
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
