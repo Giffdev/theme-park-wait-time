@@ -71,10 +71,10 @@ function App() {
           console.log('✅ App sample data initialized successfully')
         }
         
-        // CRITICAL: Wait for data to be fully available with retries
+        // CRITICAL: Wait for data to be fully available with retries - extended verification
         console.log('🔍 Verifying data availability...')
         let verificationAttempts = 0
-        const maxVerificationAttempts = 10
+        const maxVerificationAttempts = 15 // Increased attempts
         let dataVerified = false
         
         while (verificationAttempts < maxVerificationAttempts && !dataVerified) {
@@ -88,7 +88,7 @@ function App() {
                 console.log(`✅ Verified ${testPark}: ${testData.length} attractions`)
                 verifiedParks++
               } else {
-                console.warn(`⚠️ ${testPark}: No data found`)
+                console.warn(`⚠️ ${testPark}: No data found or invalid data`)
               }
             }
             
@@ -96,12 +96,12 @@ function App() {
               console.log(`✅ Data verification complete: ${verifiedParks}/${testParks.length} parks verified`)
               dataVerified = true
             } else {
-              console.log(`⏳ Verification attempt ${verificationAttempts + 1}: Only ${verifiedParks} parks verified, retrying...`)
-              await new Promise(resolve => setTimeout(resolve, 200))
+              console.log(`⏳ Verification attempt ${verificationAttempts + 1}: Only ${verifiedParks} parks verified, retrying in 500ms...`)
+              await new Promise(resolve => setTimeout(resolve, 500))
             }
           } catch (testError) {
             console.error(`❌ Verification attempt ${verificationAttempts + 1} failed:`, testError)
-            await new Promise(resolve => setTimeout(resolve, 200))
+            await new Promise(resolve => setTimeout(resolve, 500))
           }
           
           verificationAttempts++

@@ -8,7 +8,6 @@ import { formatTime12Hour, formatDateTime12Hour } from '@/utils/timeFormat'
 import { QuickWaitTimeModal } from '@/components/QuickWaitTimeModal'
 import { RideTimer } from '@/components/RideTimer'
 import { WaitTimeChart } from '@/components/WaitTimeChart'
-import { DebugDataViewer } from '@/components/DebugDataViewer'
 import { useReporting } from '@/hooks/useReporting'
 import { useKV } from '@github/spark/hooks'
 import { parkFamilies } from '@/data/sampleData'
@@ -43,6 +42,86 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
   )
   
   const { getConsensusWaitTime, getRecentReports } = useReporting()
+
+  // Helper function to load attractions for the current park
+  const loadAttractionsForPark = async () => {
+    setIsLoading(true)
+    setError(null)
+    console.log(`🔄 LiveWaitTimes loading attractions for park: ${parkId}`)
+    
+    try {
+      // Ensure spark KV is available
+      if (!window.spark?.kv) {
+        throw new Error('Spark KV not available')
+      }
+      
+      // Try to get data with simple retry logic
+      let attempts = 0
+      const maxAttempts = 5
+      let parkData: ExtendedAttraction[] | null = null
+      
+      const lookupKey = `attractions-${parkId}`
+      console.log(`🔍 LiveWaitTimes looking for key: ${lookupKey}`)
+      
+      while (attempts < maxAttempts && !parkData) {
+        try {
+          parkData = await window.spark.kv.get<ExtendedAttraction[]>(lookupKey) || null
+          console.log(`📊 LiveWaitTimes attempt ${attempts + 1} for ${parkId}:`, parkData ? `${parkData.length} items` : 'no data')
+          
+          if (parkData && Array.isArray(parkData) && parkData.length > 0) {
+            break // Success!
+          }
+          
+          // Wait before retrying
+          if (attempts < maxAttempts - 1) {
+            console.log(`⏳ LiveWaitTimes retrying in 300ms (attempt ${attempts + 1}/${maxAttempts})`)
+            await new Promise(resolve => setTimeout(resolve, 300))
+          }
+        } catch (attemptError) {
+          console.error(`❌ LiveWaitTimes attempt ${attempts + 1} error:`, attemptError)
+          if (attempts < maxAttempts - 1) {
+            await new Promise(resolve => setTimeout(resolve, 300))
+          }
+        }
+        attempts++
+      }
+      
+      if (parkData && Array.isArray(parkData) && parkData.length > 0) {
+        // Filter out dining establishments - only show actual attractions
+        const validAttractions = parkData.filter(attraction => 
+          attraction && 
+          typeof attraction === 'object' && 
+          attraction.name && 
+          typeof attraction.currentWaitTime === 'number' &&
+          isAttractionNotDining(attraction)
+        )
+        
+        setAttractions(validAttractions)
+        console.log(`✅ LiveWaitTimes successfully loaded ${validAttractions.length} valid attractions for ${parkId}`)
+      } else {
+        console.warn(`⚠️ LiveWaitTimes no valid data found for ${parkId} after ${attempts} attempts`)
+        
+        // If no data found, check what keys exist
+        const allKeys = await window.spark.kv.keys()
+        const attractionKeys = allKeys.filter(key => key.startsWith('attractions-'))
+        console.log(`🔍 LiveWaitTimes available attraction keys:`, attractionKeys)
+        
+        if (attractionKeys.length === 0) {
+          setError(`No park data found. Please refresh the page to reload data.`)
+        } else {
+          const availableParks = attractionKeys.map(k => k.replace('attractions-', '')).join(', ')
+          setError(`Park "${parkId}" data not found. Available parks: ${availableParks}`)
+        }
+        setAttractions([])
+      }
+    } catch (error) {
+      console.error(`❌ LiveWaitTimes error loading attractions for ${parkId}:`, error)
+      setError(`Error loading park data: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setAttractions([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   // Helper function to get park display name
   const getParkDisplayName = (parkId: string): string => {
@@ -134,85 +213,6 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
 
   // Force reload attractions when park changes
   useEffect(() => {
-    const loadAttractionsForPark = async () => {
-      setIsLoading(true)
-      setError(null)
-      console.log(`🔄 LiveWaitTimes loading attractions for park: ${parkId}`)
-      
-      try {
-        // Ensure spark KV is available
-        if (!window.spark?.kv) {
-          throw new Error('Spark KV not available')
-        }
-        
-        // CRITICAL: Wait for data to be available with retries
-        let attempts = 0
-        const maxAttempts = 10
-        let parkData: ExtendedAttraction[] | null = null
-        
-        const lookupKey = `attractions-${parkId}`
-        console.log(`🔍 LiveWaitTimes looking for key: ${lookupKey}`)
-        
-        while (attempts < maxAttempts && (!parkData || !Array.isArray(parkData) || parkData.length === 0)) {
-          try {
-            parkData = await window.spark.kv.get<ExtendedAttraction[]>(lookupKey) || null
-            console.log(`📊 LiveWaitTimes attempt ${attempts + 1} for ${parkId}:`, parkData ? (Array.isArray(parkData) ? `${parkData.length} items` : typeof parkData) : 'null/undefined')
-            
-            if (parkData && Array.isArray(parkData) && parkData.length > 0) {
-              break // Success!
-            }
-            
-            // Wait a bit before retrying
-            if (attempts < maxAttempts - 1) {
-              console.log(`⏳ LiveWaitTimes retrying in 100ms (attempt ${attempts + 1}/${maxAttempts})`)
-              await new Promise(resolve => setTimeout(resolve, 100))
-            }
-          } catch (attemptError) {
-            console.error(`❌ LiveWaitTimes attempt ${attempts + 1} error:`, attemptError)
-            if (attempts < maxAttempts - 1) {
-              await new Promise(resolve => setTimeout(resolve, 100))
-            }
-          }
-          attempts++
-        }
-        
-        if (parkData && Array.isArray(parkData) && parkData.length > 0) {
-          // Filter out dining establishments - only show actual attractions
-          const validAttractions = parkData.filter(attraction => 
-            attraction && 
-            typeof attraction === 'object' && 
-            attraction.name && 
-            typeof attraction.currentWaitTime === 'number' &&
-            isAttractionNotDining(attraction)
-          )
-          
-          setAttractions(validAttractions)
-          console.log(`✅ LiveWaitTimes successfully loaded ${validAttractions.length} valid attractions for ${parkId} (filtered from ${parkData.length} total)`)
-        } else {
-          console.warn(`⚠️ LiveWaitTimes no valid data found for ${parkId} after ${attempts} attempts`)
-          
-          // If no data found, check what keys exist
-          const allKeys = await window.spark.kv.keys()
-          const attractionKeys = allKeys.filter(key => key.startsWith('attractions-'))
-          console.log(`🔍 LiveWaitTimes available attraction keys:`, attractionKeys)
-          
-          if (attractionKeys.length === 0) {
-            setError(`No park data found. The app may still be initializing. Please refresh the page.`)
-          } else {
-            const availableParks = attractionKeys.map(k => k.replace('attractions-', '')).join(', ')
-            setError(`No data available for "${parkId}". Available parks: ${availableParks}`)
-          }
-          setAttractions([])
-        }
-      } catch (error) {
-        console.error(`❌ LiveWaitTimes error loading attractions for ${parkId}:`, error)
-        setError(`Error loading park data: ${error instanceof Error ? error.message : 'Unknown error'}`)
-        setAttractions([])
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     loadAttractionsForPark()
   }, [parkId])
 
@@ -349,9 +349,6 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
         </div>
       </div>
 
-      {/* Debug Component - Temporary */}
-      <DebugDataViewer parkId={parkId} />
-
       {/* Loading state or error */}
       {isLoading ? (
         <>
@@ -384,13 +381,26 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
             </p>
           </div>
           <div className="space-y-2">
-            <Button 
-              onClick={() => window.location.reload()}
-              variant="outline"
-              className="mx-2"
-            >
-              Reload Page
-            </Button>
+            <div className="flex gap-2 justify-center">
+              <Button 
+                onClick={() => {
+                  // Retry loading data
+                  setError(null)
+                  loadAttractionsForPark()
+                }}
+                variant="default"
+                className="mx-1"
+              >
+                Try Again
+              </Button>
+              <Button 
+                onClick={() => window.location.reload()}
+                variant="outline"
+                className="mx-1"
+              >
+                Reload Page
+              </Button>
+            </div>
             <div className="text-xs text-muted-foreground">
               If this error persists, try selecting a different park or clearing your browser cache.
             </div>
