@@ -8,7 +8,8 @@ import { formatTime12Hour, formatDateTime12Hour } from '@/utils/timeFormat'
 import { ReportWaitTimeModal } from '@/components/ReportWaitTimeModal'
 import { WaitTimeChart } from '@/components/WaitTimeChart'
 import { useReporting } from '@/hooks/useReporting'
-import type { User, Attraction } from '@/App'
+import type { User } from '@/App'
+import type { ExtendedAttraction } from '@/types'
 
 interface LiveWaitTimesProps {
   parkId: string
@@ -25,7 +26,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
   const [lastUpdate, setLastUpdate] = useState(new Date())
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [attractions, setAttractions] = useState<Attraction[]>([])
+  const [attractions, setAttractions] = useState<ExtendedAttraction[]>([])
   
   const { getConsensusWaitTime, getRecentReports } = useReporting()
 
@@ -43,7 +44,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
         }
         
         // First try to get data directly
-        let parkData = await window.spark.kv.get<Attraction[]>(`attractions-${parkId}`)
+        let parkData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
         console.log(`📊 Initial check for ${parkId}:`, parkData?.length || 0, 'attractions')
         
         // If no data found, initialize sample data and try again with retries
@@ -60,7 +61,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
             // Try to get data again with retry logic
             let retries = 3
             while (retries > 0 && (!parkData || !Array.isArray(parkData) || parkData.length === 0)) {
-              parkData = await window.spark.kv.get<Attraction[]>(`attractions-${parkId}`)
+              parkData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
               console.log(`🔄 Retry ${4 - retries} for ${parkId}:`, parkData?.length || 0, 'attractions')
               
               if (!parkData || !Array.isArray(parkData) || parkData.length === 0) {

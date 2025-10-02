@@ -1,4 +1,3 @@
-import type { Attraction } from '@/App'
 import type { ExtendedAttraction } from '@/types'
 
 // Park family and location structure
@@ -104,7 +103,7 @@ export const parkFamilies: ParkFamily[] = [
   }
 ]
 
-export const sampleAttractions: Record<string, Attraction[]> = {
+export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
   'universal-studios-orlando': [
     {
       id: 'harry-potter-escape-gringotts',
@@ -2695,7 +2694,7 @@ export async function initializeSampleData() {
     const keyParks = ['universal-studios-orlando', 'islands-of-adventure', 'epic-universe', 'magic-kingdom', 'hollywood-studios']
     for (const parkId of keyParks) {
       try {
-        const data = await kv.get<Attraction[]>(`attractions-${parkId}`)
+        const data = await kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
         if (data && Array.isArray(data) && data.length > 0) {
           console.log(`✅ Verified ${parkId}: ${data.length} attractions`)
           // Show a few attraction names for verification

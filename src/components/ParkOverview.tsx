@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChartBar, Clock, TrendUp, SortAscending, Eye } from '@phosphor-icons/react'
-import type { Attraction } from '@/App'
+import type { ExtendedAttraction } from '@/types'
 
 interface ParkOverviewProps {
   parkId: string
@@ -16,7 +16,7 @@ interface ParkOverviewProps {
 type SortOption = 'waitTime-desc' | 'waitTime-asc' | 'name-asc' | 'name-desc'
 
 export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps) {
-  const [attractions, setAttractions] = useKV<Attraction[]>(`attractions-${parkId}`, [])
+  const [attractions, setAttractions] = useKV<ExtendedAttraction[]>(`attractions-${parkId}`, [])
   const [sortBy, setSortBy] = useState<SortOption>('waitTime-desc')
   const [viewMode, setViewMode] = useState<'bars' | 'list'>('bars')
   const [isLoading, setIsLoading] = useState(true)
@@ -28,7 +28,7 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
         // Small delay to ensure data is loaded
         await new Promise(resolve => setTimeout(resolve, 100))
         
-        const data = await window.spark.kv.get<Attraction[]>(`attractions-${parkId}`)
+        const data = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
         if (data && Array.isArray(data)) {
           setAttractions(data)
         }

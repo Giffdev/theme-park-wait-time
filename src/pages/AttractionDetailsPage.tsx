@@ -8,7 +8,8 @@ import { ArrowLeft, Clock, TrendUp, Calendar } from '@phosphor-icons/react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { parkFamilies } from '@/data/sampleData'
 import { formatTime12Hour, formatChartTimestamp } from '@/utils/timeFormat'
-import type { Park, Attraction } from '@/App'
+import type { Park } from '@/App'
+import type { ExtendedAttraction } from '@/types'
 
 type TimeRange = 'week' | 'month' | 'year'
 
@@ -43,7 +44,7 @@ export function AttractionDetailsPage() {
   const { parkId, attractionId } = useParams<{ parkId: string; attractionId: string }>()
   const navigate = useNavigate()
   const [park, setPark] = useState<Park | null>(null)
-  const [attraction, setAttraction] = useState<Attraction | null>(null)
+  const [attraction, setAttraction] = useState<ExtendedAttraction | null>(null)
   const [timeRange, setTimeRange] = useState<TimeRange>('week')
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([])
   const [loading, setLoading] = useState(true)
@@ -58,7 +59,7 @@ export function AttractionDetailsPage() {
         console.log(`Loading attraction data for park: ${parkId}, attraction: ${attractionId}`)
         
         // Load attractions data for the park
-        const attractionsData = await window.spark.kv.get<Attraction[]>(`attractions-${parkId}`)
+        const attractionsData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
         console.log(`Found attractions data:`, attractionsData?.length || 0, 'attractions')
         
         if (attractionsData && Array.isArray(attractionsData)) {

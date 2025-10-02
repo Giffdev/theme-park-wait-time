@@ -50,12 +50,16 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     setIsLoading(true)
     try {
       const attractionData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
-      if (attractionData) {
+      if (attractionData && Array.isArray(attractionData) && attractionData.length > 0) {
         setAttractions(attractionData)
+        console.log(`✅ Loaded ${attractionData.length} attractions for ${parkId}`)
+      } else {
+        console.warn(`⚠️ No attractions found for park ${parkId}`)
+        toast.error(`No attractions found for this park. Please try again or contact support.`)
       }
     } catch (error) {
       console.error('Failed to load attractions:', error)
-      toast.error('Failed to load park attractions')
+      toast.error('Failed to load park attractions. Please try again.')
     }
     setIsLoading(false)
   }
@@ -174,6 +178,29 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
           <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading park attractions...</p>
         </div>
+      </div>
+    )
+  }
+
+  if (attractions.length === 0) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle>No Attractions Found</CardTitle>
+            <CardDescription>
+              Unable to load attractions for this park. This might be a temporary issue.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center space-y-4">
+            <Button onClick={loadAttractions}>
+              Try Again
+            </Button>
+            <Button variant="outline" onClick={() => navigate(`/park/${parkId}`)}>
+              Back to Park Overview
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
