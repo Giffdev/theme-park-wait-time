@@ -48,6 +48,9 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
     if (parkId) {
       loadAttractionsForPark(parkId)
+    } else {
+      // If no specific park, set loading to false so the trip setup can begin
+      setIsLoading(false)
     }
   }, [user, parkId])
 
@@ -73,22 +76,40 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   }
 
   const loadAllSelectedParksAttractions = async (parks: string[]) => {
-    setIsLoading(true)
     const newAttractions: Record<string, ExtendedAttraction[]> = {}
+    const failedParks: string[] = []
     
     for (const parkId of parks) {
       try {
         const attractionData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
+        
         if (attractionData && Array.isArray(attractionData) && attractionData.length > 0) {
           newAttractions[parkId] = attractionData
+          console.log(`✅ Loaded ${attractionData.length} attractions for ${parkId}`)
+        } else {
+          console.warn(`⚠️ No attractions found for park ${parkId}`)
+          failedParks.push(parkId)
         }
       } catch (error) {
-        console.error(`Failed to load attractions for ${parkId}:`, error)
+        console.error(`❌ Failed to load attractions for ${parkId}:`, error)
+        failedParks.push(parkId)
       }
     }
     
     setAttractions(newAttractions)
-    setIsLoading(false)
+    
+    // Show warnings for failed parks
+    if (failedParks.length > 0 && failedParks.length < parks.length) {
+      const failedParkNames = failedParks.map(parkId => {
+        const parkInfo = parkFamilies
+          .flatMap(family => family.parks.map(park => ({ ...park, familyId: family.id, familyName: family.name })))
+          .find(park => park.id === parkId)
+        return parkInfo?.name || parkId
+      })
+      toast.error(`Could not load attractions for: ${failedParkNames.join(', ')}`)
+    } else if (failedParks.length === parks.length) {
+      throw new Error('No attractions could be loaded for any selected parks')
+    }
   }
 
   const updateRideCount = (parkId: string, attractionId: string, change: number) => {
@@ -102,37 +123,45 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const startNewTrip = async () => {
     if (!user || selectedParks.length === 0) return
 
-    // Load attractions for all selected parks
-    await loadAllSelectedParksAttractions(selectedParks)
+    setIsLoading(true)
+    try {
+      // Load attractions for all selected parks  
+      await loadAllSelectedParksAttractions(selectedParks)
 
-    // Create trip parks data
-    const tripParks: TripPark[] = selectedParks.map(parkId => {
-      const parkInfo = parkFamilies
-        .flatMap(family => family.parks.map(park => ({ ...park, familyId: family.id, familyName: family.name })))
-        .find(park => park.id === parkId)
-      
-      return {
-        parkId,
-        parkName: parkInfo?.name || parkId,
-        rideCount: 0
+      // Create trip parks data
+      const tripParks: TripPark[] = selectedParks.map(parkId => {
+        const parkInfo = parkFamilies
+          .flatMap(family => family.parks.map(park => ({ ...park, familyId: family.id, familyName: family.name })))
+          .find(park => park.id === parkId)
+        
+        return {
+          parkId,
+          parkName: parkInfo?.name || parkId,
+          rideCount: 0
+        }
+      })
+
+      const newTrip: Trip = {
+        id: `trip-${user.id}-${Date.now()}`,
+        userId: user.id,
+        visitDate,
+        parks: tripParks,
+        rideLogs: [],
+        totalRides: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        notes: tripNotes
       }
-    })
 
-    const newTrip: Trip = {
-      id: `trip-${user.id}-${Date.now()}`,
-      userId: user.id,
-      visitDate,
-      parks: tripParks,
-      rideLogs: [],
-      totalRides: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      notes: tripNotes
+      setCurrentTrip(newTrip)
+      setActivePark(selectedParks[0]) // Set first park as active
+      toast.success(`Started trip log for ${selectedParks.length} park${selectedParks.length > 1 ? 's' : ''}!`)
+    } catch (error) {
+      console.error('❌ Failed to start trip:', error)
+      toast.error('Failed to start trip. Please try again.')
+    } finally {
+      setIsLoading(false)
     }
-
-    setCurrentTrip(newTrip)
-    setActivePark(selectedParks[0]) // Set first park as active
-    toast.success(`Started trip log for ${selectedParks.length} park${selectedParks.length > 1 ? 's' : ''}!`)
   }
 
   const saveTrip = async () => {
@@ -244,12 +273,12 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     )
   }
 
-  if (isLoading && Object.keys(attractions).length === 0) {
+  if (isLoading && !currentTrip && selectedParks.length > 0) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading park attractions...</p>
+          <p className="text-muted-foreground">Loading attractions for selected parks...</p>
         </div>
       </div>
     )
@@ -324,9 +353,16 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
             <Button 
               onClick={startNewTrip} 
               className="w-full"
-              disabled={selectedParks.length === 0}
+              disabled={selectedParks.length === 0 || isLoading}
             >
-              Start Trip Log ({selectedParks.length} park{selectedParks.length !== 1 ? 's' : ''} selected)
+              {isLoading ? (
+                <>
+                  <div className="animate-spin h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full mr-2"></div>
+                  Loading attractions...
+                </>
+              ) : (
+                `Start Trip Log (${selectedParks.length} park${selectedParks.length !== 1 ? 's' : ''} selected)`
+              )}
             </Button>
           </CardContent>
         </Card>
