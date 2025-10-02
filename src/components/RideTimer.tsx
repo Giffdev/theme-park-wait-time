@@ -1,12 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useKV } from '@github/spark/hooks'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Play, Pause, Square, Timer } from '@phosphor-icons/react'
-import { toast } from 'sonner'
-import type { User } from '@/App'
-import type { ExtendedAttraction } from '@/types'
+// This component has been removed as part of simplifying the app to focus on wait time reporting only
 
 interface RideTimerProps {
   user: User | null

@@ -1,16 +1,16 @@
-# ParkFlow - Smart Theme Park Predictions
+# ParkFlow - Smart Theme Park Wait Time Reporting
 
 ## Core Purpose & Success
-**Mission Statement**: Help theme park visitors make informed decisions through predictive analytics, real-time wait times, crowd forecasting, and historical data to optimize their park experience.
+**Mission Statement**: Help theme park visitors make informed decisions through real-time wait time reporting and crowd analytics to optimize their park experience.
 
 **Success Indicators**: Users successfully plan their park visits, spend less time waiting in lines, and contribute accurate wait time data to help the community.
 
-**Experience Qualities**: Predictive, Intelligent, Community-driven
+**Experience Qualities**: Real-time, Community-driven, Informative
 
 ## Project Classification & Approach
-**Complexity Level**: Complex Application (advanced functionality, user accounts, real-time data, multi-page navigation)
+**Complexity Level**: Light Application (multiple features with basic state, user accounts, reporting functionality)
 
-**Primary User Activity**: Acting and Interacting - Users consume wait time data and actively contribute by reporting wait times
+**Primary User Activity**: Acting and Contributing - Users consume wait time data and actively contribute by reporting current wait times
 
 ## Navigation Structure
 **Home Page** (`/`): 
@@ -28,26 +28,13 @@
 - Live wait times with reporting functionality  
 - Crowd calendar and historical analytics
 - Park selector to switch between parks
-- "Log Your Rides" button for signed-in users
 - Back navigation to previous page
 
-**Ride Log Page** (`/log` or `/park/:parkId/log`):
-- **Trip-based logging system** for signed-in users that supports multi-park visits
-- **Visit date selection** and ability to select multiple parks for a single trip
-- **Trip notes** for overall experience documentation
-- **Park-by-park logging** with tab switching between selected parks
-- **Comprehensive attraction tracking** with separate sections for active, seasonal, and defunct attractions
-- **Multi-track ride support** with variant selection (e.g. left/right track, different experiences)
-- **Individual ride notes** for personal memories and experiences
-- **Dual logging modes**: Manual ride counting and **Persistent Timer System**
-  - **Manual Mode**: Traditional increment/decrement controls for quick logging
-  - **Timer Mode**: Start/stop/pause timer functionality for accurate wait time tracking
-- **Persistent Timer Features**:
-  - **Background operation**: Timer continues running when switching apps or tabs on mobile
-  - **System-wide timer indicator**: Floating indicator shows active timer across all pages
-  - **Pause/resume functionality**: Handle interruptions without losing timing data
-  - **Quick log options**: Preset time buttons for common wait durations (5, 10, 15, 30, 60 minutes)
-  - **Multi-device resilience**: Timer state persists across device orientation changes and brief disconnections
+**Attraction Details Page** (`/park/:parkId/attraction/:attractionId`):
+- Detailed analytics for individual attractions
+- Historical wait time trends with interactive charts
+- Peak time analysis and recommendations
+- Quick wait time reporting functionality
   - **One active timer policy**: Only one attraction timer can run at a time to prevent confusion
 - **Session management** with save/cancel functionality
 
@@ -83,14 +70,14 @@
 - **Success Criteria**: Seamless navigation between parks while maintaining context
 
 ### Real-time Wait Time Reporting
-- **What**: Crowd-sourced reporting system where logged-in users can submit current wait times with an optional quick-add to trip log
-- **Why**: Community-driven accuracy and fresh data with streamlined experience
+- **What**: Crowd-sourced reporting system where logged-in users can submit current wait times
+- **Why**: Community-driven accuracy and fresh data 
 - **Success Criteria**: High user participation and data accuracy through verification
 
-### Quick Wait Time Logging
-- **What**: Simplified modal interface for quickly reporting wait times directly from attraction detail pages, with optional trip log integration
-- **Why**: Reduces friction for contributing wait time data while giving users choice to track personal rides
-- **Success Criteria**: Increased wait time reports with minimal user effort, seamless integration with trip logging system
+### Quick Wait Time Reporting
+- **What**: Simplified modal interface for quickly reporting wait times directly from attraction detail pages
+- **Why**: Reduces friction for contributing wait time data 
+- **Success Criteria**: Increased wait time reports with minimal user effort
 
 ### Historical Analytics & Trends
 - **What**: Visual graphs showing wait time patterns throughout days, weeks, and seasons
@@ -101,16 +88,6 @@
 - **What**: User accounts with contribution tracking and reputation system
 - **Why**: Encourages accurate reporting and builds community trust
 - **Success Criteria**: Active user base contributing regular updates
-
-### Personal Ride Logging System
-- **What**: Comprehensive logging system for users to track their park visits and ride counts throughout a day
-- **Why**: Engages users beyond just wait time checking, creates personal value and historical memories, encourages account creation
-- **Success Criteria**: Users actively log their rides during park visits and return to view historical data
-
-### Multi-Track and Variant Support
-- **What**: Ability to log different tracks or variations of rides (e.g., Battlestar Galactica HUMAN vs CYLON, Stardust Racers Star vs Nova tracks)
-- **Why**: Provides detailed tracking for enthusiasts who care about experiencing all variations
-- **Success Criteria**: Users can accurately track specific ride experiences including variants
 
 ### Seasonal and Historical Attraction Management
 - **What**: Separate organization of active rides, seasonal events (Halloween, Christmas), and defunct/historical attractions

@@ -6,11 +6,10 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Clock, Plus, CheckCircle, X } from '@phosphor-icons/react'
-import { useKV } from '@github/spark/hooks'
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
 import type { User } from '@/App'
-import type { RideLog, Trip, TripPark, ExtendedAttraction } from '@/types'
+import type { ExtendedAttraction } from '@/types'
 
 interface QuickWaitTimeModalProps {
   attractionId: string
@@ -33,15 +32,9 @@ export function QuickWaitTimeModal({
 }: QuickWaitTimeModalProps) {
   const [waitTime, setWaitTime] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [addToTrip, setAddToTrip] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [isClosed, setIsClosed] = useState(false)
   const navigate = useNavigate()
-
-  const [currentTrip, setCurrentTrip] = useKV<Trip | null>(
-    user ? `current-trip-${user.id}` : 'current-trip-anonymous', 
-    null
-  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -73,18 +66,13 @@ export function QuickWaitTimeModal({
     setIsSubmitting(true)
     
     try {
-      // If user wants to add to trip, handle trip logic
-      if (addToTrip) {
-        await handleAddToTrip(time)
-      }
-
-      // Always submit the wait time report for crowd data
+      // Submit the wait time report for crowd data
       await submitWaitTimeReport(time)
 
       setIsSuccess(true)
       const statusMessage = isClosed 
-        ? `Ride status logged as closed for ${attractionName}`
-        : `Wait time logged: ${time} minutes for ${attractionName}`
+        ? `Ride status reported as closed for ${attractionName}`
+        : `Wait time reported: ${time} minutes for ${attractionName}`
       toast.success(statusMessage)
       
       // Auto-close after showing success
@@ -98,111 +86,10 @@ export function QuickWaitTimeModal({
       // Show a more specific error message
       const errorMessage = error instanceof Error 
         ? error.message 
-        : 'Failed to log wait time. Please try again.'
+        : 'Failed to report wait time. Please try again.'
       toast.error(errorMessage)
     } finally {
       setIsSubmitting(false)
-    }
-  }
-
-  const handleAddToTrip = async (waitTimeMinutes: number) => {
-    if (!user) return
-
-    // Check if spark is available
-    if (!window.spark?.kv) {
-      console.error('Spark KV not available for trip logging')
-      throw new Error('System not ready. Please try again in a moment.')
-    }
-
-    try {
-      // Get today's date for the trip
-      const today = new Date().toISOString().split('T')[0]
-      
-      let tripToUpdate = currentTrip
-
-      // If no current trip exists, create one for today
-      if (!tripToUpdate) {
-        const newTrip: Trip = {
-          id: `trip-${user.id}-${Date.now()}`,
-          userId: user.id,
-          visitDate: today,
-          parks: [{
-            parkId,
-            parkName,
-            rideCount: 0
-          }],
-          rideLogs: [],
-          totalRides: 0,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          notes: ''
-        }
-        tripToUpdate = newTrip
-        setCurrentTrip(newTrip)
-      } else {
-        // Add park to existing trip if not already there
-        if (!tripToUpdate.parks.find(p => p.parkId === parkId)) {
-          tripToUpdate.parks.push({
-            parkId,
-            parkName,
-            rideCount: 0
-          })
-        }
-      }
-
-      // Load attraction data to get type
-      const attractions = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
-      const attraction = attractions?.find(a => a.id === attractionId)
-
-      // Create the ride log entry
-      const rideLog: RideLog = {
-        id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        userId: user.id,
-        tripId: tripToUpdate.id,
-        parkId,
-        attractionId,
-        attractionName,
-        attractionType: attraction?.type || 'experience',
-        rideCount: 1,
-        loggedAt: new Date().toISOString(),
-        notes: waitTimeMinutes === -1 ? 'Ride was closed' : `Wait time: ${waitTimeMinutes} minutes`
-      }
-
-      // Update the trip with the new ride log
-      const updatedRideLogs = [...tripToUpdate.rideLogs.filter(log => 
-        !(log.parkId === parkId && log.attractionId === attractionId)
-      ), rideLog]
-
-      // Update park ride counts
-      const updatedParks = tripToUpdate.parks.map(park => 
-        park.parkId === parkId 
-          ? { ...park, rideCount: updatedRideLogs.filter(log => log.parkId === parkId).length }
-          : park
-      )
-
-      const updatedTrip: Trip = {
-        ...tripToUpdate,
-        parks: updatedParks,
-        rideLogs: updatedRideLogs,
-        totalRides: updatedRideLogs.length,
-        updatedAt: new Date().toISOString()
-      }
-
-      // Save the updated trip
-      setCurrentTrip(updatedTrip)
-      await window.spark.kv.set(`current-trip-${user.id}`, updatedTrip)
-      await window.spark.kv.set(`trip-${updatedTrip.id}`, updatedTrip)
-
-      // Update user's trip history
-      const userTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
-      if (!userTrips.includes(updatedTrip.id)) {
-        userTrips.push(updatedTrip.id)
-        await window.spark.kv.set(`user-trips-${user.id}`, userTrips)
-      }
-
-    } catch (error) {
-      console.error('Failed to add to trip:', error)
-      throw error
     }
   }
 
@@ -269,7 +156,7 @@ export function QuickWaitTimeModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Clock size={20} />
-            Log Wait Time
+            Report Wait Time
           </DialogTitle>
         </DialogHeader>
         
@@ -318,26 +205,6 @@ export function QuickWaitTimeModal({
             </Label>
           </div>
 
-          {user && (
-            <div className="flex items-center space-x-2 p-3 bg-muted/50 rounded-lg">
-              <Checkbox
-                id="addToTrip"
-                checked={addToTrip}
-                onCheckedChange={(checked) => setAddToTrip(checked as boolean)}
-              />
-              <Label htmlFor="addToTrip" className="text-sm cursor-pointer flex items-center gap-2">
-                <Plus size={14} />
-                Add this ride to my trip log for today
-              </Label>
-            </div>
-          )}
-
-          {!user && (
-            <div className="text-xs text-muted-foreground text-center p-2 bg-muted/30 rounded">
-              Sign in to add rides to your trip log
-            </div>
-          )}
-          
           <div className="flex gap-2 pt-4">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">
               Cancel
@@ -347,7 +214,7 @@ export function QuickWaitTimeModal({
               disabled={isSubmitting || (!waitTime && !isClosed)}
               className="flex-1"
             >
-              {isSubmitting ? 'Logging...' : (isClosed ? 'Log as Closed' : 'Log Wait Time')}
+              {isSubmitting ? 'Reporting...' : (isClosed ? 'Report as Closed' : 'Report Wait Time')}
             </Button>
           </div>
         </form>

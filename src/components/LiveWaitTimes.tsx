@@ -16,7 +16,7 @@ import { ParkDataService } from '@/services/parkDataService'
 import { toast } from 'sonner'
 import { isAttractionNotDining } from '@/lib/utils'
 import type { User } from '@/App'
-import type { ExtendedAttraction, RideLog, Trip, TripPark } from '@/types'
+import type { ExtendedAttraction } from '@/types'
 
 interface LiveWaitTimesProps {
   parkId: string

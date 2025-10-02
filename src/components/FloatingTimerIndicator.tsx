@@ -1,11 +1,4 @@
-import { useState, useEffect } from 'react'
-import { useKV } from '@github/spark/hooks'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Timer, Play, Pause, X } from '@phosphor-icons/react'
-import { useNavigate } from 'react-router-dom'
-import type { User } from '@/App'
+// This component has been removed as part of simplifying the app to focus on wait time reporting only
 
 interface TimerSession {
   attractionId: string
