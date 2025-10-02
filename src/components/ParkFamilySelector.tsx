@@ -79,7 +79,7 @@ export function ParkFamilySelector({ selectedFamily, selectedParks, onFamilyChan
       {allParks.length > 1 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-foreground">
+            <label className="text-xs sm:text-sm font-medium text-foreground">
               Filter Parks ({selectedParks.length > 0 ? selectedParks.length : 'All'} selected)
             </label>
             <Button
