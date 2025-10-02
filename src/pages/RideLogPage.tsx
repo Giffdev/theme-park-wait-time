@@ -17,6 +17,7 @@ import type { User } from '@/App'
 import type { RideLog, Trip, TripPark, ExtendedAttraction } from '@/types'
 import { parkFamilies, ParkFamily, ParkInfo } from '@/data/sampleData'
 import { RideTimer } from '@/components/RideTimer'
+import { ParkDataService } from '@/services/parkDataService'
 
 interface RideLogPageProps {
   user: User | null
@@ -94,7 +95,11 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const loadAttractionsForPark = async (targetParkId: string) => {
     setIsLoading(true)
     try {
-      const attractionData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${targetParkId}`)
+      console.log(`🔄 Loading attractions for park: ${targetParkId}`)
+      
+      // Use ParkDataService which has fallback mechanisms
+      const attractionData = await ParkDataService.loadAttractions(targetParkId)
+      
       if (attractionData && Array.isArray(attractionData) && attractionData.length > 0) {
         setAttractions(prev => ({
           ...prev,
@@ -103,7 +108,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         console.log(`✅ Loaded ${attractionData.length} attractions for ${targetParkId}`)
       } else {
         console.warn(`⚠️ No attractions found for park ${targetParkId}`)
-        toast.error(`No attractions found for this park. Please try again or contact support.`)
+        toast.error(`No attractions found for this park. This park may not have data available yet.`)
       }
     } catch (error) {
       console.error('Failed to load attractions:', error)
@@ -118,7 +123,10 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     
     for (const parkId of parks) {
       try {
-        const attractionData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
+        console.log(`🔄 Loading attractions for park: ${parkId}`)
+        
+        // Use ParkDataService which has fallback mechanisms
+        const attractionData = await ParkDataService.loadAttractions(parkId)
         
         if (attractionData && Array.isArray(attractionData) && attractionData.length > 0) {
           newAttractions[parkId] = attractionData
@@ -229,13 +237,41 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     setIsLoading(true)
     
     try {
-      console.log(`🚀 Starting new trip for ${selectedParks.length} parks`)
+      console.log(`🚀 Starting new trip for ${selectedParks.length} parks:`, selectedParks)
+      
+      // First, validate that the selected parks have data available
+      const availableParks = ParkDataService.getAvailableParks()
+      console.log('📋 Available parks with data:', availableParks)
+      
+      const validParks = selectedParks.filter(parkId => ParkDataService.hasPark(parkId))
+      const invalidParks = selectedParks.filter(parkId => !ParkDataService.hasPark(parkId))
+      
+      if (invalidParks.length > 0) {
+        const invalidParkNames = invalidParks.map(parkId => {
+          const parkInfo = parkFamilies
+            .flatMap(family => family.parks.map(park => ({ ...park, familyId: family.id, familyName: family.name })))
+            .find(park => park.id === parkId)
+          return parkInfo?.name || parkId
+        })
+        console.warn(`⚠️ Parks without data: ${invalidParks.join(', ')}`)
+        toast.error(`The following parks don't have attraction data available yet: ${invalidParkNames.join(', ')}`)
+        
+        if (validParks.length === 0) {
+          toast.error('None of the selected parks have attraction data available. Please select different parks.')
+          setIsLoading(false)
+          return
+        }
+      }
+      
+      // Use only valid parks for the trip
+      const parksToUse = validParks.length > 0 ? validParks : selectedParks
+      console.log(`🎯 Using parks for trip:`, parksToUse)
       
       // Load attractions for all selected parks  
-      await loadAllSelectedParksAttractions(selectedParks)
+      await loadAllSelectedParksAttractions(parksToUse)
 
       // Create trip parks data
-      const tripParks: TripPark[] = selectedParks.map(parkId => {
+      const tripParks: TripPark[] = parksToUse.map(parkId => {
         const parkInfo = parkFamilies
           .flatMap(family => family.parks.map(park => ({ ...park, familyId: family.id, familyName: family.name })))
           .find(park => park.id === parkId)
@@ -282,10 +318,17 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
       // Update state only after successful save
       setCurrentTrip(newTrip)
-      setActivePark(selectedParks[0]) // Set first park as active
+      setActivePark(parksToUse[0]) // Set first park as active
       
       const parkNames = tripParks.map(p => p.parkName).join(', ')
       toast.success(`Started trip log for: ${parkNames}`)
+      
+      // If some parks were invalid, warn the user but continue
+      if (invalidParks.length > 0 && validParks.length > 0) {
+        setTimeout(() => {
+          toast.warning(`Note: Some parks were excluded due to missing data. Contact support if you need those parks added.`)
+        }, 2000)
+      }
       
     } catch (error) {
       console.error('❌ Failed to start trip:', error)
@@ -1008,6 +1051,9 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
   const [selectedFamily, setSelectedFamily] = useState<string>('')
   const [showParkFilter, setShowParkFilter] = useState<Record<string, boolean>>({})
 
+  // Get available parks from the data service
+  const availableParks = ParkDataService.getAvailableParks()
+
   const handleParkToggle = (parkId: string, checked: boolean) => {
     if (checked) {
       onParksChange([...selectedParks, parkId])
@@ -1019,9 +1065,12 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
   const handleFamilySelectAll = (familyId: string) => {
     const family = parkFamilies.find(f => f.id === familyId)
     if (family) {
-      const familyParkIds = family.parks.map(p => p.id)
+      // Only select parks that have data available
+      const familyParkIds = family.parks
+        .filter(park => availableParks.includes(park.id))
+        .map(p => p.id)
       const otherParks = selectedParks.filter(parkId => 
-        !familyParkIds.includes(parkId)
+        !family.parks.some(p => p.id === parkId)
       )
       onParksChange([...otherParks, ...familyParkIds])
     }
@@ -1046,8 +1095,17 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
 
   return (
     <div className="space-y-6">
+      {/* Helpful info about data availability */}
+      <div className="bg-muted/50 border border-muted rounded-lg p-3">
+        <p className="text-sm text-muted-foreground">
+          <strong>Note:</strong> Only parks with attraction data available can be selected. 
+          Parks marked "No Data" are coming soon! Currently {availableParks.length} parks are available.
+        </p>
+      </div>
+      
       {parkFamilies.map(family => {
         const familyParks = family.parks
+        const parksWithData = familyParks.filter(park => availableParks.includes(park.id))
         const selectedFamilyParks = selectedParks.filter(parkId => 
           familyParks.some(p => p.id === parkId)
         )
@@ -1067,8 +1125,8 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {selectedFamilyParks.length > 0 
-                    ? `${selectedFamilyParks.length} of ${familyParks.length} parks selected`
-                    : `${familyParks.length} parks available`
+                    ? `${selectedFamilyParks.length} of ${parksWithData.length} parks selected`
+                    : `${parksWithData.length} of ${familyParks.length} parks have data available`
                   }
                 </p>
               </div>
@@ -1096,9 +1154,9 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
                   variant="outline"
                   size="sm"
                   onClick={() => handleFamilySelectAll(family.id)}
-                  disabled={selectedFamilyParks.length === familyParks.length}
+                  disabled={selectedFamilyParks.length === parksWithData.length || parksWithData.length === 0}
                 >
-                  Select All {family.name}
+                  Select All Available
                 </Button>
                 <Button
                   variant="outline"
@@ -1114,23 +1172,35 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
             {/* Parks List */}
             {isExpanded && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
-                {familyParks.map(park => (
-                  <div key={park.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={park.id}
-                      checked={selectedParks.includes(park.id)}
-                      onCheckedChange={(checked) => handleParkToggle(park.id, checked as boolean)}
-                    />
-                    <Label htmlFor={park.id} className="text-sm cursor-pointer flex items-center gap-2">
-                      {park.name}
-                      {park.type === 'water-park' && (
-                        <Badge variant="secondary" className="text-xs">
-                          Water Park
-                        </Badge>
-                      )}
-                    </Label>
-                  </div>
-                ))}
+                {familyParks.map(park => {
+                  const hasData = availableParks.includes(park.id)
+                  return (
+                    <div key={park.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={park.id}
+                        checked={selectedParks.includes(park.id)}
+                        onCheckedChange={(checked) => handleParkToggle(park.id, checked as boolean)}
+                        disabled={!hasData}
+                      />
+                      <Label 
+                        htmlFor={park.id} 
+                        className={`text-sm cursor-pointer flex items-center gap-2 ${!hasData ? 'text-muted-foreground' : ''}`}
+                      >
+                        {park.name}
+                        {park.type === 'water-park' && (
+                          <Badge variant="secondary" className="text-xs">
+                            Water Park
+                          </Badge>
+                        )}
+                        {!hasData && (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">
+                            No Data
+                          </Badge>
+                        )}
+                      </Label>
+                    </div>
+                  )
+                })}
               </div>
             )}
 
