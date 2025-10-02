@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useKV } from '@github/spark/hooks'
 import { Button } from '@/components/ui/button'
@@ -136,6 +136,40 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       throw new Error('No attractions could be loaded for any selected parks')
     }
   }
+
+  const handleVariantChange = useCallback((key: string, variant: string) => {
+    setSelectedVariants(prev => {
+      const newVariants = { ...prev, [key]: variant }
+      return newVariants
+    })
+    // Auto-save when variant changes - use setTimeout to avoid stale closure
+    if (currentTrip && user && Object.values(rideCounts).some(count => count > 0)) {
+      setTimeout(() => {
+        // Get fresh state from callback
+        setRideCounts(currentCounts => {
+          autoSaveTrip(currentCounts)
+          return currentCounts
+        })
+      }, 100)
+    }
+  }, [currentTrip, user, rideCounts])
+
+  const handleNotesChange = useCallback((key: string, note: string) => {
+    setNotes(prev => {
+      const newNotes = { ...prev, [key]: note }
+      return newNotes
+    })
+    // Auto-save when notes change - use setTimeout to avoid stale closure
+    if (currentTrip && user && Object.values(rideCounts).some(count => count > 0)) {
+      setTimeout(() => {
+        // Get fresh state from callback
+        setRideCounts(currentCounts => {
+          autoSaveTrip(currentCounts)
+          return currentCounts
+        })
+      }, 100)
+    }
+  }, [currentTrip, user, rideCounts])
 
   const updateRideCount = (parkId: string, attractionId: string, change: number) => {
     const key = `${parkId}-${attractionId}`
@@ -457,9 +491,14 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                   value={tripNotes}
                   onChange={(e) => {
                     setTripNotes(e.target.value)
-                    // Auto-save when trip notes change
+                    // Auto-save when trip notes change - debounced
                     if (currentTrip && user) {
-                      setTimeout(() => autoSaveTrip(rideCounts), 500) // Debounce for notes
+                      setTimeout(() => {
+                        setRideCounts(currentCounts => {
+                          autoSaveTrip(currentCounts)
+                          return currentCounts
+                        })
+                      }, 500)
                     }
                   }}
                   placeholder="Add notes about your trip experience..."
@@ -512,26 +551,8 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
               selectedVariants={selectedVariants}
               notes={notes}
               onUpdateRideCount={updateRideCount}
-              onVariantChange={(key, variant) => {
-                setSelectedVariants(prev => {
-                  const newVariants = { ...prev, [key]: variant }
-                  // Auto-save when variant changes
-                  if (currentTrip && user && Object.values(rideCounts).some(count => count > 0)) {
-                    setTimeout(() => autoSaveTrip(rideCounts), 0)
-                  }
-                  return newVariants
-                })
-              }}
-              onNotesChange={(key, note) => {
-                setNotes(prev => {
-                  const newNotes = { ...prev, [key]: note }
-                  // Auto-save when notes change
-                  if (currentTrip && user && Object.values(rideCounts).some(count => count > 0)) {
-                    setTimeout(() => autoSaveTrip(rideCounts), 0)
-                  }
-                  return newNotes
-                })
-              }}
+              onVariantChange={handleVariantChange}
+              onNotesChange={handleNotesChange}
             />
           )}
         </div>
