@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,12 +39,19 @@ export function ReportWaitTimeModal({
     isSubmitting 
   } = useReporting()
 
-  const recentReports = getRecentReports(attractionId, 5)
-  const unverifiedReports = recentReports.filter(
-    report => report.userId !== user.id && 
-             report.status === 'pending' && 
-             !report.verifications.some(v => v.userId === user.id)
-  )
+  const [recentReports, setRecentReports] = useState<WaitTimeReport[]>([])
+  const [unverifiedReports, setUnverifiedReports] = useState<WaitTimeReport[]>([])
+
+  // Load reports when component mounts or attractionId changes
+  useEffect(() => {
+    const reports = getRecentReports(attractionId, 5)
+    setRecentReports(reports)
+    setUnverifiedReports(reports.filter(
+      report => report.userId !== user.id && 
+               report.status === 'pending' && 
+               !report.verifications.some(v => v.userId === user.id)
+    ))
+  }, [attractionId, getRecentReports])
 
   const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -75,9 +82,15 @@ export function ReportWaitTimeModal({
     try {
       await verifyReport(report.id, user.id, user.username, isAccurate)
       toast.success(`Report ${isAccurate ? 'verified as accurate' : 'marked as inaccurate'}`)
-      // Force re-render by switching modes briefly
-      setMode('report')
-      setTimeout(() => setMode('verify'), 100)
+      
+      // Refresh the local state
+      const updatedReports = getRecentReports(attractionId, 5)
+      setRecentReports(updatedReports)
+      setUnverifiedReports(updatedReports.filter(
+        report => report.userId !== user.id && 
+                 report.status === 'pending' && 
+                 !report.verifications.some(v => v.userId === user.id)
+      ))
     } catch (error) {
       console.error('Failed to verify report:', error)
       toast.error('Failed to verify report. Please try again.')
@@ -220,7 +233,7 @@ export function ReportWaitTimeModal({
                         {getStatusIcon(report.status)}
                       </div>
                       <Badge className={getStatusColor(report.status)}>
-                        {report.waitTime === -1 ? 'Closed' : `${report.waitTime} min`}
+                        {report.waitTime === -1 ? 'Ride is closed' : `${report.waitTime} min`}
                       </Badge>
                     </div>
                     
@@ -280,7 +293,7 @@ export function ReportWaitTimeModal({
                     {getStatusIcon(report.status)}
                   </div>
                   <Badge variant="secondary" className="text-xs">
-                    {report.waitTime === -1 ? 'Closed' : `${report.waitTime} min`}
+                    {report.waitTime === -1 ? 'Ride is closed' : `${report.waitTime} min`}
                   </Badge>
                 </div>
               ))}

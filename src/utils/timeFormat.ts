@@ -51,3 +51,21 @@ export function formatChartTimestamp(timestamp: string, includeDate: boolean = t
   
   return timestamp
 }
+
+/**
+ * Format wait time display consistently across the application
+ * @param waitTime - Wait time in minutes (-1 for closed rides)
+ * @param showUnits - Whether to show "min" suffix for valid wait times
+ * @returns Formatted wait time string
+ */
+export function formatWaitTime(waitTime: number, showUnits: boolean = true): string {
+  if (waitTime === -1) {
+    return 'Ride is closed'
+  }
+  
+  if (waitTime === 0) {
+    return 'Walk-on'
+  }
+  
+  return showUnits ? `${waitTime} min` : waitTime.toString()
+}

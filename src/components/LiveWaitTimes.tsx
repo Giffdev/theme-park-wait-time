@@ -297,7 +297,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
                       <span className="text-sm text-muted-foreground">Current Wait</span>
                     </div>
                     <Badge variant={getWaitTimeVariant(attraction.currentWaitTime)}>
-                      {attraction.currentWaitTime === -1 ? 'Closed' : `${attraction.currentWaitTime} min`}
+                      {attraction.currentWaitTime === -1 ? 'Ride is closed' : `${attraction.currentWaitTime} min`}
                     </Badge>
                   </div>
                   

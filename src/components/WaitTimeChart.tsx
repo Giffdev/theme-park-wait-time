@@ -284,7 +284,7 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
       {currentDataPoint && (
         <div className="flex items-center justify-center mt-2 text-xs">
           <Badge variant={getWaitTimeVariant(currentDataPoint.waitTime)}>
-            Now: {currentDataPoint.waitTime === -1 ? 'Closed' : `${currentDataPoint.waitTime} min`}
+            Now: {currentDataPoint.waitTime === -1 ? 'Ride is closed' : `${currentDataPoint.waitTime} min`}
           </Badge>
         </div>
       )}

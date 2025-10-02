@@ -36,7 +36,7 @@ export function RealtimeIndicator({ parkId }: RealtimeIndicatorProps) {
       setNewReportsCount(prev => prev + 1)
       
       if (showNotifications) {
-        const waitTimeText = latestReport.waitTime === -1 ? 'Closed' : `${latestReport.waitTime} minutes`
+        const waitTimeText = latestReport.waitTime === -1 ? 'Ride is closed' : `${latestReport.waitTime} minutes`
         toast.success(`New wait time reported for ${latestReport.attractionId}`, {
           description: `${waitTimeText} by ${latestReport.username}`,
           duration: 5000,

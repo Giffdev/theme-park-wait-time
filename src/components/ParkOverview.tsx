@@ -89,7 +89,7 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
       case 'delayed':
         return { color: 'bg-accent', label: 'Delayed', textColor: 'text-accent-foreground' }
       default:
-        if (waitTime === -1) return { color: 'bg-destructive', label: 'Closed', textColor: 'text-destructive-foreground' }
+        if (waitTime === -1) return { color: 'bg-destructive', label: 'Ride is closed', textColor: 'text-destructive-foreground' }
         if (waitTime === 0) return { color: 'bg-success', label: 'Walk On', textColor: 'text-success-foreground' }
         if (waitTime <= 15) return { color: 'bg-success', label: `${waitTime}min`, textColor: 'text-success-foreground' }
         if (waitTime <= 30) return { color: 'bg-accent', label: `${waitTime}min`, textColor: 'text-accent-foreground' }
