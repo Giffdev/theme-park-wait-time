@@ -181,9 +181,17 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         [key]: Math.max(0, (prev[key] || 0) + change)
       }
       
-      // Auto-save the trip with updated counts
+      // Auto-save the trip with updated counts - add validation
       if (currentTrip && user) {
-        autoSaveTrip(newCounts)
+        // Add a small delay to prevent rapid-fire saves
+        setTimeout(() => {
+          try {
+            autoSaveTrip(newCounts)
+          } catch (error) {
+            console.error('❌ Error during auto-save:', error)
+            toast.error('Failed to save changes. Please try again.')
+          }
+        }, 100)
       }
       
       return newCounts
@@ -237,10 +245,27 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const autoSaveTrip = async (updatedRideCounts: Record<string, number>) => {
     if (!user || !currentTrip) return
 
-    // Check if spark KV is available
-    if (!window.spark?.kv) {
-      console.error('❌ Spark KV not available for auto-save')
-      toast.error('Storage not available. Please refresh the page.')
+    // Check if spark KV is available with retry logic
+    let kvAvailable = false
+    let retryCount = 0
+    const maxRetries = 3
+
+    while (!kvAvailable && retryCount < maxRetries) {
+      if (window.spark?.kv) {
+        kvAvailable = true
+        break
+      }
+      
+      retryCount++
+      if (retryCount < maxRetries) {
+        console.warn(`⚠️ Spark KV not available, retry ${retryCount}/${maxRetries}`)
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    }
+
+    if (!kvAvailable) {
+      console.error('❌ Spark KV not available after retries')
+      toast.error('Storage temporarily unavailable. Your changes are saved locally but may not persist.')
       return
     }
 
@@ -289,37 +314,88 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       // Update current trip state first
       setCurrentTrip(updatedTrip)
       
-      // Auto-save to storage with better error handling
+      // Auto-save to storage with better error handling and validation
       try {
-        await window.spark.kv.set(`current-trip-${user.id}`, updatedTrip)
+        // Validate the data before saving
+        if (!updatedTrip.id || !user.id) {
+          throw new Error('Invalid trip or user data')
+        }
+
+        // Create a clean serializable version of the trip
+        const tripToSave = {
+          ...updatedTrip,
+          // Ensure all dates are properly serialized
+          createdAt: updatedTrip.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          visitDate: updatedTrip.visitDate,
+          // Ensure logs are properly structured
+          rideLogs: logsToSave.map(log => ({
+            ...log,
+            loggedAt: log.loggedAt || new Date().toISOString()
+          }))
+        }
+
+        // Test KV with a simple set operation first
+        const testKey = `test-${user.id}-${Date.now()}`
+        await window.spark.kv.set(testKey, { test: true })
+        await window.spark.kv.delete(testKey)
+
+        await window.spark.kv.set(`current-trip-${user.id}`, tripToSave)
         console.log('✅ Current trip saved successfully')
       } catch (kvError) {
         console.error('❌ Failed to save current trip to KV:', kvError)
-        throw new Error('Failed to save trip progress')
+        // Show specific error to help with debugging
+        const errorMessage = kvError instanceof Error ? kvError.message : 'Unknown KV error'
+        console.error('KV Error details:', {
+          error: kvError,
+          tripId: updatedTrip.id,
+          userId: user.id,
+          dataSize: JSON.stringify(updatedTrip).length
+        })
+        toast.error(`Failed to save trip: ${errorMessage}`)
+        return // Don't continue if current trip save fails
       }
       
       // If there are any rides logged, also save to the finalized trip storage
       if (logsToSave.length > 0) {
         try {
-          await window.spark.kv.set(`trip-${updatedTrip.id}`, updatedTrip)
+          const finalTripToSave = {
+            ...updatedTrip,
+            createdAt: updatedTrip.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            visitDate: updatedTrip.visitDate,
+            rideLogs: logsToSave.map(log => ({
+              ...log,
+              loggedAt: log.loggedAt || new Date().toISOString()
+            }))
+          }
+
+          await window.spark.kv.set(`trip-${updatedTrip.id}`, finalTripToSave)
           console.log('✅ Trip record saved successfully')
           
           // Update user's trip history
-          const userTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
-          if (!userTrips.includes(updatedTrip.id)) {
-            userTrips.push(updatedTrip.id)
-            await window.spark.kv.set(`user-trips-${user.id}`, userTrips)
-            console.log('✅ User trip history updated successfully')
+          try {
+            const userTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
+            if (!userTrips.includes(updatedTrip.id)) {
+              userTrips.push(updatedTrip.id)
+              await window.spark.kv.set(`user-trips-${user.id}`, userTrips)
+              console.log('✅ User trip history updated successfully')
+            }
+          } catch (historyError) {
+            console.error('❌ Failed to update user trip history:', historyError)
+            // This is not critical, so we don't throw
           }
         } catch (kvError) {
           console.error('❌ Failed to save trip record to KV:', kvError)
           // Don't throw here - we already saved the current trip, so partial success
+          toast.error('Trip saved locally but may not sync. Please try refreshing if issues persist.')
         }
       }
       
     } catch (error) {
       console.error('❌ Failed to auto-save trip:', error)
-      toast.error('Failed to save your trip. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`Failed to save trip: ${errorMessage}. Please try again.`)
     } finally {
       setTimeout(() => setIsSaving(false), 1000) // Show "saved" state briefly
     }
@@ -738,8 +814,13 @@ function RideLogCard({
   const handleTimerLog = useCallback(async (minutes: number) => {
     setIsLogging(true)
     try {
+      // Validate the minutes value
+      if (!minutes || minutes < 1) {
+        throw new Error('Invalid time value')
+      }
+
       // Convert minutes to ride count (each ride = the time logged)
-      onCountChange(minutes)
+      await onCountChange(minutes)
       
       // Brief delay to show the logged state
       setTimeout(() => {
@@ -748,7 +829,8 @@ function RideLogCard({
       }, 1000)
     } catch (error) {
       console.error('Failed to log timer result:', error)
-      toast.error('Failed to log wait time. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`Failed to log wait time: ${errorMessage}`)
       setIsLogging(false)
     }
   }, [onCountChange])

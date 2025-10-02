@@ -88,13 +88,19 @@ export function RideTimer({ user, attraction, parkId, onTimeLogged, isLogging }:
         totalPausedDuration: 0
       }
 
-      setCurrentSession(newSession)
+      // Validate data before saving
+      if (!newSession.attractionId || !newSession.parkId || !newSession.startTime) {
+        throw new Error('Invalid timer session data')
+      }
+
+      await setCurrentSession(newSession)
       toast.success(`Timer started for ${attraction.name}! 🎢`, {
         description: 'Timer will run in the background. You can safely switch apps.'
       })
     } catch (error) {
       console.error('Failed to start timer:', error)
-      toast.error('Failed to start timer. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`Failed to start timer: ${errorMessage}`)
     }
   }, [user, attraction, parkId, setCurrentSession])
 
@@ -108,11 +114,12 @@ export function RideTimer({ user, attraction, parkId, onTimeLogged, isLogging }:
         pausedTime: Date.now()
       }
 
-      setCurrentSession(pausedSession)
+      await setCurrentSession(pausedSession)
       toast.info(`Timer paused for ${attraction.name}`)
     } catch (error) {
       console.error('Failed to pause timer:', error)
-      toast.error('Failed to pause timer. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`Failed to pause timer: ${errorMessage}`)
     }
   }, [currentSession, attraction.name, setCurrentSession])
 
@@ -128,11 +135,12 @@ export function RideTimer({ user, attraction, parkId, onTimeLogged, isLogging }:
         pausedTime: undefined
       }
 
-      setCurrentSession(resumedSession)
+      await setCurrentSession(resumedSession)
       toast.success(`Timer resumed for ${attraction.name}`)
     } catch (error) {
       console.error('Failed to resume timer:', error)
-      toast.error('Failed to resume timer. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`Failed to resume timer: ${errorMessage}`)
     }
   }, [currentSession, attraction.name, setCurrentSession])
 
@@ -149,17 +157,18 @@ export function RideTimer({ user, attraction, parkId, onTimeLogged, isLogging }:
         return
       }
 
-      // Clear the timer session
-      setCurrentSession(null)
+      // Clear the timer session first
+      await setCurrentSession(null)
       setElapsedTime(0)
       setIsActive(false)
 
       // Log the time
-      onTimeLogged(minutes)
+      await onTimeLogged(minutes)
       toast.success(`Logged ${minutes} minute${minutes !== 1 ? 's' : ''} for ${attraction.name}`)
     } catch (error) {
       console.error('Failed to stop timer:', error)
-      toast.error('Failed to log wait time. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`Failed to log wait time: ${errorMessage}`)
     }
   }, [currentSession, attraction.name, onTimeLogged, setCurrentSession])
 
@@ -167,13 +176,14 @@ export function RideTimer({ user, attraction, parkId, onTimeLogged, isLogging }:
     if (!currentSession) return
 
     try {
-      setCurrentSession(null)
+      await setCurrentSession(null)
       setElapsedTime(0)
       setIsActive(false)
       toast.info(`Timer cancelled for ${attraction.name}`)
     } catch (error) {
       console.error('Failed to cancel timer:', error)
-      toast.error('Failed to cancel timer. Please try again.')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`Failed to cancel timer: ${errorMessage}`)
     }
   }, [currentSession, attraction.name, setCurrentSession])
 
@@ -305,14 +315,15 @@ export function RideTimer({ user, attraction, parkId, onTimeLogged, isLogging }:
                     size="sm"
                     onClick={async () => {
                       try {
-                        setCurrentSession(null)
+                        await setCurrentSession(null)
                         setElapsedTime(0)
                         setIsActive(false)
-                        onTimeLogged(minutes)
+                        await onTimeLogged(minutes)
                         toast.success(`Logged ${minutes} minutes for ${attraction.name}`)
                       } catch (error) {
                         console.error('Failed to quick-log time:', error)
-                        toast.error('Failed to log wait time. Please try again.')
+                        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+                        toast.error(`Failed to log wait time: ${errorMessage}`)
                       }
                     }}
                     className="h-8 px-3 text-xs touch-manipulation min-h-[36px]"
