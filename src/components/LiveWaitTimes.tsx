@@ -12,6 +12,7 @@ import { DebugDataViewer } from '@/components/DebugDataViewer'
 import { useReporting } from '@/hooks/useReporting'
 import { useKV } from '@github/spark/hooks'
 import { parkFamilies } from '@/data/sampleData'
+import { ParkDataService } from '@/services/parkDataService'
 import { toast } from 'sonner'
 import { isAttractionNotDining } from '@/lib/utils'
 import type { User } from '@/App'
@@ -51,41 +52,8 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
     console.log(`🔄 LiveWaitTimes loading attractions for park: ${parkId}`)
     
     try {
-      // Ensure spark KV is available
-      if (!window.spark?.kv) {
-        throw new Error('Spark KV not available')
-      }
-      
-      // Try to get data with simple retry logic
-      let attempts = 0
-      const maxAttempts = 5
-      let parkData: ExtendedAttraction[] | null = null
-      
-      const lookupKey = `attractions-${parkId}`
-      console.log(`🔍 LiveWaitTimes looking for key: ${lookupKey}`)
-      
-      while (attempts < maxAttempts && !parkData) {
-        try {
-          parkData = await window.spark.kv.get<ExtendedAttraction[]>(lookupKey) || null
-          console.log(`📊 LiveWaitTimes attempt ${attempts + 1} for ${parkId}:`, parkData ? `${parkData.length} items` : 'no data')
-          
-          if (parkData && Array.isArray(parkData) && parkData.length > 0) {
-            break // Success!
-          }
-          
-          // Wait before retrying
-          if (attempts < maxAttempts - 1) {
-            console.log(`⏳ LiveWaitTimes retrying in 300ms (attempt ${attempts + 1}/${maxAttempts})`)
-            await new Promise(resolve => setTimeout(resolve, 300))
-          }
-        } catch (attemptError) {
-          console.error(`❌ LiveWaitTimes attempt ${attempts + 1} error:`, attemptError)
-          if (attempts < maxAttempts - 1) {
-            await new Promise(resolve => setTimeout(resolve, 300))
-          }
-        }
-        attempts++
-      }
+      // Use the ParkDataService for reliable loading
+      const parkData = await ParkDataService.loadAttractions(parkId)
       
       if (parkData && Array.isArray(parkData) && parkData.length > 0) {
         // Filter out dining establishments - only show actual attractions
@@ -100,24 +68,26 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
         setAttractions(validAttractions)
         console.log(`✅ LiveWaitTimes successfully loaded ${validAttractions.length} valid attractions for ${parkId}`)
       } else {
-        console.warn(`⚠️ LiveWaitTimes no valid data found for ${parkId} after ${attempts} attempts`)
+        console.warn(`⚠️ LiveWaitTimes no data returned from ParkDataService for ${parkId}`)
         
-        // If no data found, check what keys exist
-        const allKeys = await window.spark.kv.keys()
-        const attractionKeys = allKeys.filter(key => key.startsWith('attractions-'))
-        console.log(`🔍 LiveWaitTimes available attraction keys:`, attractionKeys)
-        
-        if (attractionKeys.length === 0) {
-          setError(`No park data found. Please refresh the page to reload data.`)
+        // Check available parks for error message
+        const availableParks = ParkDataService.getAvailableParks()
+        if (availableParks.length > 0) {
+          if (ParkDataService.hasPark(parkId)) {
+            setError(`Unable to load attractions for "${parkId}". Please try refreshing the page.`)
+          } else {
+            setError(`Park "${parkId}" not found. Available parks: ${availableParks.join(', ')}`)
+          }
         } else {
-          const availableParks = attractionKeys.map(k => k.replace('attractions-', '')).join(', ')
-          setError(`Park "${parkId}" data not found. Available parks: ${availableParks}`)
+          setError(`No park data available. Please refresh the page to reload data.`)
         }
+        
         setAttractions([])
       }
     } catch (error) {
       console.error(`❌ LiveWaitTimes error loading attractions for ${parkId}:`, error)
-      setError(`Error loading park data: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      setError(`Error loading park data: ${errorMessage}. Please try refreshing the page.`)
       setAttractions([])
     } finally {
       setIsLoading(false)

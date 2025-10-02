@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChartBar, Clock, TrendUp, SortAscending, Eye } from '@phosphor-icons/react'
 import { isAttractionNotDining } from '@/lib/utils'
+import { ParkDataService } from '@/services/parkDataService'
 import type { ExtendedAttraction } from '@/types'
 
 interface ParkOverviewProps {
@@ -28,30 +29,20 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
       try {
         console.log(`🔄 ParkOverview loading data for park: ${parkId}`)
         
-        // Wait for data to be loaded by the useKV hook
-        // The useKV hook should automatically load data, but let's give it a moment
-        await new Promise(resolve => setTimeout(resolve, 100))
+        // Use the ParkDataService for reliable loading
+        const loadedAttractions = await ParkDataService.loadAttractions(parkId)
         
-        // Check if useKV loaded data
-        if (attractions && Array.isArray(attractions) && attractions.length > 0) {
-          console.log(`✅ ParkOverview useKV hook loaded ${attractions.length} attractions for ${parkId}`)
+        if (loadedAttractions && Array.isArray(loadedAttractions) && loadedAttractions.length > 0) {
+          console.log(`✅ ParkOverview loaded ${loadedAttractions.length} attractions for ${parkId}`)
+          setAttractions(loadedAttractions)
         } else {
-          console.warn(`⚠️ ParkOverview useKV hook has no data for ${parkId}, checking direct access...`)
+          console.warn(`⚠️ ParkOverview no data returned from ParkDataService for ${parkId}`)
           
-          // Fallback: try direct KV access if useKV hasn't loaded yet
-          if (window.spark?.kv) {
-            const directData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
-            if (directData && Array.isArray(directData) && directData.length > 0) {
-              console.log(`🔄 ParkOverview found data via direct access, updating useKV: ${directData.length} attractions`)
-              setAttractions(directData)
-            } else {
-              console.error(`❌ ParkOverview no data found via direct access for ${parkId}`)
-              
-              // Debug: check what keys exist
-              const allKeys = await window.spark.kv.keys()
-              const attractionKeys = allKeys.filter(key => key.startsWith('attractions-'))
-              console.log(`🔍 Available attraction keys:`, attractionKeys)
-            }
+          // Check if useKV has data
+          if (attractions && Array.isArray(attractions) && attractions.length > 0) {
+            console.log(`✅ ParkOverview using existing useKV data: ${attractions.length} attractions`)
+          } else {
+            console.error(`❌ ParkOverview no data available for ${parkId}`)
           }
         }
       } catch (error) {

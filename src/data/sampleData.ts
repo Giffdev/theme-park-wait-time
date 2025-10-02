@@ -2648,72 +2648,107 @@ export const extendedAttractions: Record<string, ExtendedAttraction[]> = {
 
 export async function initializeSampleData() {
   try {
-    // Ensure spark is available
+    // Ensure spark is available with a wait
+    let attempts = 0
+    while (attempts < 10 && (!window.spark || !window.spark.kv)) {
+      console.log(`⏳ Waiting for Spark KV to be available... (${attempts + 1}/10)`)
+      await new Promise(resolve => setTimeout(resolve, 100))
+      attempts++
+    }
+    
     if (!window.spark || !window.spark.kv) {
-      console.error('❌ Spark KV not available')
+      console.error('❌ Spark KV not available after waiting')
       return false
     }
     
     const { kv } = window.spark
+    console.log('🚀 Starting robust sample data initialization...')
     
-    console.log('🔄 Starting sample data initialization...')
-    
-    // Initialize key parks first (most commonly used)
+    // Check if data already exists for key parks
     const keyParks = ['magic-kingdom', 'epcot', 'hollywood-studios', 'animal-kingdom', 'universal-studios-orlando', 'islands-of-adventure']
+    let existingCount = 0
     
-    let successCount = 0
     for (const parkId of keyParks) {
       try {
-        const attractions = sampleAttractions[parkId]
-        if (attractions && Array.isArray(attractions)) {
-          console.log(`🔄 Seeding ${attractions.length} attractions for ${parkId}...`)
-          await kv.set(`attractions-${parkId}`, attractions)
-          successCount++
-          console.log(`✅ Seeded ${parkId}`)
-          
-          // Small delay between parks
-          await new Promise(resolve => setTimeout(resolve, 10))
+        const existing = await kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
+        if (existing && Array.isArray(existing) && existing.length > 0) {
+          existingCount++
+          console.log(`✅ ${parkId} already has ${existing.length} attractions`)
         }
-      } catch (parkError) {
-        console.error(`❌ Failed to seed ${parkId}:`, parkError)
+      } catch (err) {
+        console.log(`🔍 ${parkId} not found, will seed`)
       }
     }
     
-    // Initialize remaining parks
-    const remainingParks = Object.keys(sampleAttractions).filter(p => !keyParks.includes(p))
-    for (const parkId of remainingParks) {
+    // If most key parks already have data, skip initialization
+    if (existingCount >= 4) {
+      console.log(`🎉 Data already initialized (${existingCount}/6 key parks found)`)
+      return true
+    }
+    
+    console.log(`📊 Seeding data for all parks (found ${existingCount}/6 key parks)`)
+    
+    // Initialize all parks at once with better error handling
+    let successCount = 0
+    const totalParks = Object.keys(sampleAttractions).length
+    
+    for (const [parkId, attractions] of Object.entries(sampleAttractions)) {
       try {
-        const attractions = sampleAttractions[parkId]
-        if (attractions && Array.isArray(attractions)) {
-          await kv.set(`attractions-${parkId}`, attractions)
-          successCount++
-          console.log(`✅ Seeded ${parkId} (${attractions.length} attractions)`)
+        if (attractions && Array.isArray(attractions) && attractions.length > 0) {
+          // Use a more robust set operation with retries
+          let setSuccess = false
+          let retries = 0
+          
+          while (!setSuccess && retries < 3) {
+            try {
+              await kv.set(`attractions-${parkId}`, attractions)
+              // Verify the data was actually set
+              const verification = await kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
+              if (verification && Array.isArray(verification) && verification.length === attractions.length) {
+                setSuccess = true
+                successCount++
+                console.log(`✅ Successfully seeded ${parkId} (${attractions.length} attractions)`)
+              } else {
+                throw new Error('Verification failed after set')
+              }
+            } catch (retryError) {
+              retries++
+              console.warn(`⚠️ Retry ${retries}/3 for ${parkId}:`, retryError)
+              if (retries < 3) {
+                await new Promise(resolve => setTimeout(resolve, 100))
+              }
+            }
+          }
+          
+          if (!setSuccess) {
+            console.error(`❌ Failed to seed ${parkId} after 3 retries`)
+          }
         }
-      } catch (parkError) {
-        console.error(`❌ Failed to seed ${parkId}:`, parkError)
+      } catch (error) {
+        console.error(`❌ Error seeding ${parkId}:`, error)
       }
     }
     
-    console.log(`✅ Sample data initialization completed: ${successCount} parks seeded`)
+    console.log(`🎉 Initialization complete: ${successCount}/${totalParks} parks seeded`)
     
-    // Quick verification of key parks
-    let verifiedCount = 0
-    for (const parkId of keyParks.slice(0, 3)) { // Just check first 3
+    // Final verification of key parks
+    let finalVerifiedCount = 0
+    for (const parkId of keyParks) {
       try {
         const data = await kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
         if (data && Array.isArray(data) && data.length > 0) {
-          verifiedCount++
+          finalVerifiedCount++
         }
       } catch (verifyError) {
-        console.error(`❌ Quick verification failed for ${parkId}:`, verifyError)
+        console.error(`❌ Final verification failed for ${parkId}:`, verifyError)
       }
     }
     
-    console.log(`🎉 Initialization complete (${verifiedCount}/3 key parks verified)`)
-    return verifiedCount >= 2 // Require at least 2 parks to be verified
+    console.log(`🔍 Final verification: ${finalVerifiedCount}/${keyParks.length} key parks verified`)
+    return finalVerifiedCount >= 3 // Require at least half of key parks to be verified
     
   } catch (error) {
-    console.error('❌ Error initializing sample data:', error)
+    console.error('❌ Critical error during initialization:', error)
     return false
   }
 }

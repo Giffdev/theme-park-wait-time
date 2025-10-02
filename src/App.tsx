@@ -6,7 +6,7 @@ import { AuthModal } from '@/components/AuthModal'
 import { FloatingTimerIndicator } from '@/components/FloatingTimerIndicator'
 import { HomePage, AboutPage, ParkDetailsPage, AttractionDetailsPage, RideLogPage, MyRideLogsPage, CrowdCalendarPage, ParkSelectorPage } from '@/pages'
 import { Toaster } from 'sonner'
-import { initializeSampleData } from '@/data/sampleData'
+import { ParkDataService } from '@/services/parkDataService'
 
 export type Park = {
   id: string
@@ -40,45 +40,49 @@ function App() {
   // Initialize sample data on app load
   useEffect(() => {
     let timeoutId: NodeJS.Timeout
+    let cancelled = false
     
     const loadData = async () => {
       try {
         console.log('🚀 App initializing sample data')
         
-        // Set a maximum 2 second timeout to prevent infinite loading
+        // Set a maximum 5 second timeout to prevent infinite loading
         timeoutId = setTimeout(() => {
           console.warn('⏰ Timeout reached, allowing app to load anyway')
-          setDataInitialized(true)
-        }, 2000)
+          if (!cancelled) setDataInitialized(true)
+        }, 5000)
         
-        // Quick check for spark availability
+        // Wait for spark to be available with more patience
         let attempts = 0
-        while (attempts < 5 && !window.spark?.kv) {
-          await new Promise(resolve => setTimeout(resolve, 50))
+        while (attempts < 50 && !window.spark?.kv && !cancelled) {
+          await new Promise(resolve => setTimeout(resolve, 100))
           attempts++
         }
         
+        if (cancelled) return
+        
         if (window.spark?.kv) {
           console.log('✅ Spark KV available')
-          const success = await initializeSampleData()
-          console.log(success ? '✅ Data initialized' : '⚠️ Data init had issues, continuing anyway')
+          const successCount = await ParkDataService.initializeAllParks()
+          console.log(successCount > 0 ? '✅ Data initialized successfully' : '⚠️ Data init had issues, continuing anyway')
         } else {
-          console.warn('⚠️ Spark KV not ready, continuing without init')
+          console.warn('⚠️ Spark KV not ready after waiting, continuing without init')
         }
         
-        clearTimeout(timeoutId)
-        setDataInitialized(true)
+        if (timeoutId) clearTimeout(timeoutId)
+        if (!cancelled) setDataInitialized(true)
         
       } catch (error) {
         console.error('❌ App error during initialization:', error)
-        clearTimeout(timeoutId)
-        setDataInitialized(true)
+        if (timeoutId) clearTimeout(timeoutId)
+        if (!cancelled) setDataInitialized(true)
       }
     }
     
     loadData()
     
     return () => {
+      cancelled = true
       if (timeoutId) clearTimeout(timeoutId)
     }
   }, [])
