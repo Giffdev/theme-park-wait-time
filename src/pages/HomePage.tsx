@@ -151,45 +151,6 @@ export function HomePage() {
           </div>
         ))}
       </div>
-
-      {/* Quick Stats */}
-      <div className="mt-12 bg-muted/50 rounded-lg p-6">
-        <div className="text-center space-y-4">
-          <h3 className="text-xl font-semibold text-foreground">
-            Coverage Summary
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-primary">
-                {parkFamilies.length}
-              </div>
-              <div className="text-sm text-muted-foreground">Resort Groups</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-primary">
-                {parkFamilies.reduce((total, family) => total + family.parks.length, 0)}
-              </div>
-              <div className="text-sm text-muted-foreground">Total Parks</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-primary">
-                {parkFamilies.reduce((total, family) => 
-                  total + family.parks.filter(p => p.type === 'theme-park').length, 0
-                )}
-              </div>
-              <div className="text-sm text-muted-foreground">Theme Parks</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-primary">
-                {parkFamilies.reduce((total, family) => 
-                  total + family.parks.filter(p => p.type === 'water-park').length, 0
-                )}
-              </div>
-              <div className="text-sm text-muted-foreground">Water Parks</div>
-            </div>
-          </div>
-        </div>
-      </div>
     </main>
   )
 }
