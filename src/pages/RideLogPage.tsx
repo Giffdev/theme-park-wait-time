@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ArrowLeft, Plus, Minus, Calendar, Clock, Star, Ticket, Users, MapPin, CaretDown } from '@phosphor-icons/react'
 import { toast } from 'sonner'
+import { isAttractionNotDining } from '@/lib/utils'
 import type { User } from '@/App'
 import type { RideLog, Trip, TripPark, ExtendedAttraction } from '@/types'
 import { parkFamilies, ParkFamily, ParkInfo } from '@/data/sampleData'
@@ -605,13 +606,7 @@ function AttractionsForPark({
   user
 }: AttractionsForParkProps) {
   // Filter out dining establishments - only show actual attractions
-  const attractionOnlyFilter = (attraction: ExtendedAttraction) => 
-    attraction.type === 'thrill' || 
-    attraction.type === 'family' || 
-    attraction.type === 'show' ||
-    (attraction.type === 'experience' && 
-     !attraction.name.toLowerCase().includes('restaurant') && 
-     !attraction.name.toLowerCase().includes('dining'))
+  const attractionOnlyFilter = isAttractionNotDining
 
   const activeAttractions = attractions.filter(a => !a.isDefunct && attractionOnlyFilter(a))
   const defunctAttractions = attractions.filter(a => a.isDefunct && attractionOnlyFilter(a))

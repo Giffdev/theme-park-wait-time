@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChartBar, Clock, TrendUp, SortAscending, Eye } from '@phosphor-icons/react'
+import { isAttractionNotDining } from '@/lib/utils'
 import type { ExtendedAttraction } from '@/types'
 
 interface ParkOverviewProps {
@@ -77,14 +78,7 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
       }
       
       // Filter out dining establishments - only show actual attractions
-      const isAttraction = attraction.type === 'thrill' || 
-        attraction.type === 'family' || 
-        attraction.type === 'show' ||
-        (attraction.type === 'experience' && 
-         !attraction.name.toLowerCase().includes('restaurant') && 
-         !attraction.name.toLowerCase().includes('dining'))
-      
-      return isAttraction
+      return isValid && isAttractionNotDining(attraction)
     })
     
     console.log(`✅ ParkOverview filtered to ${validAttractions.length} valid attractions`)
