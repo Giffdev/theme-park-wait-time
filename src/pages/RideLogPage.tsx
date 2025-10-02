@@ -472,23 +472,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         </div>
       </div>
 
-        {/* Usage Guide for Timer */}
-        {!currentTrip && (
-          <Card className="border-blue-200 bg-blue-50">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-blue-800">
-                <Clock size={18} />
-                Smart Timer Feature
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 text-blue-700 text-sm space-y-2">
-              <p>📱 <strong>Mobile-Optimized:</strong> Timers run in the background even when you switch apps or turn off your screen</p>
-              <p>⏱️ <strong>Two Ways to Log:</strong> Use manual counting for quick entries or start a timer when joining a queue</p>
-              <p>🎯 <strong>Accurate Tracking:</strong> Timer captures your total wait time from queue entry to ride exit</p>
-              <p>💡 <strong>Smart Features:</strong> Pause/resume for bathroom breaks, quick-log buttons for common times</p>
-            </CardContent>
-          </Card>
-        )}
+
 
         {!currentTrip ? (
         <Card>
