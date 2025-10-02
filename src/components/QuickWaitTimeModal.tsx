@@ -291,7 +291,7 @@ export function QuickWaitTimeModal({
             />
             <Label htmlFor="isClosed" className="text-sm cursor-pointer flex items-center gap-2">
               <X size={14} />
-              Ride is closed (infinite wait)
+              Ride is closed
             </Label>
           </div>
 
