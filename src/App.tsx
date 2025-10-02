@@ -82,11 +82,11 @@ function App() {
   const handleLogin = useCallback((user: User) => {
     setCurrentUser(user)
     setShowAuthModal(false)
-  }, [setCurrentUser])
+  }, [])
 
   const handleLogout = useCallback(() => {
     setCurrentUser(null)
-  }, [setCurrentUser])
+  }, [])
 
   const handleLoginModalOpen = useCallback(() => {
     setShowAuthModal(true)
