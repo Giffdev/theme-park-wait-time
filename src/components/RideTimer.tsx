@@ -80,7 +80,9 @@ export function RideTimer({ user, attraction, parkId, onTimeLogged, isLogging }:
     }
 
     setCurrentSession(newSession)
-    toast.success(`Timer started for ${attraction.name}`)
+    toast.success(`Timer started for ${attraction.name}! 🎢`, {
+      description: 'Timer will run in the background. You can safely switch apps.'
+    })
   }, [user, attraction, parkId, setCurrentSession])
 
   const pauseTimer = useCallback(() => {

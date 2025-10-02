@@ -155,7 +155,7 @@ export function FloatingTimerIndicator({ user }: FloatingTimerIndicatorProps) {
                 onClick={navigateToRideLog}
                 className="h-10 px-3 text-xs touch-manipulation"
               >
-                Manage
+                View Details
               </Button>
 
               <Button
