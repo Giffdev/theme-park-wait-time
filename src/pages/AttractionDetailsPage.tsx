@@ -9,6 +9,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { QuickWaitTimeModal } from '@/components/QuickWaitTimeModal'
 import { RideTimer } from '@/components/RideTimer'
 import { parkFamilies } from '@/data/sampleData'
+import { ParkDataService } from '@/services/parkDataService'
 import { formatTime12Hour, formatChartTimestamp } from '@/utils/timeFormat'
 import { useKV } from '@github/spark/hooks'
 import { toast } from 'sonner'
@@ -148,15 +149,15 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
         
         console.log(`Loading attraction data for park: ${parkId}, attraction: ${attractionId}`)
         
-        // Load attractions data for the park
-        const attractionsData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
+        // Use ParkDataService for better fallback handling
+        const attractionsData = await ParkDataService.loadAttractions(parkId)
         console.log(`Found attractions data:`, attractionsData?.length || 0, 'attractions')
         
-        if (attractionsData && Array.isArray(attractionsData)) {
+        if (attractionsData && Array.isArray(attractionsData) && attractionsData.length > 0) {
           // Find the specific attraction
           const foundAttraction = attractionsData.find(a => a.id === attractionId)
           console.log(`Looking for attraction ID: ${attractionId}`)
-          console.log(`Available attraction IDs:`, attractionsData.map(a => a.id))
+          console.log(`Available attraction IDs:`, attractionsData.map(a => `${a.id} (${a.name})`))
           
           if (foundAttraction) {
             setAttraction(foundAttraction)
@@ -169,11 +170,42 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
               attractions: attractionsData
             }
             setPark(mockPark)
+            console.log(`✅ Found attraction: ${foundAttraction.name}`)
           } else {
             console.warn(`Attraction ${attractionId} not found in park ${parkId}`)
           }
         } else {
-          console.warn(`No attractions data found for park ${parkId}`)
+          console.warn(`No attractions data found for park ${parkId}, trying sample data fallback`)
+          
+          // Fallback: try to load from sample data directly
+          try {
+            const { sampleAttractions } = await import('@/data/sampleData')
+            const sampleData = sampleAttractions[parkId]
+            
+            if (sampleData && Array.isArray(sampleData)) {
+              console.log(`Loaded from sample data: ${sampleData.length} attractions`)
+              const foundAttraction = sampleData.find(a => a.id === attractionId)
+              
+              if (foundAttraction) {
+                setAttraction(foundAttraction)
+                
+                // Create a mock park object for display
+                const mockPark: Park = {
+                  id: parkId,
+                  name: getParkDisplayName(parkId),
+                  location: getParkLocation(parkId),
+                  attractions: sampleData
+                }
+                setPark(mockPark)
+                console.log(`✅ Found attraction in sample data: ${foundAttraction.name}`)
+              } else {
+                console.warn(`Attraction ${attractionId} not found in sample data for park ${parkId}`)
+                console.log(`Available sample attraction IDs:`, sampleData.map(a => `${a.id} (${a.name})`))
+              }
+            }
+          } catch (importError) {
+            console.error('Failed to load sample data:', importError)
+          }
         }
 
         // Generate historical data based on time range
