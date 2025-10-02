@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
-import { ArrowLeft, Plus, Minus, Calendar, Clock, Star, Ticket, Users, MapPin } from '@phosphor-icons/react'
+import { ArrowLeft, Plus, Minus, Calendar, Clock, Star, Ticket, Users, MapPin, CaretDown } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import type { User } from '@/App'
 import type { RideLog, Trip, TripPark, ExtendedAttraction } from '@/types'
@@ -208,19 +208,20 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     }
   }
 
-  const handleParkSelection = (parkId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedParks(prev => [...prev, parkId])
-    } else {
-      setSelectedParks(prev => prev.filter(id => id !== parkId))
-      // Clear ride counts for this park
-      const keysToRemove = Object.keys(rideCounts).filter(key => key.startsWith(`${parkId}-`))
+  const handleParksChange = (parks: string[]) => {
+    // Find parks that were deselected and clear their ride counts
+    const deselectedParks = selectedParks.filter(parkId => !parks.includes(parkId))
+    if (deselectedParks.length > 0) {
+      const keysToRemove = Object.keys(rideCounts).filter(key => 
+        deselectedParks.some(parkId => key.startsWith(`${parkId}-`))
+      )
       setRideCounts(prev => {
         const updated = { ...prev }
         keysToRemove.forEach(key => delete updated[key])
         return updated
       })
     }
+    setSelectedParks(parks)
   }
 
   if (!user) {
@@ -301,26 +302,11 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
             <div>
               <Label>Select Parks to Visit</Label>
-              <div className="mt-2 space-y-4">
-                {parkFamilies.map(family => (
-                  <div key={family.id} className="space-y-2">
-                    <h3 className="font-semibold text-sm text-muted-foreground">{family.name}</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pl-4">
-                      {family.parks.map(park => (
-                        <div key={park.id} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={park.id}
-                            checked={selectedParks.includes(park.id)}
-                            onCheckedChange={(checked) => handleParkSelection(park.id, checked as boolean)}
-                          />
-                          <Label htmlFor={park.id} className="text-sm cursor-pointer">
-                            {park.name}
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+              <div className="mt-2">
+                <ParkFamilyTripSelector 
+                  selectedParks={selectedParks}
+                  onParksChange={handleParksChange}
+                />
               </div>
             </div>
 
@@ -663,5 +649,182 @@ function RideLogCard({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+interface ParkFamilyTripSelectorProps {
+  selectedParks: string[]
+  onParksChange: (parkIds: string[]) => void
+}
+
+function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTripSelectorProps) {
+  const [selectedFamily, setSelectedFamily] = useState<string>('')
+  const [showParkFilter, setShowParkFilter] = useState<Record<string, boolean>>({})
+
+  const handleParkToggle = (parkId: string, checked: boolean) => {
+    if (checked) {
+      onParksChange([...selectedParks, parkId])
+    } else {
+      onParksChange(selectedParks.filter(id => id !== parkId))
+    }
+  }
+
+  const handleFamilySelectAll = (familyId: string) => {
+    const family = parkFamilies.find(f => f.id === familyId)
+    if (family) {
+      const familyParkIds = family.parks.map(p => p.id)
+      const otherParks = selectedParks.filter(parkId => 
+        !familyParkIds.includes(parkId)
+      )
+      onParksChange([...otherParks, ...familyParkIds])
+    }
+  }
+
+  const handleFamilyDeselectAll = (familyId: string) => {
+    const family = parkFamilies.find(f => f.id === familyId)
+    if (family) {
+      const familyParkIds = family.parks.map(p => p.id)
+      onParksChange(selectedParks.filter(parkId => 
+        !familyParkIds.includes(parkId)
+      ))
+    }
+  }
+
+  const toggleFamilyFilter = (familyId: string) => {
+    setShowParkFilter(prev => ({
+      ...prev,
+      [familyId]: !prev[familyId]
+    }))
+  }
+
+  return (
+    <div className="space-y-6">
+      {parkFamilies.map(family => {
+        const familyParks = family.parks
+        const selectedFamilyParks = selectedParks.filter(parkId => 
+          familyParks.some(p => p.id === parkId)
+        )
+        const isExpanded = showParkFilter[family.id]
+
+        return (
+          <div key={family.id} className="border rounded-lg p-4 space-y-3">
+            {/* Family Header */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <MapPin size={16} className="text-muted-foreground" />
+                  <h3 className="font-semibold text-foreground">{family.name}</h3>
+                  <Badge variant="outline" className="text-xs">
+                    {family.location}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {selectedFamilyParks.length > 0 
+                    ? `${selectedFamilyParks.length} of ${familyParks.length} parks selected`
+                    : `${familyParks.length} parks available`
+                  }
+                </p>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => toggleFamilyFilter(family.id)}
+                  className="gap-1 text-muted-foreground hover:text-foreground"
+                >
+                  <CaretDown 
+                    size={16} 
+                    className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
+                  />
+                  {isExpanded ? 'Hide' : 'Show'}
+                </Button>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            {isExpanded && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleFamilySelectAll(family.id)}
+                  disabled={selectedFamilyParks.length === familyParks.length}
+                >
+                  Select All {family.name}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleFamilyDeselectAll(family.id)}
+                  disabled={selectedFamilyParks.length === 0}
+                >
+                  Deselect All
+                </Button>
+              </div>
+            )}
+
+            {/* Parks List */}
+            {isExpanded && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
+                {familyParks.map(park => (
+                  <div key={park.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={park.id}
+                      checked={selectedParks.includes(park.id)}
+                      onCheckedChange={(checked) => handleParkToggle(park.id, checked as boolean)}
+                    />
+                    <Label htmlFor={park.id} className="text-sm cursor-pointer flex items-center gap-2">
+                      {park.name}
+                      {park.type === 'water-park' && (
+                        <Badge variant="secondary" className="text-xs">
+                          Water Park
+                        </Badge>
+                      )}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Show selected parks when collapsed */}
+            {!isExpanded && selectedFamilyParks.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {selectedFamilyParks.map(parkId => {
+                  const park = familyParks.find(p => p.id === parkId)
+                  return park ? (
+                    <Badge key={parkId} variant="secondary" className="text-xs">
+                      {park.shortName || park.name}
+                    </Badge>
+                  ) : null
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      
+      {selectedParks.length > 0 && (
+        <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="font-medium text-foreground">
+                {selectedParks.length} Park{selectedParks.length !== 1 ? 's' : ''} Selected
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                Ready to start your trip log
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onParksChange([])}
+            >
+              Clear All
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
