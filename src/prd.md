@@ -35,17 +35,6 @@
 - Historical wait time trends with interactive charts
 - Peak time analysis and recommendations
 - Quick wait time reporting functionality
-  - **One active timer policy**: Only one attraction timer can run at a time to prevent confusion
-- **Session management** with save/cancel functionality
-
-**My Ride Logs Page** (`/my-logs`):
-- **Dual view modes**: Trip-based view and All Rides aggregate view
-- **Trip management** with ability to view details, expand/collapse, and delete trips
-- **Cross-park trip display** showing multiple parks visited on the same date
-- **Advanced search and filtering** by park, attraction type, or content
-- **Statistics dashboard** showing total rides, parks visited, and total trips
-- **Historical timeline** sorted by visit date with detailed breakdowns
-- **Trip details** showing parks visited, ride counts per park, and individual attraction logs
 
 ## Essential Features
 
@@ -91,13 +80,8 @@
 
 ### Seasonal and Historical Attraction Management
 - **What**: Separate organization of active rides, seasonal events (Halloween, Christmas), and defunct/historical attractions
-- **Why**: Allows users to log experiences from different time periods and seasonal visits
-- **Success Criteria**: Clear categorization that helps users find relevant attractions for their visit timing
-
-### Visit Session Management
-- **What**: Ability to start a "park visit" for a specific date and continuously add rides throughout the day
-- **Why**: Provides structure for day-long logging and creates meaningful visit records
-- **Success Criteria**: Seamless experience for adding rides during a park visit with easy session management
+- **Why**: Allows users to find relevant attractions for their visit timing and understand park history
+- **Success Criteria**: Clear categorization that helps users identify current operating attractions
 
 ## Design Direction
 

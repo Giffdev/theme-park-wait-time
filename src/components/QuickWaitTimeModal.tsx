@@ -139,11 +139,6 @@ export function QuickWaitTimeModal({
             <p className="text-muted-foreground mb-4">
               {isClosed ? `${attractionName} marked as closed` : `${waitTime} minutes for ${attractionName}`}
             </p>
-            {addToTrip && (
-              <p className="text-sm text-muted-foreground">
-                ✓ Added to your trip log for today
-              </p>
-            )}
           </div>
         </DialogContent>
       </Dialog>

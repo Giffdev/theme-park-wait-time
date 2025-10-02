@@ -60,11 +60,21 @@ export function ReportWaitTimeModal({
     const time = isClosed ? -1 : parseInt(waitTime)
     
     if (!isClosed && (isNaN(time) || time < 0 || time > 300)) {
+      toast.error('Please enter a valid wait time between 0 and 300 minutes.')
       return
     }
 
     try {
+      console.log('🔄 Submitting wait time report:', {
+        attractionId,
+        parkId,
+        userId: user.id,
+        username: user.username,
+        time
+      })
+      
       await submitReport(attractionId, parkId, user.id, user.username, time)
+      
       if (isClosed) {
         toast.success(`Reported ${attractionName} as closed`)
       } else {
@@ -73,8 +83,18 @@ export function ReportWaitTimeModal({
       onSubmit(time)
       onClose() // Close the modal on successful submission
     } catch (error) {
-      console.error('Failed to submit report:', error)
-      toast.error('Failed to submit report. Please try again.')
+      console.error('❌ Failed to submit report:', error)
+      
+      // Provide more specific error messages
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      
+      if (errorMessage.includes('key')) {
+        toast.error('Storage key error - please try again or contact support')
+      } else if (errorMessage.includes('KV storage is not available')) {
+        toast.error('Storage system not ready - please wait a moment and try again')
+      } else {
+        toast.error(`Failed to submit report: ${errorMessage}`)
+      }
     }
   }
 

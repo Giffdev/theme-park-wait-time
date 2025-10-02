@@ -3,14 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Clock, TrendUp, Plus, Users, CheckCircle, Warning, Timer } from '@phosphor-icons/react'
+import { Clock, TrendUp, Plus, Users, CheckCircle, Warning } from '@phosphor-icons/react'
 import { formatTime12Hour, formatDateTime12Hour } from '@/utils/timeFormat'
 import { QuickWaitTimeModal } from '@/components/QuickWaitTimeModal'
-import { RideTimer } from '@/components/RideTimer'
 import { WaitTimeChart } from '@/components/WaitTimeChart'
 import { DebugDataViewer } from '@/components/DebugDataViewer'
 import { useReporting } from '@/hooks/useReporting'
-import { useKV } from '@github/spark/hooks'
 import { parkFamilies } from '@/data/sampleData'
 import { ParkDataService } from '@/services/parkDataService'
 import { toast } from 'sonner'
@@ -34,14 +32,6 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [attractions, setAttractions] = useState<ExtendedAttraction[]>([])
-  const [showTimer, setShowTimer] = useState(false)
-  const [timerAttraction, setTimerAttraction] = useState<ExtendedAttraction | null>(null)
-  const [isLogging, setIsLogging] = useState(false)
-  
-  const [currentTrip, setCurrentTrip] = useKV<Trip | null>(
-    user ? `current-trip-${user.id}` : 'current-trip-anonymous', 
-    null
-  )
   
   const { getConsensusWaitTime, getRecentReports } = useReporting()
 
@@ -104,83 +94,9 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
   }
 
   const handleTimerLog = useCallback(async (minutes: number) => {
-    if (!user || !timerAttraction) return
-    
-    setIsLogging(true)
-    try {
-      // Create or update trip if needed
-      let tripToUse = currentTrip
-      
-      if (!tripToUse) {
-        // Create a new trip for this single attraction visit
-        const newTrip: Trip = {
-          id: `trip-${user.id}-${Date.now()}`,
-          userId: user.id,
-          visitDate: new Date().toISOString().split('T')[0],
-          parks: [{
-            parkId,
-            parkName: getParkDisplayName(parkId),
-            rideCount: 0
-          }],
-          rideLogs: [],
-          totalRides: 0,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          notes: ''
-        }
-        setCurrentTrip(newTrip)
-        tripToUse = newTrip
-      }
-      
-      // Create ride log entry
-      const rideLog: RideLog = {
-        id: `log-${user.id}-${timerAttraction.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        userId: user.id,
-        tripId: tripToUse.id,
-        parkId,
-        attractionId: timerAttraction.id,
-        attractionName: timerAttraction.name,
-        attractionType: timerAttraction.type,
-        rideCount: minutes, // Store the timed wait as "ride count" in minutes
-        loggedAt: new Date().toISOString(),
-        notes: `Timed wait: ${minutes} minutes`
-      }
-      
-      // Update trip with new ride log
-      const updatedTrip: Trip = {
-        ...tripToUse,
-        rideLogs: [...tripToUse.rideLogs, rideLog],
-        totalRides: tripToUse.totalRides + minutes,
-        updatedAt: new Date().toISOString(),
-        parks: tripToUse.parks.map(p => 
-          p.parkId === parkId 
-            ? { ...p, rideCount: p.rideCount + minutes }  
-            : p
-        )
-      }
-      
-      // Save to storage
-      await window.spark.kv.set(`current-trip-${user.id}`, updatedTrip)
-      await window.spark.kv.set(`trip-${updatedTrip.id}`, updatedTrip)
-      
-      // Update user's trip history
-      const userTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
-      if (!userTrips.includes(updatedTrip.id)) {
-        userTrips.push(updatedTrip.id)
-        await window.spark.kv.set(`user-trips-${user.id}`, userTrips)
-      }
-      
-      setCurrentTrip(updatedTrip)
-      toast.success(`Logged ${minutes}-minute wait for ${timerAttraction.name}!`)
-      setShowTimer(false)
-      setTimerAttraction(null)
-    } catch (error) {
-      console.error('Failed to log timer result:', error)
-      toast.error('Failed to log your wait time. Please try again.')
-    } finally {
-      setIsLogging(false)
-    }
-  }, [user, timerAttraction, parkId, currentTrip, setCurrentTrip, getParkDisplayName])
+    // Timer logging functionality has been removed to simplify the app
+    toast.info('Timer logging has been disabled. Use wait time reporting instead.')
+  }, [])
 
   // Force reload attractions when park changes
   useEffect(() => {
@@ -299,12 +215,8 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
   }
 
   const handleTimerClick = (attraction: ExtendedAttraction) => {
-    if (!user) {
-      onLoginRequired()
-      return
-    }
-    setTimerAttraction(attraction)
-    setShowTimer(true)
+    // Timer functionality has been removed to simplify the app
+    toast.info('Timer functionality has been disabled. Use wait time reporting instead.')
   }
 
   const handleTrendsClick = (attractionId: string) => {
@@ -444,20 +356,11 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleTimerClick(attraction)}
-                      className="flex-1"
-                    >
-                      <Timer size={14} className="mr-1" />
-                      {user ? 'Start Timer' : 'Login for Timer'}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
                       onClick={() => handleReportClick(attraction.id)}
                       className="flex-1"
                     >
                       <Plus size={14} className="mr-1" />
-                      Log wait time
+                      Report wait time
                     </Button>
                     <Button
                       size="sm"
@@ -488,42 +391,6 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
           }}
           onLoginRequired={onLoginRequired}
         />
-      )}
-
-      {/* Timer Modal */}
-      {showTimer && timerAttraction && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Timer size={20} />
-                  Timer for {timerAttraction.name}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setShowTimer(false)
-                    setTimerAttraction(null)
-                  }}
-                  className="h-8 w-8 p-0"
-                >
-                  ×
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <RideTimer
-                user={user}
-                attraction={timerAttraction}
-                parkId={parkId}
-                onTimeLogged={handleTimerLog}
-                isLogging={isLogging}
-              />
-            </CardContent>
-          </Card>
-        </div>
       )}
       
       {/* Debug component - remove in production */}

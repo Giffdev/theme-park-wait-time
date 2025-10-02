@@ -3,9 +3,9 @@ import { useState, useCallback } from 'react'
 import type { WaitTimeReport, Verification, UserContribution } from '@/types'
 
 export function useReporting() {
-  const [reports, setReports] = useKV<WaitTimeReport[]>('wait-time-reports', [])
-  const [verifications, setVerifications] = useKV<Verification[]>('verifications', [])
-  const [contributions, setContributions] = useKV<UserContribution[]>('user-contributions', [])
+  const [reports, setReports] = useKV<WaitTimeReport[]>('waittime.reports', [])
+  const [verifications, setVerifications] = useKV<Verification[]>('waittime.verifications', [])
+  const [contributions, setContributions] = useKV<UserContribution[]>('user.contributions', [])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Ensure arrays are properly initialized
@@ -24,6 +24,14 @@ export function useReporting() {
     setIsSubmitting(true)
     
     try {
+      console.log('🔄 Starting report submission with data:', {
+        attractionId,
+        parkId,
+        userId,
+        username,
+        waitTime
+      })
+      
       // Validate inputs
       if (!attractionId || !parkId || !userId || !username) {
         throw new Error('Missing required parameters for report submission')
@@ -34,8 +42,14 @@ export function useReporting() {
         throw new Error('Wait time must be between 0 and 300 minutes, or -1 for closed rides')
       }
 
+      // Check if spark KV is available
+      if (!window.spark?.kv) {
+        throw new Error('KV storage is not available - please wait a moment and try again')
+      }
+
+      const reportId = `rep.${Date.now()}.${Math.random().toString(36).substring(2, 8)}`
       const newReport: WaitTimeReport = {
-        id: `report-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        id: reportId,
         attractionId,
         parkId,
         userId,
@@ -46,10 +60,17 @@ export function useReporting() {
         status: 'pending'
       }
 
-      await setReports(current => [...(Array.isArray(current) ? current : []), newReport])
+      console.log('✅ Created report object:', newReport)
+
+      // Use functional update to avoid stale state
+      setReports(current => {
+        const currentReports = Array.isArray(current) ? current : []
+        console.log('📊 Adding report to', currentReports.length, 'existing reports')
+        return [...currentReports, newReport]
+      })
 
       // Update user contributions
-      await setContributions(current => {
+      setContributions(current => {
         const contributions = Array.isArray(current) ? current : []
         const userIndex = contributions.findIndex(c => c.userId === userId)
         if (userIndex >= 0) {
@@ -71,10 +92,11 @@ export function useReporting() {
         }
       })
 
+      console.log('✅ Report submission completed successfully')
       return newReport
     } catch (error) {
-      console.error('Error in submitReport:', error)
-      throw error // Re-throw to let the UI handle it
+      console.error('❌ Error in submitReport:', error)
+      throw error
     } finally {
       setIsSubmitting(false)
     }
@@ -95,8 +117,9 @@ export function useReporting() {
         throw new Error('Missing required parameters for verification')
       }
 
+      const verificationId = `ver.${Date.now()}.${Math.random().toString(36).substring(2, 8)}`
       const newVerification: Verification = {
-        id: `verification-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        id: verificationId,
         userId,
         username,
         reportId,
@@ -106,55 +129,58 @@ export function useReporting() {
         confidence
       }
 
-    await setVerifications(current => [...(Array.isArray(current) ? current : []), newVerification])
-
-    // Update the report with the new verification
-    await setReports(current => {
-      const reports = Array.isArray(current) ? current : []
-      return reports.map(report => {
-        if (report.id === reportId) {
-          const updatedVerifications = [...report.verifications, newVerification]
-          const accuracy = calculateAccuracy(updatedVerifications)
-          const status = determineReportStatus(updatedVerifications, accuracy)
-          
-          return {
-            ...report,
-            verifications: updatedVerifications,
-            accuracy,
-            status
-          }
-        }
-        return report
+      setVerifications(current => {
+        const currentVerifications = Array.isArray(current) ? current : []
+        return [...currentVerifications, newVerification]
       })
-    })
 
-    // Update user contributions
-    await setContributions(current => {
-      const contributions = Array.isArray(current) ? current : []
-      const userIndex = contributions.findIndex(c => c.userId === userId)
-      if (userIndex >= 0) {
-        const updated = [...contributions]
-        updated[userIndex] = {
-          ...updated[userIndex],
-          verificationsProvided: updated[userIndex].verificationsProvided + 1
+      // Update the report with the new verification
+      setReports(current => {
+        const reports = Array.isArray(current) ? current : []
+        return reports.map(report => {
+          if (report.id === reportId) {
+            const updatedVerifications = [...report.verifications, newVerification]
+            const accuracy = calculateAccuracy(updatedVerifications)
+            const status = determineReportStatus(updatedVerifications, accuracy)
+            
+            return {
+              ...report,
+              verifications: updatedVerifications,
+              accuracy,
+              status
+            }
+          }
+          return report
+        })
+      })
+
+      // Update user contributions
+      setContributions(current => {
+        const contributions = Array.isArray(current) ? current : []
+        const userIndex = contributions.findIndex(c => c.userId === userId)
+        if (userIndex >= 0) {
+          const updated = [...contributions]
+          updated[userIndex] = {
+            ...updated[userIndex],
+            verificationsProvided: updated[userIndex].verificationsProvided + 1
+          }
+          return updated
+        } else {
+          return [...contributions, {
+            userId,
+            reportsSubmitted: 0,
+            verificationsProvided: 1,
+            accuracyScore: 0,
+            trustLevel: 'new' as const,
+            badges: ['first-verification']
+          }]
         }
-        return updated
-      } else {
-        return [...contributions, {
-          userId,
-          reportsSubmitted: 0,
-          verificationsProvided: 1,
-          accuracyScore: 0,
-          trustLevel: 'new' as const,
-          badges: ['first-verification']
-        }]
-      }
-    })
+      })
 
-    return newVerification
+      return newVerification
     } catch (error) {
       console.error('Error in verifyReport:', error)
-      throw error // Re-throw to let the UI handle it
+      throw error
     }
   }, [setVerifications, setReports, setContributions])
 
