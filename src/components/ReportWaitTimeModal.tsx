@@ -7,12 +7,14 @@ import { Badge } from '@/components/ui/badge'
 import { Clock, CheckCircle, XCircle, Warning } from '@phosphor-icons/react'
 import { useReporting } from '@/hooks/useReporting'
 import { formatTime12Hour } from '@/utils/timeFormat'
+import { toast } from 'sonner'
 import type { User } from '@/App'
 import type { WaitTimeReport } from '@/types'
 
 interface ReportWaitTimeModalProps {
   attractionId: string
   attractionName: string
+  parkId: string
   user: User
   onClose: () => void
   onSubmit: (waitTime: number) => void
@@ -21,6 +23,7 @@ interface ReportWaitTimeModalProps {
 export function ReportWaitTimeModal({
   attractionId,
   attractionName,
+  parkId,
   user,
   onClose,
   onSubmit
@@ -50,21 +53,26 @@ export function ReportWaitTimeModal({
     }
 
     try {
-      await submitReport(attractionId, 'universal-orlando', user.id, user.username, time)
+      await submitReport(attractionId, parkId, user.id, user.username, time)
+      toast.success(`Wait time reported: ${time} minutes for ${attractionName}`)
       onSubmit(time)
+      onClose() // Close the modal on successful submission
     } catch (error) {
       console.error('Failed to submit report:', error)
+      toast.error('Failed to submit report. Please try again.')
     }
   }
 
   const handleVerifyReport = async (report: WaitTimeReport, isAccurate: boolean) => {
     try {
       await verifyReport(report.id, user.id, user.username, isAccurate)
+      toast.success(`Report ${isAccurate ? 'verified as accurate' : 'marked as inaccurate'}`)
       // Force re-render by switching modes briefly
       setMode('report')
       setTimeout(() => setMode('verify'), 100)
     } catch (error) {
       console.error('Failed to verify report:', error)
+      toast.error('Failed to verify report. Please try again.')
     }
   }
 

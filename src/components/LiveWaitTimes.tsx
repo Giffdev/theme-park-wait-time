@@ -341,6 +341,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
         <ReportWaitTimeModal
           attractionId={selectedAttraction}
           attractionName={attractions?.find(a => a.id === selectedAttraction)?.name || ''}
+          parkId={parkId}
           user={user}
           onClose={() => {
             setShowReportModal(false)

@@ -24,8 +24,17 @@ export function useReporting() {
     setIsSubmitting(true)
     
     try {
+      // Validate inputs
+      if (!attractionId || !parkId || !userId || !username) {
+        throw new Error('Missing required parameters for report submission')
+      }
+      
+      if (waitTime < 0 || waitTime > 300) {
+        throw new Error('Wait time must be between 0 and 300 minutes')
+      }
+
       const newReport: WaitTimeReport = {
-        id: `report-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `report-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         attractionId,
         parkId,
         userId,
@@ -62,6 +71,9 @@ export function useReporting() {
       })
 
       return newReport
+    } catch (error) {
+      console.error('Error in submitReport:', error)
+      throw error // Re-throw to let the UI handle it
     } finally {
       setIsSubmitting(false)
     }
@@ -76,16 +88,22 @@ export function useReporting() {
     reportedWaitTime?: number,
     confidence: 'low' | 'medium' | 'high' = 'medium'
   ) => {
-    const newVerification: Verification = {
-      id: `verification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      userId,
-      username,
-      reportId,
-      isAccurate,
-      reportedWaitTime,
-      verifiedAt: new Date().toISOString(),
-      confidence
-    }
+    try {
+      // Validate inputs
+      if (!reportId || !userId || !username) {
+        throw new Error('Missing required parameters for verification')
+      }
+
+      const newVerification: Verification = {
+        id: `verification-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        userId,
+        username,
+        reportId,
+        isAccurate,
+        reportedWaitTime,
+        verifiedAt: new Date().toISOString(),
+        confidence
+      }
 
     await setVerifications(current => [...(Array.isArray(current) ? current : []), newVerification])
 
@@ -133,6 +151,10 @@ export function useReporting() {
     })
 
     return newVerification
+    } catch (error) {
+      console.error('Error in verifyReport:', error)
+      throw error // Re-throw to let the UI handle it
+    }
   }, [setVerifications, setReports, setContributions])
 
   // Get recent reports for an attraction
