@@ -34,6 +34,7 @@ export type User = {
 function App() {
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [currentUser, setCurrentUser] = useKV<User | null>('current-user', null)
+  const [dataInitialized, setDataInitialized] = useState(false)
 
   // Initialize sample data on app load
   useEffect(() => {
@@ -44,33 +45,62 @@ function App() {
         // Check if spark is available first
         if (!window.spark) {
           console.error('❌ Spark global object not available')
+          setDataInitialized(true) // Still allow app to load
           return
         }
         
         if (!window.spark.kv) {
           console.error('❌ Spark KV not available')
+          setDataInitialized(true) // Still allow app to load
           return
         }
         
         console.log('✅ Spark KV is available, proceeding with data initialization')
         
-        const success = await initializeSampleData()
-        if (!success) {
-          console.error('❌ Failed to initialize sample data')
-        } else {
-          console.log('✅ App sample data initialized successfully')
-          
-          // Quick verification that data is accessible
-          try {
-            const testPark = 'universal-studios-orlando'
-            const testData = await window.spark.kv.get(`attractions-${testPark}`)
-            console.log(`🔍 Test verification for ${testPark}:`, testData ? 'Data found' : 'No data')
-          } catch (testError) {
-            console.error('❌ Test verification failed:', testError)
+        // Check if we already have data
+        const existingKeys = await window.spark.kv.keys()
+        const attractionKeys = existingKeys.filter(key => key.startsWith('attractions-'))
+        console.log(`🔍 Found ${attractionKeys.length} existing attraction keys:`, attractionKeys)
+        
+        let shouldInitialize = attractionKeys.length === 0
+        
+        // Also check if magic-kingdom specifically exists since that's the default
+        if (!shouldInitialize) {
+          const magicKingdomData = await window.spark.kv.get('attractions-magic-kingdom')
+          if (!magicKingdomData || !Array.isArray(magicKingdomData) || magicKingdomData.length === 0) {
+            console.log('🔄 Magic Kingdom data missing, forcing re-initialization')
+            shouldInitialize = true
           }
+        }
+        
+        if (shouldInitialize) {
+          console.log('🔄 Initializing sample data...')
+          const success = await initializeSampleData()
+          if (!success) {
+            console.error('❌ Failed to initialize sample data')
+          } else {
+            console.log('✅ App sample data initialized successfully')
+          }
+        } else {
+          console.log('✅ Sample data already exists, skipping initialization')
+        }
+        
+        // Quick verification that data is accessible
+        try {
+          const testPark = 'magic-kingdom'
+          const testData = await window.spark.kv.get(`attractions-${testPark}`)
+          console.log(`🔍 Test verification for ${testPark}:`, testData ? `${Array.isArray(testData) ? testData.length : 'unknown'} attractions` : 'No data')
+          
+          if (testData && Array.isArray(testData) && testData.length > 0) {
+            console.log(`   Sample attractions: ${testData.slice(0, 3).map((a: any) => a.name).join(', ')}...`)
+          }
+        } catch (testError) {
+          console.error('❌ Test verification failed:', testError)
         }
       } catch (error) {
         console.error('❌ App error loading sample data:', error)
+      } finally {
+        setDataInitialized(true)
       }
     }
     
@@ -105,57 +135,66 @@ function App() {
           onLogout={handleLogout}
         />
         
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/parks" element={<ParkSelectorPage />} />
-          <Route path="/calendar" element={<CrowdCalendarPage />} />
-          <Route 
-            path="/park/:parkId" 
-            element={
-              <ParkDetailsPage 
-                user={currentUser ?? null}
-                onLoginRequired={handleLoginModalOpen}
-              />
-            } 
-          />
-          <Route 
-            path="/park/:parkId/attraction/:attractionId" 
-            element={
-              <AttractionDetailsPage 
-                user={currentUser ?? null}
-                onLoginRequired={handleLoginModalOpen}
-              />
-            } 
-          />
-          <Route 
-            path="/log" 
-            element={
-              <RideLogPage 
-                user={currentUser ?? null}
-                onLoginRequired={handleLoginModalOpen}
-              />
-            } 
-          />
-          <Route 
-            path="/park/:parkId/log" 
-            element={
-              <RideLogPage 
-                user={currentUser ?? null}
-                onLoginRequired={handleLoginModalOpen}
-              />
-            } 
-          />
-          <Route 
-            path="/my-logs" 
-            element={
-              <MyRideLogsPage 
-                user={currentUser ?? null}
-                onLoginRequired={handleLoginModalOpen}
-              />
-            } 
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        {!dataInitialized ? (
+          <div className="flex items-center justify-center min-h-[50vh]">
+            <div className="text-center space-y-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+              <p className="text-muted-foreground">Initializing park data...</p>
+            </div>
+          </div>
+        ) : (
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/parks" element={<ParkSelectorPage />} />
+            <Route path="/calendar" element={<CrowdCalendarPage />} />
+            <Route 
+              path="/park/:parkId" 
+              element={
+                <ParkDetailsPage 
+                  user={currentUser ?? null}
+                  onLoginRequired={handleLoginModalOpen}
+                />
+              } 
+            />
+            <Route 
+              path="/park/:parkId/attraction/:attractionId" 
+              element={
+                <AttractionDetailsPage 
+                  user={currentUser ?? null}
+                  onLoginRequired={handleLoginModalOpen}
+                />
+              } 
+            />
+            <Route 
+              path="/log" 
+              element={
+                <RideLogPage 
+                  user={currentUser ?? null}
+                  onLoginRequired={handleLoginModalOpen}
+                />
+              } 
+            />
+            <Route 
+              path="/park/:parkId/log" 
+              element={
+                <RideLogPage 
+                  user={currentUser ?? null}
+                  onLoginRequired={handleLoginModalOpen}
+                />
+              } 
+            />
+            <Route 
+              path="/my-logs" 
+              element={
+                <MyRideLogsPage 
+                  user={currentUser ?? null}
+                  onLoginRequired={handleLoginModalOpen}
+                />
+              } 
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        )}
 
         {showAuthModal && (
           <AuthModal
