@@ -51,6 +51,12 @@ export function QuickWaitTimeModal({
       return
     }
 
+    // Check if spark is available before proceeding
+    if (!window.spark?.kv) {
+      toast.error('System not ready. Please wait a moment and try again.')
+      return
+    }
+
     // If ride is closed, treat as infinite wait time
     let time: number
     if (isClosed) {
@@ -88,7 +94,12 @@ export function QuickWaitTimeModal({
       
     } catch (error) {
       console.error('Failed to submit wait time:', error)
-      toast.error('Failed to log wait time. Please try again.')
+      
+      // Show a more specific error message
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Failed to log wait time. Please try again.'
+      toast.error(errorMessage)
     } finally {
       setIsSubmitting(false)
     }
@@ -96,6 +107,12 @@ export function QuickWaitTimeModal({
 
   const handleAddToTrip = async (waitTimeMinutes: number) => {
     if (!user) return
+
+    // Check if spark is available
+    if (!window.spark?.kv) {
+      console.error('Spark KV not available for trip logging')
+      throw new Error('System not ready. Please try again in a moment.')
+    }
 
     try {
       // Get today's date for the trip
@@ -190,6 +207,12 @@ export function QuickWaitTimeModal({
   }
 
   const submitWaitTimeReport = async (waitTimeMinutes: number) => {
+    // Check if spark is available
+    if (!window.spark?.kv) {
+      console.error('Spark KV not available for wait time reporting')
+      throw new Error('System not ready. Please try again in a moment.')
+    }
+
     // Submit to wait time reports system for crowd data
     // waitTimeMinutes of -1 indicates the ride is closed
     const reportId = `report-${user!.id}-${attractionId}-${Date.now()}`

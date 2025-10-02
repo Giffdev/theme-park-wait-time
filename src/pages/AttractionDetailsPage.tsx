@@ -65,6 +65,13 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
   const handleTimerLog = useCallback(async (minutes: number) => {
     if (!user || !attraction || !parkId) return
     
+    // Check if spark is available
+    if (!window.spark?.kv) {
+      console.error('Spark KV not available for timer logging')
+      toast.error('System not ready. Please try again in a moment.')
+      return
+    }
+    
     setIsLogging(true)
     try {
       // Create or update trip if needed
@@ -145,19 +152,22 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
       try {
         setLoading(true)
         
-        if (!parkId || !attractionId) return
+        if (!parkId || !attractionId) {
+          console.error('Missing URL parameters:', { parkId, attractionId })
+          return
+        }
         
-        console.log(`Loading attraction data for park: ${parkId}, attraction: ${attractionId}`)
+        console.log(`🔍 Loading attraction data for park: ${parkId}, attraction: ${attractionId}`)
         
         // Use ParkDataService for better fallback handling
         const attractionsData = await ParkDataService.loadAttractions(parkId)
-        console.log(`Found attractions data:`, attractionsData?.length || 0, 'attractions')
+        console.log(`📊 Found attractions data:`, attractionsData?.length || 0, 'attractions')
         
         if (attractionsData && Array.isArray(attractionsData) && attractionsData.length > 0) {
           // Find the specific attraction
           const foundAttraction = attractionsData.find(a => a.id === attractionId)
-          console.log(`Looking for attraction ID: ${attractionId}`)
-          console.log(`Available attraction IDs:`, attractionsData.map(a => `${a.id} (${a.name})`))
+          console.log(`🎯 Looking for attraction ID: ${attractionId}`)
+          console.log(`📋 Available attraction IDs:`, attractionsData.map(a => `${a.id} (${a.name})`))
           
           if (foundAttraction) {
             setAttraction(foundAttraction)
@@ -172,10 +182,12 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
             setPark(mockPark)
             console.log(`✅ Found attraction: ${foundAttraction.name}`)
           } else {
-            console.warn(`Attraction ${attractionId} not found in park ${parkId}`)
+            console.warn(`⚠️ Attraction ${attractionId} not found in park ${parkId}`)
+            console.log(`🔍 Exact match check:`, attractionsData.some(a => a.id === attractionId))
+            console.log(`🔍 First few attractions:`, attractionsData.slice(0, 3).map(a => ({ id: a.id, name: a.name })))
           }
         } else {
-          console.warn(`No attractions data found for park ${parkId}, trying sample data fallback`)
+          console.warn(`⚠️ No attractions data found for park ${parkId}, trying sample data fallback`)
           
           // Fallback: try to load from sample data directly
           try {
@@ -183,7 +195,7 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
             const sampleData = sampleAttractions[parkId]
             
             if (sampleData && Array.isArray(sampleData)) {
-              console.log(`Loaded from sample data: ${sampleData.length} attractions`)
+              console.log(`📂 Loaded from sample data: ${sampleData.length} attractions`)
               const foundAttraction = sampleData.find(a => a.id === attractionId)
               
               if (foundAttraction) {
@@ -199,22 +211,22 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
                 setPark(mockPark)
                 console.log(`✅ Found attraction in sample data: ${foundAttraction.name}`)
               } else {
-                console.warn(`Attraction ${attractionId} not found in sample data for park ${parkId}`)
-                console.log(`Available sample attraction IDs:`, sampleData.map(a => `${a.id} (${a.name})`))
+                console.warn(`⚠️ Attraction ${attractionId} not found in sample data for park ${parkId}`)
+                console.log(`📋 Available sample attraction IDs:`, sampleData.map(a => `${a.id} (${a.name})`))
               }
             }
           } catch (importError) {
-            console.error('Failed to load sample data:', importError)
+            console.error('❌ Failed to load sample data:', importError)
           }
         }
 
         // Generate historical data based on time range
         const data = generateHistoricalData(timeRange)
         setHistoricalData(data)
-        console.log('Historical data with trends:', data.slice(0, 3)) // Debug first few points
+        console.log('📈 Historical data with trends:', data.slice(0, 3)) // Debug first few points
         
       } catch (error) {
-        console.error('Error loading attraction data:', error)
+        console.error('❌ Error loading attraction data:', error)
       } finally {
         setLoading(false)
       }
