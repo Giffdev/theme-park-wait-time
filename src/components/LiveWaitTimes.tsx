@@ -8,6 +8,7 @@ import { formatTime12Hour, formatDateTime12Hour } from '@/utils/timeFormat'
 import { QuickWaitTimeModal } from '@/components/QuickWaitTimeModal'
 import { RideTimer } from '@/components/RideTimer'
 import { WaitTimeChart } from '@/components/WaitTimeChart'
+import { DebugDataViewer } from '@/components/DebugDataViewer'
 import { useReporting } from '@/hooks/useReporting'
 import { useKV } from '@github/spark/hooks'
 import { parkFamilies } from '@/data/sampleData'
@@ -554,6 +555,9 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
           </Card>
         </div>
       )}
+      
+      {/* Debug component - remove in production */}
+      <DebugDataViewer parkId={parkId} />
     </div>
   )
 }

@@ -23,30 +23,6 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
   const [selectedPark, setSelectedPark] = useState<string>(parkId || 'magic-kingdom')
   const [activeTab, setActiveTab] = useState('overview')
   const [targetRide, setTargetRide] = useState<string | null>(null)
-  const [parkDataReady, setParkDataReady] = useState(false)
-
-  // Check if park data is available
-  useEffect(() => {
-    const checkParkData = async () => {
-      if (!window.spark?.kv || !selectedPark) return
-      
-      try {
-        const data = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${selectedPark}`)
-        if (data && Array.isArray(data) && data.length > 0) {
-          setParkDataReady(true)
-        } else {
-          // Data not ready, wait a bit and check again
-          setTimeout(checkParkData, 500)
-        }
-      } catch (error) {
-        console.error('Error checking park data:', error)
-        setTimeout(checkParkData, 1000)
-      }
-    }
-
-    setParkDataReady(false)
-    checkParkData()
-  }, [selectedPark])
 
   // Update selected park when URL param changes
   useEffect(() => {
@@ -157,38 +133,20 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
           </TabsList>
 
           <TabsContent value="overview">
-            {parkDataReady ? (
-              <ParkDetailsOverview 
-                parkId={selectedPark} 
-                onRideSelect={handleRideSelect}
-              />
-            ) : (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center space-y-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                  <p className="text-muted-foreground">Loading park data...</p>
-                </div>
-              </div>
-            )}
+            <ParkDetailsOverview 
+              parkId={selectedPark} 
+              onRideSelect={handleRideSelect}
+            />
           </TabsContent>
 
           <TabsContent value="live-times">
-            {parkDataReady ? (
-              <LiveWaitTimes 
-                parkId={selectedPark}
-                user={user}
-                onLoginRequired={onLoginRequired}
-                targetRide={targetRide}
-                onRideViewed={() => setTargetRide(null)}
-              />
-            ) : (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center space-y-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                  <p className="text-muted-foreground">Loading park data...</p>
-                </div>
-              </div>
-            )}
+            <LiveWaitTimes 
+              parkId={selectedPark}
+              user={user}
+              onLoginRequired={onLoginRequired}
+              targetRide={targetRide}
+              onRideViewed={() => setTargetRide(null)}
+            />
           </TabsContent>
 
           <TabsContent value="crowd-calendar">

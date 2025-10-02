@@ -39,86 +39,48 @@ function App() {
 
   // Initialize sample data on app load
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout
+    
     const loadData = async () => {
       try {
         console.log('🚀 App initializing sample data')
         
-        // Wait a bit longer for spark to be fully available
-        let attempts = 0
-        const maxAttempts = 20
+        // Set a maximum 2 second timeout to prevent infinite loading
+        timeoutId = setTimeout(() => {
+          console.warn('⏰ Timeout reached, allowing app to load anyway')
+          setDataInitialized(true)
+        }, 2000)
         
-        while (attempts < maxAttempts) {
-          if (window.spark?.kv) {
-            console.log('✅ Spark KV is available after', attempts, 'attempts')
-            break
-          }
-          console.log(`⏳ Attempt ${attempts + 1}: Waiting for Spark KV...`)
-          await new Promise(resolve => setTimeout(resolve, 100))
+        // Quick check for spark availability
+        let attempts = 0
+        while (attempts < 5 && !window.spark?.kv) {
+          await new Promise(resolve => setTimeout(resolve, 50))
           attempts++
         }
         
-        if (!window.spark?.kv) {
-          console.error('❌ Spark KV not available after all attempts')
-          setDataInitialized(true) // Still allow app to load
-          return
-        }
-        
-        console.log('🔄 Initializing sample data...')
-        const success = await initializeSampleData()
-        if (!success) {
-          console.error('❌ Failed to initialize sample data')
+        if (window.spark?.kv) {
+          console.log('✅ Spark KV available')
+          const success = await initializeSampleData()
+          console.log(success ? '✅ Data initialized' : '⚠️ Data init had issues, continuing anyway')
         } else {
-          console.log('✅ App sample data initialized successfully')
+          console.warn('⚠️ Spark KV not ready, continuing without init')
         }
         
-        // CRITICAL: Wait for data to be fully available with retries - extended verification
-        console.log('🔍 Verifying data availability...')
-        let verificationAttempts = 0
-        const maxVerificationAttempts = 15 // Increased attempts
-        let dataVerified = false
+        clearTimeout(timeoutId)
+        setDataInitialized(true)
         
-        while (verificationAttempts < maxVerificationAttempts && !dataVerified) {
-          try {
-            const testParks = ['magic-kingdom', 'epcot', 'hollywood-studios', 'universal-studios-orlando', 'islands-of-adventure']
-            let verifiedParks = 0
-            
-            for (const testPark of testParks) {
-              const testData = await window.spark.kv.get(`attractions-${testPark}`)
-              if (testData && Array.isArray(testData) && testData.length > 0) {
-                console.log(`✅ Verified ${testPark}: ${testData.length} attractions`)
-                verifiedParks++
-              } else {
-                console.warn(`⚠️ ${testPark}: No data found or invalid data`)
-              }
-            }
-            
-            if (verifiedParks >= 3) {
-              console.log(`✅ Data verification complete: ${verifiedParks}/${testParks.length} parks verified`)
-              dataVerified = true
-            } else {
-              console.log(`⏳ Verification attempt ${verificationAttempts + 1}: Only ${verifiedParks} parks verified, retrying in 500ms...`)
-              await new Promise(resolve => setTimeout(resolve, 500))
-            }
-          } catch (testError) {
-            console.error(`❌ Verification attempt ${verificationAttempts + 1} failed:`, testError)
-            await new Promise(resolve => setTimeout(resolve, 500))
-          }
-          
-          verificationAttempts++
-        }
-        
-        if (!dataVerified) {
-          console.error('❌ Data verification failed after all attempts')
-        }
       } catch (error) {
-        console.error('❌ App error loading sample data:', error)
-      } finally {
+        console.error('❌ App error during initialization:', error)
+        clearTimeout(timeoutId)
         setDataInitialized(true)
       }
     }
     
-    // Start loading immediately
     loadData()
+    
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId)
+    }
   }, [])
 
   const handleLogin = useCallback((user: User) => {
@@ -151,7 +113,8 @@ function App() {
           <div className="flex items-center justify-center min-h-[50vh]">
             <div className="text-center space-y-4">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-              <p className="text-muted-foreground">Initializing park data...</p>
+              <p className="text-muted-foreground">Loading theme park data...</p>
+              <p className="text-xs text-muted-foreground">Setting up attractions for Magic Kingdom, EPCOT, and more...</p>
             </div>
           </div>
         ) : (
