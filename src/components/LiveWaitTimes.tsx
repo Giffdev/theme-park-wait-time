@@ -399,7 +399,13 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {attractions.map((attraction) => {
+          {attractions.filter(attraction => 
+            // Only show actual attractions (rides, shows, experiences) - exclude dining
+            attraction.type === 'thrill' || 
+            attraction.type === 'family' || 
+            attraction.type === 'show' ||
+            (attraction.type === 'experience' && !attraction.name.toLowerCase().includes('restaurant') && !attraction.name.toLowerCase().includes('dining'))
+          ).map((attraction) => {
             const reportCount = getReportCount(attraction.id)
             const verificationStatus = getVerificationStatus(attraction.id)
             

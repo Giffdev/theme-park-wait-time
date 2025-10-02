@@ -604,8 +604,17 @@ function AttractionsForPark({
   onNotesChange,
   user
 }: AttractionsForParkProps) {
-  const activeAttractions = attractions.filter(a => !a.isDefunct)
-  const defunctAttractions = attractions.filter(a => a.isDefunct)
+  // Filter out dining establishments - only show actual attractions
+  const attractionOnlyFilter = (attraction: ExtendedAttraction) => 
+    attraction.type === 'thrill' || 
+    attraction.type === 'family' || 
+    attraction.type === 'show' ||
+    (attraction.type === 'experience' && 
+     !attraction.name.toLowerCase().includes('restaurant') && 
+     !attraction.name.toLowerCase().includes('dining'))
+
+  const activeAttractions = attractions.filter(a => !a.isDefunct && attractionOnlyFilter(a))
+  const defunctAttractions = attractions.filter(a => a.isDefunct && attractionOnlyFilter(a))
   const seasonalAttractions = activeAttractions.filter(a => a.isSeasonal)
   const regularAttractions = activeAttractions.filter(a => !a.isSeasonal)
 

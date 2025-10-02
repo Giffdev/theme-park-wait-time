@@ -425,14 +425,7 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
-    {
-      id: 'das-stakehaus',
-      name: 'Das Stakehaus',
-      type: 'experience',
-      currentWaitTime: 15,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
+
     // Celestial Park
     {
       id: 'stardust-racers',

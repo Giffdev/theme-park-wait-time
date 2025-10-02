@@ -73,9 +73,18 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
       
       if (!isValid) {
         console.warn('⚠️ ParkOverview invalid attraction:', attraction)
+        return false
       }
       
-      return isValid
+      // Filter out dining establishments - only show actual attractions
+      const isAttraction = attraction.type === 'thrill' || 
+        attraction.type === 'family' || 
+        attraction.type === 'show' ||
+        (attraction.type === 'experience' && 
+         !attraction.name.toLowerCase().includes('restaurant') && 
+         !attraction.name.toLowerCase().includes('dining'))
+      
+      return isAttraction
     })
     
     console.log(`✅ ParkOverview filtered to ${validAttractions.length} valid attractions`)
