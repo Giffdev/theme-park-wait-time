@@ -139,7 +139,6 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
               <div className="flex items-center space-x-3">
                 <div className="hidden sm:block text-right">
                   <p className="text-sm font-medium text-foreground">{user.username}</p>
-                  <p className="text-xs text-muted-foreground">{user.contributionCount} reports</p>
                 </div>
                 <Button
                   variant="ghost"
