@@ -38,6 +38,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [tripNotes, setTripNotes] = useState('')
   const [activePark, setActivePark] = useState<string>(parkId || '')
+  const [isSaving, setIsSaving] = useState(false)
 
   // Get attraction ID from URL search params
   const searchParams = new URLSearchParams(location.search)
@@ -138,10 +139,19 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
   const updateRideCount = (parkId: string, attractionId: string, change: number) => {
     const key = `${parkId}-${attractionId}`
-    setRideCounts(prev => ({
-      ...prev,
-      [key]: Math.max(0, (prev[key] || 0) + change)
-    }))
+    setRideCounts(prev => {
+      const newCounts = {
+        ...prev,
+        [key]: Math.max(0, (prev[key] || 0) + change)
+      }
+      
+      // Auto-save the trip with updated counts
+      if (currentTrip && user) {
+        autoSaveTrip(newCounts)
+      }
+      
+      return newCounts
+    })
   }
 
   const startNewTrip = async () => {
@@ -188,7 +198,66 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     }
   }
 
-  const saveTrip = async () => {
+  const autoSaveTrip = async (updatedRideCounts: Record<string, number>) => {
+    if (!user || !currentTrip) return
+
+    setIsSaving(true)
+    try {
+      const logsToSave: RideLog[] = []
+
+      Object.entries(updatedRideCounts).forEach(([key, count]) => {
+        if (count > 0) {
+          const [parkId, attractionId] = key.split('-')
+          const attraction = attractions[parkId]?.find(a => a.id === attractionId)
+          if (attraction) {
+            const rideLog: RideLog = {
+              id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              userId: user.id,
+              tripId: currentTrip.id,
+              parkId,
+              attractionId,
+              attractionName: attraction.name,
+              attractionType: attraction.type,
+              rideCount: count,
+              trackVariant: selectedVariants[key],
+              loggedAt: new Date().toISOString(),
+              notes: notes[key]
+            }
+            logsToSave.push(rideLog)
+          }
+        }
+      })
+
+      // Update park ride counts  
+      const updatedParks = currentTrip.parks.map(park => ({
+        ...park,
+        rideCount: logsToSave.filter(log => log.parkId === park.parkId).reduce((sum, log) => sum + log.rideCount, 0)
+      }))
+
+      const updatedTrip: Trip = {
+        ...currentTrip,
+        parks: updatedParks,
+        rideLogs: logsToSave,
+        totalRides: logsToSave.reduce((sum, log) => sum + log.rideCount, 0),
+        updatedAt: new Date().toISOString(),
+        notes: tripNotes
+      }
+
+      // Auto-save to current trip (don't finalize yet)
+      setCurrentTrip(updatedTrip)
+      
+      // Also save to persistent storage as work-in-progress
+      await window.spark.kv.set(`current-trip-${user.id}`, updatedTrip)
+      
+    } catch (error) {
+      console.error('Failed to auto-save trip:', error)
+      // Don't show error toast for auto-save failures to avoid spam
+    } finally {
+      setTimeout(() => setIsSaving(false), 1000) // Show "saved" state briefly
+    }
+  }
+
+  const finishTrip = async () => {
     if (!user || !currentTrip) return
 
     const logsToSave: RideLog[] = []
@@ -217,7 +286,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     })
 
     if (logsToSave.length === 0) {
-      toast.error('Add some rides before saving!')
+      toast.error('Add some rides before finishing your trip!')
       return
     }
 
@@ -237,7 +306,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     }
 
     try {
-      // Save the trip
+      // Save the finalized trip
       await window.spark.kv.set(`trip-${updatedTrip.id}`, updatedTrip)
       
       // Update user's trip history
@@ -247,17 +316,18 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         await window.spark.kv.set(`user-trips-${user.id}`, userTrips)
       }
 
+      // Clear current trip
       setCurrentTrip(null)
       setRideCounts({})
       setSelectedVariants({})
       setNotes({})
       setTripNotes('')
       
-      toast.success(`Saved trip with ${logsToSave.length} ride logs across ${updatedParks.length} parks!`)
+      toast.success(`Trip completed with ${logsToSave.length} ride logs across ${updatedParks.length} parks!`)
       navigate('/my-logs')
     } catch (error) {
-      console.error('Failed to save trip:', error)
-      toast.error('Failed to save your trip')
+      console.error('Failed to finish trip:', error)
+      toast.error('Failed to finish your trip')
     }
   }
 
@@ -399,8 +469,22 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                   <Ticket size={20} />
                   Trip - {new Date(currentTrip.visitDate).toLocaleDateString()}
                 </span>
-                <Badge variant="secondary">
+                <Badge variant="secondary" className="flex items-center gap-1">
                   {Object.values(rideCounts).reduce((sum, count) => sum + count, 0)} rides logged
+                  {isSaving ? (
+                    <>
+                      <span>•</span>
+                      <div className="animate-spin h-3 w-3 border border-current border-t-transparent rounded-full"></div>
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    Object.values(rideCounts).some(count => count > 0) && (
+                      <>
+                        <span>•</span>
+                        <span>Auto-saved</span>
+                      </>
+                    )
+                  )}
                 </Badge>
               </CardTitle>
               <CardDescription>
@@ -409,20 +493,12 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
             </CardHeader>
             <CardContent>
               <div className="flex gap-2 mb-4">
-                <Button onClick={saveTrip} disabled={Object.values(rideCounts).every(count => count === 0)}>
-                  Save Trip
-                </Button>
                 <Button 
-                  variant="outline" 
-                  onClick={() => {
-                    setCurrentTrip(null)
-                    setRideCounts({})
-                    setSelectedVariants({})
-                    setNotes({})
-                    setTripNotes('')
-                  }}
+                  onClick={finishTrip} 
+                  disabled={Object.values(rideCounts).every(count => count === 0)}
+                  className="bg-success hover:bg-success/90"
                 >
-                  Cancel Trip
+                  Finish Trip
                 </Button>
               </div>
 
@@ -431,7 +507,13 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                   <Label>Trip Notes</Label>
                   <Textarea
                     value={tripNotes}
-                    onChange={(e) => setTripNotes(e.target.value)}
+                    onChange={(e) => {
+                      setTripNotes(e.target.value)
+                      // Auto-save when trip notes change
+                      if (currentTrip && user) {
+                        setTimeout(() => autoSaveTrip(rideCounts), 500) // Debounce for notes
+                      }
+                    }}
                     rows={2}
                     className="mt-1"
                   />
@@ -482,8 +564,26 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
               selectedVariants={selectedVariants}
               notes={notes}
               onUpdateRideCount={updateRideCount}
-              onVariantChange={(key, variant) => setSelectedVariants(prev => ({ ...prev, [key]: variant }))}
-              onNotesChange={(key, note) => setNotes(prev => ({ ...prev, [key]: note }))}
+              onVariantChange={(key, variant) => {
+                setSelectedVariants(prev => {
+                  const newVariants = { ...prev, [key]: variant }
+                  // Auto-save when variant changes
+                  if (currentTrip && user && Object.values(rideCounts).some(count => count > 0)) {
+                    setTimeout(() => autoSaveTrip(rideCounts), 0)
+                  }
+                  return newVariants
+                })
+              }}
+              onNotesChange={(key, note) => {
+                setNotes(prev => {
+                  const newNotes = { ...prev, [key]: note }
+                  // Auto-save when notes change
+                  if (currentTrip && user && Object.values(rideCounts).some(count => count > 0)) {
+                    setTimeout(() => autoSaveTrip(rideCounts), 0)
+                  }
+                  return newNotes
+                })
+              }}
             />
           )}
         </div>
