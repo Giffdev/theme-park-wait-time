@@ -478,7 +478,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-blue-800">
                 <Clock size={18} />
-                New: Smart Timer Feature
+                Smart Timer Feature
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0 text-blue-700 text-sm space-y-2">
