@@ -8,45 +8,40 @@
 **Experience Qualities**: Real-time, Community-driven, Informative
 
 ## Project Classification & Approach
-**Complexity Level**: Light Application (multiple features with basic state, user accounts, reporting functionality)
+**Complexity Level**: Light Application (simplified wait time reporting system with user authentication)
 
 **Primary User Activity**: Acting and Contributing - Users consume wait time data and actively contribute by reporting current wait times
 
 ## Navigation Structure
 **Home Page** (`/`): 
 - Live park overview organized by park family (Disney World, Universal Orlando, etc.)
-- Featured parks with current wait times and trend graphs
+- Featured parks with current wait times
 - Primary entry point for park selection
 
 **Parks Page** (`/parks`):
 - Comprehensive park selector organized by resort families
 - Complete list of all supported parks across the United States
-- Quick access to any park without navigating through home page
 
 **Park Details Page** (`/park/:parkId`):
 - Detailed view for a specific park
 - Live wait times with reporting functionality  
 - Crowd calendar and historical analytics
-- Park selector to switch between parks
-- Back navigation to previous page
 
 **Attraction Details Page** (`/park/:parkId/attraction/:attractionId`):
 - Detailed analytics for individual attractions
 - Historical wait time trends with interactive charts
-- Peak time analysis and recommendations
-- Quick wait time reporting functionality
 
 ## Essential Features
 
-### Live Park Overview (Home Page)
-- **What**: Grid of cards organized by park families (Disney World, Universal Orlando, etc.) showing current wait times and mini trend graphs
-- **Why**: Gives users immediate overview of major parks grouped logically to make initial selection decisions
-- **Success Criteria**: Users can quickly compare parks within families and navigate to detailed views
+### User Authentication
+- **What**: Simple login system to track user contributions
+- **Why**: Enables wait time reporting and community features
+- **Success Criteria**: Users can create accounts and log in to report wait times
 
-### Park Family Organization
-- **What**: Parks grouped by resort/operator families (Disney World: 4 theme parks + 2 water parks, Universal Orlando: 3 theme parks + 1 water park, etc.)
-- **Why**: Reflects real-world park relationships and visitor decision-making patterns
-- **Success Criteria**: Intuitive navigation that matches how users think about park visits
+### Wait Time Reporting System
+- **What**: Users can report current wait times for attractions
+- **Why**: Creates real-time, community-driven data for better park planning
+- **Success Criteria**: Users can successfully submit wait time reports, data is saved reliably
 
 ### Comprehensive Park Coverage
 - **What**: Support for major US theme park destinations including Disney World, Disneyland, Universal Orlando/Hollywood, Six Flags, Cedar Point, Knott's Berry Farm

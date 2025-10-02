@@ -3,9 +3,9 @@ import { useState, useCallback } from 'react'
 import type { WaitTimeReport, Verification, UserContribution } from '@/types'
 
 export function useReporting() {
-  const [reports, setReports] = useKV<WaitTimeReport[]>('waittime.reports', [])
-  const [verifications, setVerifications] = useKV<Verification[]>('waittime.verifications', [])
-  const [contributions, setContributions] = useKV<UserContribution[]>('user.contributions', [])
+  const [reports, setReports] = useKV<WaitTimeReport[]>('reports', [])
+  const [verifications, setVerifications] = useKV<Verification[]>('verifications', [])
+  const [contributions, setContributions] = useKV<UserContribution[]>('contributions', [])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Ensure arrays are properly initialized
@@ -47,6 +47,21 @@ export function useReporting() {
         throw new Error('KV storage is not available - please wait a moment and try again')
       }
 
+      // Test basic KV operation first
+      console.log('🧪 Testing basic KV operation...')
+      const testKey = 'test-key'
+      const testValue = { test: 'data', timestamp: Date.now() }
+      
+      try {
+        await window.spark.kv.set(testKey, testValue)
+        const retrieved = await window.spark.kv.get(testKey)
+        console.log('✅ Basic KV test passed:', retrieved)
+        await window.spark.kv.delete(testKey)
+      } catch (kvError) {
+        console.error('❌ Basic KV test failed:', kvError)
+        throw new Error(`KV storage test failed: ${kvError instanceof Error ? kvError.message : 'Unknown error'}`)
+      }
+
       const reportId = `rep.${Date.now()}.${Math.random().toString(36).substring(2, 8)}`
       const newReport: WaitTimeReport = {
         id: reportId,
@@ -62,35 +77,52 @@ export function useReporting() {
 
       console.log('✅ Created report object:', newReport)
 
-      // Use functional update to avoid stale state
-      setReports(current => {
-        const currentReports = Array.isArray(current) ? current : []
-        console.log('📊 Adding report to', currentReports.length, 'existing reports')
-        return [...currentReports, newReport]
-      })
-
-      // Update user contributions
-      setContributions(current => {
-        const contributions = Array.isArray(current) ? current : []
-        const userIndex = contributions.findIndex(c => c.userId === userId)
-        if (userIndex >= 0) {
-          const updated = [...contributions]
-          updated[userIndex] = {
-            ...updated[userIndex],
-            reportsSubmitted: updated[userIndex].reportsSubmitted + 1
-          }
+      // Try to update reports with better error handling
+      try {
+        console.log('🔄 Updating reports array...')
+        setReports(current => {
+          const currentReports = Array.isArray(current) ? current : []
+          console.log('📊 Adding report to', currentReports.length, 'existing reports')
+          const updated = [...currentReports, newReport]
+          console.log('📊 New reports array will have', updated.length, 'items')
           return updated
-        } else {
-          return [...contributions, {
-            userId,
-            reportsSubmitted: 1,
-            verificationsProvided: 0,
-            accuracyScore: 0,
-            trustLevel: 'new' as const,
-            badges: ['first-report']
-          }]
-        }
-      })
+        })
+        console.log('✅ Reports updated successfully')
+      } catch (reportsError) {
+        console.error('❌ Failed to update reports:', reportsError)
+        throw new Error(`Failed to save report: ${reportsError instanceof Error ? reportsError.message : 'Unknown error'}`)
+      }
+
+      // Try to update user contributions with better error handling
+      try {
+        console.log('🔄 Updating user contributions...')
+        setContributions(current => {
+          const contributions = Array.isArray(current) ? current : []
+          const userIndex = contributions.findIndex(c => c.userId === userId)
+          if (userIndex >= 0) {
+            const updated = [...contributions]
+            updated[userIndex] = {
+              ...updated[userIndex],
+              reportsSubmitted: updated[userIndex].reportsSubmitted + 1
+            }
+            return updated
+          } else {
+            return [...contributions, {
+              userId,
+              reportsSubmitted: 1,
+              verificationsProvided: 0,
+              accuracyScore: 0,
+              trustLevel: 'new' as const,
+              badges: ['first-report']
+            }]
+          }
+        })
+        console.log('✅ Contributions updated successfully')
+      } catch (contributionsError) {
+        console.error('❌ Failed to update contributions:', contributionsError)
+        // Don't throw here, as the report was already saved successfully
+        console.warn('⚠️ Report saved but contribution tracking failed')
+      }
 
       console.log('✅ Report submission completed successfully')
       return newReport

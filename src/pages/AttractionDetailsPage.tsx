@@ -4,9 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, Clock, TrendUp, Calendar, Plus } from '@phosphor-icons/react'
+import { ArrowLeft, Clock, TrendUp, Calendar } from '@phosphor-icons/react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { QuickWaitTimeModal } from '@/components/QuickWaitTimeModal'
 import { parkFamilies } from '@/data/sampleData'
 import { ParkDataService } from '@/services/parkDataService'
 import { formatTime12Hour, formatChartTimestamp } from '@/utils/timeFormat'
@@ -51,8 +50,7 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
   const [timeRange, setTimeRange] = useState<TimeRange>('week')
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([])
   const [loading, setLoading] = useState(true)
-  const [showQuickLog, setShowQuickLog] = useState(false)
-  const [isLogging, setIsLogging] = useState(false)
+
 
   useEffect(() => {
     const loadData = async () => {
@@ -370,20 +368,6 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
         </div>
         
         <div className="flex items-center gap-3">
-          <Button 
-            onClick={() => {
-              if (!user) {
-                onLoginRequired?.()
-              } else {
-                setShowQuickLog(true)
-              }
-            }}
-            className="bg-accent hover:bg-accent/90 text-accent-foreground"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Report Wait Time
-          </Button>
-          
           <Badge className={getStatusColor(attraction.currentWaitTime)}>
             <Clock className="w-4 h-4 mr-1" />
             {attraction.currentWaitTime} min - {getStatusText(attraction.currentWaitTime)}
@@ -562,19 +546,6 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
           </Card>
         </div>
       </div>
-
-      {/* Quick Wait Time Modal */}
-      {showQuickLog && attraction && (
-        <QuickWaitTimeModal
-          attractionId={attraction.id}
-          attractionName={attraction.name}
-          parkId={parkId!}
-          parkName={park!.name}
-          user={user || null}
-          onClose={() => setShowQuickLog(false)}
-          onLoginRequired={onLoginRequired}
-        />
-      )}
 
     </div>
   )
