@@ -70,7 +70,8 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
     if (!sortedAttractions.length) return { avg: 0, max: 0, min: 0, operating: 0 }
     
     const operatingAttractions = sortedAttractions.filter(a => a.status === 'operating')
-    const waitTimes = operatingAttractions.map(a => a.currentWaitTime).filter(wt => wt > 0)
+    // Exclude closed rides (-1) from wait time calculations
+    const waitTimes = operatingAttractions.map(a => a.currentWaitTime).filter(wt => wt > 0 && wt !== -1)
     
     return {
       avg: waitTimes.length > 0 ? Math.round(waitTimes.reduce((a, b) => a + b, 0) / waitTimes.length) : 0,
@@ -88,6 +89,7 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
       case 'delayed':
         return { color: 'bg-accent', label: 'Delayed', textColor: 'text-accent-foreground' }
       default:
+        if (waitTime === -1) return { color: 'bg-destructive', label: 'Closed', textColor: 'text-destructive-foreground' }
         if (waitTime === 0) return { color: 'bg-success', label: 'Walk On', textColor: 'text-success-foreground' }
         if (waitTime <= 15) return { color: 'bg-success', label: `${waitTime}min`, textColor: 'text-success-foreground' }
         if (waitTime <= 30) return { color: 'bg-accent', label: `${waitTime}min`, textColor: 'text-accent-foreground' }

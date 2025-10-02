@@ -150,6 +150,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
   }, [targetRide, attractions, isLoading, onRideViewed])
 
   const getWaitTimeVariant = (waitTime: number): "success" | "accent" | "destructive" => {
+    if (waitTime === -1) return 'destructive' // Closed rides
     if (waitTime <= 20) return 'success'
     if (waitTime <= 45) return 'accent'
     return 'destructive'
@@ -296,7 +297,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
                       <span className="text-sm text-muted-foreground">Current Wait</span>
                     </div>
                     <Badge variant={getWaitTimeVariant(attraction.currentWaitTime)}>
-                      {attraction.currentWaitTime} min
+                      {attraction.currentWaitTime === -1 ? 'Closed' : `${attraction.currentWaitTime} min`}
                     </Badge>
                   </div>
                   

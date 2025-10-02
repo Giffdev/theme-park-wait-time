@@ -19,6 +19,7 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
   const [historicalReports] = useKV<any[]>(`wait-reports-${attractionId}`, [])
 
   const getWaitTimeVariant = (waitTime: number): "success" | "accent" | "secondary" | "destructive" => {
+    if (waitTime === -1) return 'destructive' // Closed rides
     if (waitTime <= 15) return 'success'
     if (waitTime <= 30) return 'accent'
     if (waitTime <= 60) return 'secondary'
@@ -90,7 +91,10 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
             .forEach(report => {
               const hour = new Date(report.reportedAt).getHours()
               if (!hourlyData[hour]) hourlyData[hour] = []
-              hourlyData[hour].push(report.waitTime)
+              // Only include valid wait times (not closed rides) in hourly averages
+              if (report.waitTime >= 0) {
+                hourlyData[hour].push(report.waitTime)
+              }
             })
           
           const processedData: WaitTimeDataPoint[] = []
@@ -137,8 +141,9 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
     )
   }
 
-  // Calculate normalized max wait time for better scaling
-  const rawMaxWaitTime = Math.max(...chartData.map(d => d.waitTime))
+  // Calculate normalized max wait time for better scaling (exclude closed rides)
+  const validWaitTimes = chartData.map(d => d.waitTime).filter(time => time >= 0)
+  const rawMaxWaitTime = validWaitTimes.length > 0 ? Math.max(...validWaitTimes) : 30
   
   // Normalize to nearest 5, 10, or 20 minutes for clean, readable axis labels
   // This prevents awkward scales like 0-77 minutes and creates more intuitive charts
@@ -168,7 +173,9 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
     let path = ''
     data.forEach((point, index) => {
       const x = index * stepX
-      const y = chartHeight - (point.waitTime / maxWaitTime) * chartHeight
+      // For closed rides (-1), show them at the bottom of the chart
+      const normalizedWaitTime = point.waitTime === -1 ? 0 : point.waitTime
+      const y = chartHeight - (normalizedWaitTime / maxWaitTime) * chartHeight
       
       if (index === 0) {
         path += `M ${x} ${y}`
@@ -242,7 +249,7 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
           {currentDataPoint && (
             <circle
               cx={chartData.findIndex(d => d.hour === currentHour) * (chartWidth / (chartData.length - 1))}
-              cy={chartHeight - (currentDataPoint.waitTime / maxWaitTime) * chartHeight}
+              cy={chartHeight - ((currentDataPoint.waitTime === -1 ? 0 : currentDataPoint.waitTime) / maxWaitTime) * chartHeight}
               r="3"
               fill="oklch(0.70 0.18 50)"
               stroke="white"
@@ -277,7 +284,7 @@ export function WaitTimeChart({ attractionId, className = '' }: WaitTimeChartPro
       {currentDataPoint && (
         <div className="flex items-center justify-center mt-2 text-xs">
           <Badge variant={getWaitTimeVariant(currentDataPoint.waitTime)}>
-            Now: {currentDataPoint.waitTime} min
+            Now: {currentDataPoint.waitTime === -1 ? 'Closed' : `${currentDataPoint.waitTime} min`}
           </Badge>
         </div>
       )}

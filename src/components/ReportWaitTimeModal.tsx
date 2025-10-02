@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Clock, CheckCircle, XCircle, Warning } from '@phosphor-icons/react'
 import { useReporting } from '@/hooks/useReporting'
 import { formatTime12Hour } from '@/utils/timeFormat'
@@ -29,6 +30,7 @@ export function ReportWaitTimeModal({
   onSubmit
 }: ReportWaitTimeModalProps) {
   const [waitTime, setWaitTime] = useState('')
+  const [isClosed, setIsClosed] = useState(false)
   const [mode, setMode] = useState<'report' | 'verify'>('report')
   const { 
     getRecentReports, 
@@ -46,15 +48,21 @@ export function ReportWaitTimeModal({
 
   const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault()
-    const time = parseInt(waitTime)
     
-    if (isNaN(time) || time < 0 || time > 300) {
+    // If ride is closed, use -1 as a special value to indicate closure
+    const time = isClosed ? -1 : parseInt(waitTime)
+    
+    if (!isClosed && (isNaN(time) || time < 0 || time > 300)) {
       return
     }
 
     try {
       await submitReport(attractionId, parkId, user.id, user.username, time)
-      toast.success(`Wait time reported: ${time} minutes for ${attractionName}`)
+      if (isClosed) {
+        toast.success(`Reported ${attractionName} as closed`)
+      } else {
+        toast.success(`Wait time reported: ${time} minutes for ${attractionName}`)
+      }
       onSubmit(time)
       onClose() // Close the modal on successful submission
     } catch (error) {
@@ -128,20 +136,47 @@ export function ReportWaitTimeModal({
 
         {mode === 'report' && (
           <form onSubmit={handleSubmitReport} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="waitTime">Current Wait Time (minutes)</Label>
-              <Input
-                id="waitTime"
-                type="number"
-                min="0"
-                max="300"
-                value={waitTime}
-                onChange={(e) => setWaitTime(e.target.value)}
-                placeholder="Enter wait time in minutes"
-                required
-              />
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="ride-closed"
+                  checked={isClosed}
+                  onCheckedChange={(checked) => {
+                    setIsClosed(checked as boolean)
+                    if (checked) {
+                      setWaitTime('') // Clear wait time when marking as closed
+                    }
+                  }}
+                />
+                <Label 
+                  htmlFor="ride-closed" 
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Ride is closed
+                </Label>
+              </div>
+              
+              {!isClosed && (
+                <div className="space-y-2">
+                  <Label htmlFor="waitTime">Current Wait Time (minutes)</Label>
+                  <Input
+                    id="waitTime"
+                    type="number"
+                    min="0"
+                    max="300"
+                    value={waitTime}
+                    onChange={(e) => setWaitTime(e.target.value)}
+                    placeholder="Enter wait time in minutes"
+                    required
+                  />
+                </div>
+              )}
+              
               <p className="text-sm text-muted-foreground">
-                Your report helps other guests plan their visit
+                {isClosed 
+                  ? "Your closure report helps other guests plan their visit"
+                  : "Your report helps other guests plan their visit"
+                }
               </p>
             </div>
             
@@ -151,10 +186,10 @@ export function ReportWaitTimeModal({
               </Button>
               <Button 
                 type="submit" 
-                disabled={isSubmitting || !waitTime}
+                disabled={isSubmitting || (!isClosed && !waitTime)}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
               >
-                {isSubmitting ? 'Reporting...' : 'Submit Report'}
+                {isSubmitting ? 'Reporting...' : isClosed ? 'Report as Closed' : 'Submit Report'}
               </Button>
             </div>
           </form>
@@ -185,7 +220,7 @@ export function ReportWaitTimeModal({
                         {getStatusIcon(report.status)}
                       </div>
                       <Badge className={getStatusColor(report.status)}>
-                        {report.waitTime} min
+                        {report.waitTime === -1 ? 'Closed' : `${report.waitTime} min`}
                       </Badge>
                     </div>
                     
@@ -245,7 +280,7 @@ export function ReportWaitTimeModal({
                     {getStatusIcon(report.status)}
                   </div>
                   <Badge variant="secondary" className="text-xs">
-                    {report.waitTime} min
+                    {report.waitTime === -1 ? 'Closed' : `${report.waitTime} min`}
                   </Badge>
                 </div>
               ))}
