@@ -40,13 +40,13 @@ export function HomePage() {
       </div>
 
       {/* Filter Controls */}
-      <div className="mb-8 bg-card border rounded-lg p-6">
-        <div className="flex items-center space-x-6">
+      <div className="mb-8 bg-card border rounded-lg p-4 md:p-6">
+        <div className="flex flex-col md:flex-row md:items-center space-y-3 md:space-y-0 md:space-x-6">
           <div className="flex items-center space-x-4">
             <Funnel size={20} className="text-muted-foreground" />
-            <h3 className="text-lg font-semibold text-foreground">Filter by Resort Group</h3>
+            <h3 className="text-sm md:text-lg font-semibold text-foreground">Filter by Resort Group</h3>
           </div>
-          <div className="w-80">
+          <div className="w-full md:w-80">
             <Select
               value={selectedFamily || 'all'}
               onValueChange={(value) => setSelectedFamily(value === 'all' ? null : value)}
