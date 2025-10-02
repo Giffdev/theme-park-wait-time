@@ -112,7 +112,12 @@ function App() {
           />
           <Route 
             path="/park/:parkId/attraction/:attractionId" 
-            element={<AttractionDetailsPage />} 
+            element={
+              <AttractionDetailsPage 
+                user={currentUser ?? null}
+                onLoginRequired={() => setShowAuthModal(true)}
+              />
+            } 
           />
           <Route 
             path="/log" 

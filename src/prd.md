@@ -74,9 +74,14 @@
 - **Success Criteria**: Seamless navigation between parks while maintaining context
 
 ### Real-time Wait Time Reporting
-- **What**: Crowd-sourced reporting system where logged-in users can submit current wait times
-- **Why**: Community-driven accuracy and fresh data
+- **What**: Crowd-sourced reporting system where logged-in users can submit current wait times with an optional quick-add to trip log
+- **Why**: Community-driven accuracy and fresh data with streamlined experience
 - **Success Criteria**: High user participation and data accuracy through verification
+
+### Quick Wait Time Logging
+- **What**: Simplified modal interface for quickly reporting wait times directly from attraction detail pages, with optional trip log integration
+- **Why**: Reduces friction for contributing wait time data while giving users choice to track personal rides
+- **Success Criteria**: Increased wait time reports with minimal user effort, seamless integration with trip logging system
 
 ### Historical Analytics & Trends
 - **What**: Visual graphs showing wait time patterns throughout days, weeks, and seasons

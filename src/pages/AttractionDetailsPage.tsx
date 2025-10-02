@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ArrowLeft, Clock, TrendUp, Calendar, Plus } from '@phosphor-icons/react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { QuickWaitTimeModal } from '@/components/QuickWaitTimeModal'
 import { parkFamilies } from '@/data/sampleData'
 import { formatTime12Hour, formatChartTimestamp } from '@/utils/timeFormat'
-import type { Park } from '@/App'
+import type { Park, User } from '@/App'
 import type { ExtendedAttraction } from '@/types'
 
 type TimeRange = 'week' | 'month' | 'year'
@@ -40,7 +41,7 @@ const getParkLocation = (parkId: string): string => {
   return 'Unknown Location'
 }
 
-export function AttractionDetailsPage() {
+export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User | null, onLoginRequired?: () => void }) {
   const { parkId, attractionId } = useParams<{ parkId: string; attractionId: string }>()
   const navigate = useNavigate()
   const [park, setPark] = useState<Park | null>(null)
@@ -48,6 +49,7 @@ export function AttractionDetailsPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>('week')
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([])
   const [loading, setLoading] = useState(true)
+  const [showQuickLog, setShowQuickLog] = useState(false)
 
   useEffect(() => {
     const loadData = async () => {
@@ -330,7 +332,13 @@ export function AttractionDetailsPage() {
         
         <div className="flex items-center gap-3">
           <Button 
-            onClick={() => navigate(`/park/${parkId}/log?attraction=${attractionId}`)}
+            onClick={() => {
+              if (!user) {
+                onLoginRequired?.()
+              } else {
+                setShowQuickLog(true)
+              }
+            }}
             className="bg-accent hover:bg-accent/90 text-accent-foreground"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -515,6 +523,19 @@ export function AttractionDetailsPage() {
           </Card>
         </div>
       </div>
+
+      {/* Quick Wait Time Modal */}
+      {showQuickLog && attraction && (
+        <QuickWaitTimeModal
+          attractionId={attraction.id}
+          attractionName={attraction.name}
+          parkId={parkId!}
+          parkName={park!.name}
+          user={user || null}
+          onClose={() => setShowQuickLog(false)}
+          onLoginRequired={onLoginRequired}
+        />
+      )}
     </div>
   )
 }
