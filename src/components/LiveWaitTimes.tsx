@@ -96,26 +96,45 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
 
   // Update wait times based on consensus every 30 seconds
   useEffect(() => {
-    if (!attractions || attractions.length === 0) return
+    if (!attractions || attractions.length === 0) {
+      console.log('⚠️ LiveWaitTimes skipping consensus update - no attractions')
+      return
+    }
 
     const updateWaitTimes = () => {
-      setAttractions(currentAttractions => {
-        if (!currentAttractions || currentAttractions.length === 0) return currentAttractions
+      try {
+        console.log('🔄 LiveWaitTimes updating consensus wait times')
         
-        return currentAttractions.map(attraction => {
-          const consensusTime = getConsensusWaitTime(attraction.id)
-          if (consensusTime !== null && consensusTime !== attraction.currentWaitTime) {
-            return {
-              ...attraction,
-              currentWaitTime: consensusTime,
-              lastUpdated: new Date().toISOString()
-            }
+        setAttractions(currentAttractions => {
+          if (!currentAttractions || currentAttractions.length === 0) {
+            console.log('⚠️ LiveWaitTimes no current attractions to update')
+            return currentAttractions
           }
-          return attraction
+          
+          return currentAttractions.map(attraction => {
+            try {
+              const consensusTime = getConsensusWaitTime(attraction.id)
+              if (consensusTime !== null && consensusTime !== attraction.currentWaitTime) {
+                console.log(`🔄 LiveWaitTimes updating ${attraction.name}: ${attraction.currentWaitTime} -> ${consensusTime}`)
+                return {
+                  ...attraction,
+                  currentWaitTime: consensusTime,
+                  lastUpdated: new Date().toISOString()
+                }
+              }
+              return attraction
+            } catch (err) {
+              console.error(`❌ LiveWaitTimes error getting consensus for ${attraction.name}:`, err)
+              return attraction
+            }
+          })
         })
-      })
-      
-      setLastUpdate(new Date())
+        
+        setLastUpdate(new Date())
+        console.log('✅ LiveWaitTimes consensus update complete')
+      } catch (error) {
+        console.error('❌ LiveWaitTimes error in updateWaitTimes:', error)
+      }
     }
 
     // Update immediately, then every 30 seconds
@@ -212,19 +231,22 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
 
       {/* Loading state or error */}
       {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader className="pb-3">
-                <div className="h-6 bg-muted rounded w-3/4"></div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-24 bg-muted rounded mb-4"></div>
-                <div className="h-8 bg-muted rounded"></div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <>
+          <p className="text-sm text-muted-foreground">Loading attractions for {parkId}...</p>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[...Array(6)].map((_, i) => (
+              <Card key={i} className="animate-pulse">
+                <CardHeader className="pb-3">
+                  <div className="h-6 bg-muted rounded w-3/4"></div>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-24 bg-muted rounded mb-4"></div>
+                  <div className="h-8 bg-muted rounded"></div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
       ) : error ? (
         <div className="text-center py-8 space-y-4">
           <div className="mx-auto w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center">
@@ -256,8 +278,11 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
           <h3 className="text-lg font-medium text-muted-foreground mb-2">
             No attractions found for this park
           </h3>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground mb-2">
             Data might still be loading. Try selecting a different park or refreshing the page.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Park ID: {parkId} | Attractions: {attractions?.length || 0}
           </p>
         </div>
       ) : (

@@ -170,64 +170,78 @@ export function useReporting() {
 
   // Calculate consensus wait time for an attraction
   const getConsensusWaitTime = useCallback((attractionId: string) => {
-    // Get recent reports directly to avoid circular dependency
-    const recentReports = Array.isArray(safeReports) ? safeReports
-      .filter(report => report.attractionId === attractionId)
-      .sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime())
-      .slice(0, 20) : []
-    
-    if (!recentReports || recentReports.length === 0) return null
+    try {
+      if (!attractionId) {
+        console.warn('⚠️ getConsensusWaitTime called with invalid attractionId:', attractionId)
+        return null
+      }
+      
+      // Get recent reports directly to avoid circular dependency
+      const recentReports = Array.isArray(safeReports) ? safeReports
+        .filter(report => report?.attractionId === attractionId)
+        .sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime())
+        .slice(0, 20) : []
+      
+      if (!recentReports || recentReports.length === 0) return null
 
-    // Filter for recent reports (last 30 minutes)
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000)
-    const veryRecentReports = recentReports.filter(
-      report => new Date(report.reportedAt) > thirtyMinutesAgo
-    )
+      // Filter for recent reports (last 30 minutes)
+      const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000)
+      const veryRecentReports = recentReports.filter(
+        report => report && report.reportedAt && new Date(report.reportedAt) > thirtyMinutesAgo
+      )
 
-    if (veryRecentReports.length === 0) return null
+      if (veryRecentReports.length === 0) return null
 
-    // Check if any recent reports indicate the ride is closed
-    const closedReports = veryRecentReports.filter(report => report.waitTime === -1)
-    
-    // If there are recent closed reports, return -1 (closed)
-    if (closedReports.length > 0) {
-      return -1
-    }
-
-    // Filter out closed reports for wait time calculation
-    const openReports = veryRecentReports.filter(report => report.waitTime !== -1)
-    
-    if (openReports.length === 0) return null
-
-    // Weight reports by verification status and user trust level
-    let weightedSum = 0
-    let totalWeight = 0
-
-    openReports.forEach(report => {
-      let weight = 1
-
-      // Increase weight for verified reports
-      if (report.status === 'verified') weight *= 1.5
-      if (report.accuracy && report.accuracy > 0.8) weight *= 1.3
-
-      // Get user trust level and adjust weight
-      const userContrib = safeContributions.find(c => c.userId === report.userId)
-      if (userContrib) {
-        const trustMultiplier = {
-          'new': 0.8,
-          'bronze': 1.0,
-          'silver': 1.2,
-          'gold': 1.4,
-          'platinum': 1.6
-        }[userContrib.trustLevel]
-        weight *= trustMultiplier
+      // Check if any recent reports indicate the ride is closed
+      const closedReports = veryRecentReports.filter(report => report.waitTime === -1)
+      
+      // If there are recent closed reports, return -1 (closed)
+      if (closedReports.length > 0) {
+        return -1
       }
 
-      weightedSum += report.waitTime * weight
-      totalWeight += weight
-    })
+      // Filter out closed reports for wait time calculation
+      const openReports = veryRecentReports.filter(report => report.waitTime !== -1 && typeof report.waitTime === 'number')
+      
+      if (openReports.length === 0) return null
 
-    return Math.round(weightedSum / totalWeight)
+      // Weight reports by verification status and user trust level
+      let weightedSum = 0
+      let totalWeight = 0
+
+      openReports.forEach(report => {
+        try {
+          let weight = 1
+
+          // Increase weight for verified reports
+          if (report.status === 'verified') weight *= 1.5
+          if (report.accuracy && report.accuracy > 0.8) weight *= 1.3
+
+          // Get user trust level and adjust weight
+          const userContrib = safeContributions.find(c => c?.userId === report.userId)
+          if (userContrib) {
+            const trustMultiplier = {
+              'new': 0.8,
+              'bronze': 1.0,
+              'silver': 1.2,
+              'gold': 1.4,
+              'platinum': 1.6
+            }[userContrib.trustLevel] || 1.0
+            weight *= trustMultiplier
+          }
+
+          weightedSum += report.waitTime * weight
+          totalWeight += weight
+        } catch (reportError) {
+          console.error('❌ Error processing report in consensus calculation:', reportError, report)
+        }
+      })
+
+      return totalWeight > 0 ? Math.round(weightedSum / totalWeight) : null
+    } catch (error) {
+      console.error('❌ Error in getConsensusWaitTime for', attractionId, ':', error)
+      return null
+    }
   }, [safeReports, safeContributions])
 
   return {

@@ -25,15 +25,30 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
     const loadData = async () => {
       setIsLoading(true)
       try {
+        console.log(`🔄 ParkOverview loading data for park: ${parkId}`)
+        
+        // Ensure spark is available
+        if (!window.spark?.kv) {
+          console.error('❌ Spark KV not available in ParkOverview')
+          return
+        }
+        
         // Small delay to ensure data is loaded
         await new Promise(resolve => setTimeout(resolve, 100))
         
         const data = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
+        console.log(`📊 ParkOverview data for ${parkId}:`, data?.length || 0, 'attractions')
+        
         if (data && Array.isArray(data)) {
           setAttractions(data)
+          console.log(`✅ ParkOverview successfully loaded ${data.length} attractions`)
+        } else {
+          console.warn(`⚠️ ParkOverview no data found for ${parkId}`)
+          setAttractions([])
         }
       } catch (error) {
-        console.error('Error loading attractions for overview:', error)
+        console.error('❌ ParkOverview error loading attractions:', error)
+        setAttractions([])
       }
       setIsLoading(false)
     }
@@ -43,11 +58,27 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
 
   // Sort attractions based on selected option
   const sortedAttractions = useMemo(() => {
-    if (!attractions) return []
+    console.log(`🔍 ParkOverview sorting ${attractions?.length || 0} attractions for ${parkId}`)
     
-    const validAttractions = attractions.filter(attraction => 
-      attraction && typeof attraction === 'object' && attraction.name && typeof attraction.currentWaitTime === 'number'
-    )
+    if (!attractions || !Array.isArray(attractions)) {
+      console.warn('⚠️ ParkOverview attractions is not an array:', attractions)
+      return []
+    }
+    
+    const validAttractions = attractions.filter(attraction => {
+      const isValid = attraction && 
+        typeof attraction === 'object' && 
+        attraction.name && 
+        typeof attraction.currentWaitTime === 'number'
+      
+      if (!isValid) {
+        console.warn('⚠️ ParkOverview invalid attraction:', attraction)
+      }
+      
+      return isValid
+    })
+    
+    console.log(`✅ ParkOverview filtered to ${validAttractions.length} valid attractions`)
 
     return [...validAttractions].sort((a, b) => {
       switch (sortBy) {
@@ -63,7 +94,7 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
           return b.currentWaitTime - a.currentWaitTime
       }
     })
-  }, [attractions, sortBy])
+  }, [attractions, sortBy, parkId])
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -99,6 +130,7 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
   }
 
   if (isLoading) {
+    console.log('📊 ParkOverview rendering loading state')
     return (
       <Card>
         <CardContent className="p-6">
@@ -116,14 +148,18 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
   }
 
   if (!sortedAttractions.length) {
+    console.log('📊 ParkOverview rendering empty state for', parkId)
     return (
       <Card>
         <CardContent className="p-6 text-center">
           <p className="text-muted-foreground">No attractions data available for this park.</p>
+          <p className="text-sm text-muted-foreground mt-2">Park ID: {parkId}</p>
         </CardContent>
       </Card>
     )
   }
+
+  console.log('📊 ParkOverview rendering overview with', sortedAttractions.length, 'attractions')
 
   return (
     <div className="space-y-6">
