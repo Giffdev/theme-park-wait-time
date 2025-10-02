@@ -27,8 +27,11 @@ interface TimerSession {
 }
 
 export function RideTimer({ user, attraction, parkId, onTimeLogged, isLogging }: RideTimerProps) {
+  // Use a safer key that doesn't rely on potentially undefined user
+  const timerKey = user ? `timer-session-${user.id}` : `timer-session-anonymous-${parkId}-${attraction.id}`
+  
   const [currentSession, setCurrentSession] = useKV<TimerSession | null>(
-    user ? `timer-session-${user.id}` : 'timer-session-anonymous', 
+    timerKey, 
     null
   )
   const [elapsedTime, setElapsedTime] = useState(0)
@@ -64,84 +67,114 @@ export function RideTimer({ user, attraction, parkId, onTimeLogged, isLogging }:
   const isTimerForDifferentAttraction = currentSession && 
     (currentSession.attractionId !== attraction.id || currentSession.parkId !== parkId)
 
-  const startTimer = useCallback(() => {
+  const startTimer = useCallback(async () => {
     if (!user) {
       toast.error('Please sign in to use the timer')
       return
     }
 
-    const newSession: TimerSession = {
-      attractionId: attraction.id,
-      attractionName: attraction.name,
-      parkId,
-      startTime: Date.now(),
-      isActive: true,
-      totalPausedDuration: 0
-    }
-
-    setCurrentSession(newSession)
-    toast.success(`Timer started for ${attraction.name}! 🎢`, {
-      description: 'Timer will run in the background. You can safely switch apps.'
-    })
-  }, [user, attraction, parkId, setCurrentSession])
-
-  const pauseTimer = useCallback(() => {
-    if (!currentSession || !currentSession.isActive) return
-
-    const pausedSession: TimerSession = {
-      ...currentSession,
-      isActive: false,
-      pausedTime: Date.now()
-    }
-
-    setCurrentSession(pausedSession)
-    toast.info(`Timer paused for ${attraction.name}`)
-  }, [currentSession, attraction.name, setCurrentSession])
-
-  const resumeTimer = useCallback(() => {
-    if (!currentSession || currentSession.isActive || !currentSession.pausedTime) return
-
-    const resumedSession: TimerSession = {
-      ...currentSession,
-      isActive: true,
-      startTime: Date.now(),
-      totalPausedDuration: currentSession.totalPausedDuration + (currentSession.pausedTime - (currentSession.pausedTime || currentSession.startTime)),
-      pausedTime: undefined
-    }
-
-    setCurrentSession(resumedSession)
-    toast.success(`Timer resumed for ${attraction.name}`)
-  }, [currentSession, attraction.name, setCurrentSession])
-
-  const stopTimer = useCallback(() => {
-    if (!currentSession) return
-
-    const endTime = currentSession.isActive ? Date.now() : (currentSession.pausedTime || Date.now())
-    const totalDuration = endTime - currentSession.startTime + currentSession.totalPausedDuration
-    const minutes = Math.round(totalDuration / 60000) // Convert to minutes and round
-
-    if (minutes < 1) {
-      toast.error('Timer must run for at least 1 minute to log')
+    if (!window.spark?.kv) {
+      toast.error('Storage not available. Please refresh the page.')
       return
     }
 
-    // Clear the timer session
-    setCurrentSession(null)
-    setElapsedTime(0)
-    setIsActive(false)
+    try {
+      const newSession: TimerSession = {
+        attractionId: attraction.id,
+        attractionName: attraction.name,
+        parkId,
+        startTime: Date.now(),
+        isActive: true,
+        totalPausedDuration: 0
+      }
 
-    // Log the time
-    onTimeLogged(minutes)
-    toast.success(`Logged ${minutes} minute${minutes !== 1 ? 's' : ''} for ${attraction.name}`)
-  }, [currentSession, attraction.name, onTimeLogged, setCurrentSession])
+      setCurrentSession(newSession)
+      toast.success(`Timer started for ${attraction.name}! 🎢`, {
+        description: 'Timer will run in the background. You can safely switch apps.'
+      })
+    } catch (error) {
+      console.error('Failed to start timer:', error)
+      toast.error('Failed to start timer. Please try again.')
+    }
+  }, [user, attraction, parkId, setCurrentSession])
 
-  const cancelTimer = useCallback(() => {
+  const pauseTimer = useCallback(async () => {
+    if (!currentSession || !currentSession.isActive) return
+
+    try {
+      const pausedSession: TimerSession = {
+        ...currentSession,
+        isActive: false,
+        pausedTime: Date.now()
+      }
+
+      setCurrentSession(pausedSession)
+      toast.info(`Timer paused for ${attraction.name}`)
+    } catch (error) {
+      console.error('Failed to pause timer:', error)
+      toast.error('Failed to pause timer. Please try again.')
+    }
+  }, [currentSession, attraction.name, setCurrentSession])
+
+  const resumeTimer = useCallback(async () => {
+    if (!currentSession || currentSession.isActive || !currentSession.pausedTime) return
+
+    try {
+      const resumedSession: TimerSession = {
+        ...currentSession,
+        isActive: true,
+        startTime: Date.now(),
+        totalPausedDuration: currentSession.totalPausedDuration + (currentSession.pausedTime - (currentSession.pausedTime || currentSession.startTime)),
+        pausedTime: undefined
+      }
+
+      setCurrentSession(resumedSession)
+      toast.success(`Timer resumed for ${attraction.name}`)
+    } catch (error) {
+      console.error('Failed to resume timer:', error)
+      toast.error('Failed to resume timer. Please try again.')
+    }
+  }, [currentSession, attraction.name, setCurrentSession])
+
+  const stopTimer = useCallback(async () => {
     if (!currentSession) return
 
-    setCurrentSession(null)
-    setElapsedTime(0)
-    setIsActive(false)
-    toast.info(`Timer cancelled for ${attraction.name}`)
+    try {
+      const endTime = currentSession.isActive ? Date.now() : (currentSession.pausedTime || Date.now())
+      const totalDuration = endTime - currentSession.startTime + currentSession.totalPausedDuration
+      const minutes = Math.round(totalDuration / 60000) // Convert to minutes and round
+
+      if (minutes < 1) {
+        toast.error('Timer must run for at least 1 minute to log')
+        return
+      }
+
+      // Clear the timer session
+      setCurrentSession(null)
+      setElapsedTime(0)
+      setIsActive(false)
+
+      // Log the time
+      onTimeLogged(minutes)
+      toast.success(`Logged ${minutes} minute${minutes !== 1 ? 's' : ''} for ${attraction.name}`)
+    } catch (error) {
+      console.error('Failed to stop timer:', error)
+      toast.error('Failed to log wait time. Please try again.')
+    }
+  }, [currentSession, attraction.name, onTimeLogged, setCurrentSession])
+
+  const cancelTimer = useCallback(async () => {
+    if (!currentSession) return
+
+    try {
+      setCurrentSession(null)
+      setElapsedTime(0)
+      setIsActive(false)
+      toast.info(`Timer cancelled for ${attraction.name}`)
+    } catch (error) {
+      console.error('Failed to cancel timer:', error)
+      toast.error('Failed to cancel timer. Please try again.')
+    }
   }, [currentSession, attraction.name, setCurrentSession])
 
   const formatTime = (seconds: number) => {
@@ -270,12 +303,17 @@ export function RideTimer({ user, attraction, parkId, onTimeLogged, isLogging }:
                     key={minutes}
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      setCurrentSession(null)
-                      setElapsedTime(0)
-                      setIsActive(false)
-                      onTimeLogged(minutes)
-                      toast.success(`Logged ${minutes} minutes for ${attraction.name}`)
+                    onClick={async () => {
+                      try {
+                        setCurrentSession(null)
+                        setElapsedTime(0)
+                        setIsActive(false)
+                        onTimeLogged(minutes)
+                        toast.success(`Logged ${minutes} minutes for ${attraction.name}`)
+                      } catch (error) {
+                        console.error('Failed to quick-log time:', error)
+                        toast.error('Failed to log wait time. Please try again.')
+                      }
                     }}
                     className="h-8 px-3 text-xs touch-manipulation min-h-[36px]"
                     disabled={isLogging}
