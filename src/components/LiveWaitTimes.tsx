@@ -5,9 +5,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Clock, TrendUp, Plus, Users, CheckCircle, Warning } from '@phosphor-icons/react'
 import { formatTime12Hour, formatDateTime12Hour } from '@/utils/timeFormat'
-import { ReportWaitTimeModal } from '@/components/ReportWaitTimeModal'
+import { QuickWaitTimeModal } from '@/components/QuickWaitTimeModal'
 import { WaitTimeChart } from '@/components/WaitTimeChart'
 import { useReporting } from '@/hooks/useReporting'
+import { parkFamilies } from '@/data/sampleData'
 import type { User } from '@/App'
 import type { ExtendedAttraction } from '@/types'
 
@@ -29,6 +30,15 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
   const [attractions, setAttractions] = useState<ExtendedAttraction[]>([])
   
   const { getConsensusWaitTime, getRecentReports } = useReporting()
+
+  // Helper function to get park display name
+  const getParkDisplayName = (parkId: string): string => {
+    for (const family of parkFamilies) {
+      const park = family.parks.find(p => p.id === parkId)
+      if (park) return park.name
+    }
+    return parkId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  }
 
   // Force reload attractions when park changes
   useEffect(() => {
@@ -214,12 +224,6 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
     navigate(`/park/${parkId}/attraction/${attractionId}`)
   }
 
-  const handleReportSubmit = async (waitTime: number) => {
-    // The submission is handled in the modal via the useReporting hook
-    setShowReportModal(false)
-    setSelectedAttraction(null)
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -364,16 +368,17 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
       )}
 
       {showReportModal && selectedAttraction && user && (
-        <ReportWaitTimeModal
+        <QuickWaitTimeModal
           attractionId={selectedAttraction}
           attractionName={attractions?.find(a => a.id === selectedAttraction)?.name || ''}
           parkId={parkId}
+          parkName={getParkDisplayName(parkId)}
           user={user}
           onClose={() => {
             setShowReportModal(false)
             setSelectedAttraction(null)
           }}
-          onSubmit={handleReportSubmit}
+          onLoginRequired={onLoginRequired}
         />
       )}
     </div>
