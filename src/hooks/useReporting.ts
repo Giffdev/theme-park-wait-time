@@ -169,7 +169,12 @@ export function useReporting() {
 
   // Calculate consensus wait time for an attraction
   const getConsensusWaitTime = useCallback((attractionId: string) => {
-    const recentReports = getRecentReports(attractionId, 20)
+    // Get recent reports directly to avoid circular dependency
+    const recentReports = Array.isArray(safeReports) ? safeReports
+      .filter(report => report.attractionId === attractionId)
+      .sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime())
+      .slice(0, 20) : []
+    
     if (!recentReports || recentReports.length === 0) return null
 
     // Filter for recent reports (last 30 minutes)
@@ -209,7 +214,7 @@ export function useReporting() {
     })
 
     return Math.round(weightedSum / totalWeight)
-  }, [safeReports, safeContributions, getRecentReports])
+  }, [safeReports, safeContributions])
 
   return {
     reports: safeReports,
