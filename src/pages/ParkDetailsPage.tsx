@@ -22,7 +22,6 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
   const [selectedPark, setSelectedPark] = useState<string>(parkId || 'magic-kingdom')
   const [activeTab, setActiveTab] = useState('overview')
   const [targetRide, setTargetRide] = useState<string | null>(null)
-  const [dataInitialized, setDataInitialized] = useState(false)
 
   // Update selected park when URL param changes
   useEffect(() => {
@@ -58,37 +57,6 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
     // Navigate to the detailed attraction trends page
     navigate(`/park/${selectedPark}/attraction/${rideId}`)
   }
-
-  // Wait for data to be available (initialized by App component)
-  useEffect(() => {
-    const checkDataReady = async () => {
-      try {
-        if (!window.spark?.kv) {
-          console.log('🔄 ParkDetailsPage waiting for Spark KV to be available')
-          return
-        }
-        
-        // Check if we have any park data
-        const keys = await window.spark.kv.keys()
-        const attractionKeys = keys.filter(key => key.startsWith('attractions-'))
-        
-        if (attractionKeys.length > 0) {
-          console.log('✅ ParkDetailsPage found existing data, ready to go')
-          setDataInitialized(true)
-        } else {
-          console.log('⏳ ParkDetailsPage no data found yet, will retry...')
-          // Retry after a short delay
-          setTimeout(checkDataReady, 500)
-        }
-      } catch (error) {
-        console.error('❌ ParkDetailsPage error checking data:', error)
-        // Still allow the page to load even if there's an error
-        setDataInitialized(true)
-      }
-    }
-    
-    checkDataReady()
-  }, [])
 
   return (
     <main className="container mx-auto px-4 py-8 max-w-7xl">

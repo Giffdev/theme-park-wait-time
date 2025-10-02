@@ -28,41 +28,48 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
       try {
         console.log(`🔄 ParkOverview loading data for park: ${parkId}`)
         
-        // Ensure spark is available
-        if (!window.spark?.kv) {
-          console.error('❌ Spark KV not available in ParkOverview')
-          setAttractions([])
-          setIsLoading(false)
-          return
-        }
+        // Wait for data to be loaded by the useKV hook
+        // The useKV hook should automatically load data, but let's give it a moment
+        await new Promise(resolve => setTimeout(resolve, 100))
         
-        // Get data from KV store
-        const data = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
-        console.log(`📊 ParkOverview raw data for ${parkId}:`, data?.length || 0, 'attractions')
-        
-        if (data && Array.isArray(data) && data.length > 0) {
-          // Use the useKV setter to update the state and persist any changes
-          setAttractions(data)
-          console.log(`✅ ParkOverview successfully loaded ${data.length} attractions for ${parkId}`)
+        // Check if useKV loaded data
+        if (attractions && Array.isArray(attractions) && attractions.length > 0) {
+          console.log(`✅ ParkOverview useKV hook loaded ${attractions.length} attractions for ${parkId}`)
         } else {
-          console.warn(`⚠️ ParkOverview no valid data found for ${parkId}`)
+          console.warn(`⚠️ ParkOverview useKV hook has no data for ${parkId}, checking direct access...`)
           
-          // Check what keys are actually available
-          const allKeys = await window.spark.kv.keys()
-          const attractionKeys = allKeys.filter(key => key.startsWith('attractions-'))
-          console.log(`🔍 Available attraction keys:`, attractionKeys)
-          
-          setAttractions([])
+          // Fallback: try direct KV access if useKV hasn't loaded yet
+          if (window.spark?.kv) {
+            const directData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
+            if (directData && Array.isArray(directData) && directData.length > 0) {
+              console.log(`🔄 ParkOverview found data via direct access, updating useKV: ${directData.length} attractions`)
+              setAttractions(directData)
+            } else {
+              console.error(`❌ ParkOverview no data found via direct access for ${parkId}`)
+              
+              // Debug: check what keys exist
+              const allKeys = await window.spark.kv.keys()
+              const attractionKeys = allKeys.filter(key => key.startsWith('attractions-'))
+              console.log(`🔍 Available attraction keys:`, attractionKeys)
+            }
+          }
         }
       } catch (error) {
         console.error('❌ ParkOverview error loading attractions:', error)
-        setAttractions([])
       }
       setIsLoading(false)
     }
     
     loadData()
   }, [parkId, setAttractions])
+
+  // Also listen for changes from the useKV hook
+  useEffect(() => {
+    if (attractions && Array.isArray(attractions) && attractions.length > 0) {
+      console.log(`📊 ParkOverview useKV hook updated with ${attractions.length} attractions for ${parkId}`)
+      setIsLoading(false)
+    }
+  }, [attractions, parkId])
 
   // Sort attractions based on selected option
   const sortedAttractions = useMemo(() => {

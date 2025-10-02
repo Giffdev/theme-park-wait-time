@@ -152,9 +152,20 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
         console.log(`📊 LiveWaitTimes raw data for ${parkId}:`, parkData ? (Array.isArray(parkData) ? `${parkData.length} items` : typeof parkData) : 'null/undefined')
         
         if (parkData && Array.isArray(parkData) && parkData.length > 0) {
-          setAttractions(parkData)
-          console.log(`✅ LiveWaitTimes successfully loaded ${parkData.length} attractions for ${parkId}`)
+          // Filter out dining establishments - only show actual attractions
+          const validAttractions = parkData.filter(attraction => 
+            attraction && 
+            typeof attraction === 'object' && 
+            attraction.name && 
+            typeof attraction.currentWaitTime === 'number' &&
+            isAttractionNotDining(attraction)
+          )
+          
+          setAttractions(validAttractions)
+          console.log(`✅ LiveWaitTimes successfully loaded ${validAttractions.length} valid attractions for ${parkId} (filtered from ${parkData.length} total)`)
         } else {
+          console.warn(`⚠️ LiveWaitTimes no valid data found for ${parkId}`)
+          
           // If no data found, check what keys exist
           const allKeys = await window.spark.kv.keys()
           const attractionKeys = allKeys.filter(key => key.startsWith('attractions-'))
@@ -371,7 +382,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {attractions.filter(isAttractionNotDining).map((attraction) => {
+          {attractions.map((attraction) => {
             const reportCount = getReportCount(attraction.id)
             const verificationStatus = getVerificationStatus(attraction.id)
             

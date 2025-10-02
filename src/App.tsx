@@ -43,22 +43,26 @@ function App() {
       try {
         console.log('🚀 App initializing sample data')
         
-        // Check if spark is available first
-        if (!window.spark) {
-          console.error('❌ Spark global object not available')
+        // Wait a bit longer for spark to be fully available
+        let attempts = 0
+        const maxAttempts = 20
+        
+        while (attempts < maxAttempts) {
+          if (window.spark?.kv) {
+            console.log('✅ Spark KV is available after', attempts, 'attempts')
+            break
+          }
+          console.log(`⏳ Attempt ${attempts + 1}: Waiting for Spark KV...`)
+          await new Promise(resolve => setTimeout(resolve, 100))
+          attempts++
+        }
+        
+        if (!window.spark?.kv) {
+          console.error('❌ Spark KV not available after all attempts')
           setDataInitialized(true) // Still allow app to load
           return
         }
         
-        if (!window.spark.kv) {
-          console.error('❌ Spark KV not available')
-          setDataInitialized(true) // Still allow app to load
-          return
-        }
-        
-        console.log('✅ Spark KV is available, proceeding with data initialization')
-        
-        // Always initialize/refresh data to ensure it's up to date
         console.log('🔄 Initializing sample data...')
         const success = await initializeSampleData()
         if (!success) {
@@ -69,12 +73,13 @@ function App() {
         
         // Quick verification that data is accessible
         try {
-          const testPark = 'magic-kingdom'
-          const testData = await window.spark.kv.get(`attractions-${testPark}`)
-          console.log(`🔍 Test verification for ${testPark}:`, testData ? `${Array.isArray(testData) ? testData.length : 'unknown'} attractions` : 'No data')
-          
-          if (testData && Array.isArray(testData) && testData.length > 0) {
-            console.log(`   Sample attractions: ${testData.slice(0, 3).map((a: any) => a.name).join(', ')}...`)
+          const testParks = ['magic-kingdom', 'epcot', 'hollywood-studios']
+          for (const testPark of testParks) {
+            const testData = await window.spark.kv.get(`attractions-${testPark}`)
+            if (testData && Array.isArray(testData) && testData.length > 0) {
+              console.log(`✅ Verified ${testPark}: ${testData.length} attractions`)
+              break // Found at least one working park
+            }
           }
         } catch (testError) {
           console.error('❌ Test verification failed:', testError)
@@ -86,9 +91,8 @@ function App() {
       }
     }
     
-    // Add a small delay to ensure the spark runtime is fully loaded
-    const timer = setTimeout(loadData, 100)
-    return () => clearTimeout(timer)
+    // Start loading immediately
+    loadData()
   }, [])
 
   const handleLogin = useCallback((user: User) => {
