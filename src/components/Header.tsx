@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { SignOut, User as UserIcon } from '@phosphor-icons/react'
+import { SignOut, User as UserIcon, List, X } from '@phosphor-icons/react'
 import { Link, useLocation } from 'react-router-dom'
 import type { User } from '@/App'
 
@@ -87,6 +88,7 @@ interface HeaderProps {
 
 export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
   const location = useLocation()
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   
   const isActive = (path: string) => {
     if (path === '/' && location.pathname === '/') return true
@@ -94,17 +96,26 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
     return false
   }
 
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen)
+  }
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false)
+  }
+
   return (
     <header className="border-b bg-card/50 backdrop-blur-sm">
       <div className="container mx-auto px-4 py-4 max-w-7xl">
         <div className="flex items-center justify-between">
-          <Link to="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
+          <Link to="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity" onClick={closeMobileMenu}>
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <CrowdForecasterIcon size={18} className="text-primary-foreground" />
             </div>
             <span className="text-xl font-bold text-foreground">Crowd Forecaster</span>
           </Link>
           
+          {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-6">
             <Link 
               to="/" 
@@ -115,12 +126,12 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
               Home
             </Link>
             <Link 
-              to="/about" 
+              to="/calendar" 
               className={`text-sm font-medium transition-colors hover:text-foreground ${
-                isActive('/about') ? 'text-foreground' : 'text-muted-foreground'
+                isActive('/calendar') ? 'text-foreground' : 'text-muted-foreground'
               }`}
             >
-              About
+              Calendar
             </Link>
             {user && (
               <Link 
@@ -133,16 +144,27 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
               </Link>
             )}
             <Link 
-              to="/calendar" 
+              to="/about" 
               className={`text-sm font-medium transition-colors hover:text-foreground ${
-                isActive('/calendar') ? 'text-foreground' : 'text-muted-foreground'
+                isActive('/about') ? 'text-foreground' : 'text-muted-foreground'
               }`}
             >
-              Calendar
+              About
             </Link>
           </nav>
 
           <div className="flex items-center space-x-4">
+            {/* Mobile menu button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleMobileMenu}
+              className="md:hidden text-muted-foreground hover:text-foreground"
+            >
+              {isMobileMenuOpen ? <X size={20} /> : <List size={20} />}
+            </Button>
+
+            {/* User actions */}
             {user ? (
               <div className="flex items-center space-x-3">
                 <div className="hidden sm:block text-right">
@@ -168,6 +190,52 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
             )}
           </div>
         </div>
+
+        {/* Mobile Navigation Menu */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden mt-4 pt-4 border-t border-border">
+            <nav className="flex flex-col space-y-3">
+              <Link 
+                to="/" 
+                onClick={closeMobileMenu}
+                className={`text-sm font-medium transition-colors hover:text-foreground px-2 py-1 ${
+                  isActive('/') ? 'text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                Home
+              </Link>
+              <Link 
+                to="/calendar" 
+                onClick={closeMobileMenu}
+                className={`text-sm font-medium transition-colors hover:text-foreground px-2 py-1 ${
+                  isActive('/calendar') ? 'text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                Calendar
+              </Link>
+              {user && (
+                <Link 
+                  to="/my-logs" 
+                  onClick={closeMobileMenu}
+                  className={`text-sm font-medium transition-colors hover:text-foreground px-2 py-1 ${
+                    isActive('/my-logs') ? 'text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  My Logs
+                </Link>
+              )}
+              <Link 
+                to="/about" 
+                onClick={closeMobileMenu}
+                className={`text-sm font-medium transition-colors hover:text-foreground px-2 py-1 ${
+                  isActive('/about') ? 'text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                About
+              </Link>
+            </nav>
+          </div>
+        )}
       </div>
     </header>
   )
