@@ -39,7 +39,16 @@
 - **Comprehensive attraction tracking** with separate sections for active, seasonal, and defunct attractions
 - **Multi-track ride support** with variant selection (e.g. left/right track, different experiences)
 - **Individual ride notes** for personal memories and experiences
-- **Real-time ride counting** with increment/decrement controls
+- **Dual logging modes**: Manual ride counting and **Persistent Timer System**
+  - **Manual Mode**: Traditional increment/decrement controls for quick logging
+  - **Timer Mode**: Start/stop/pause timer functionality for accurate wait time tracking
+- **Persistent Timer Features**:
+  - **Background operation**: Timer continues running when switching apps or tabs on mobile
+  - **System-wide timer indicator**: Floating indicator shows active timer across all pages
+  - **Pause/resume functionality**: Handle interruptions without losing timing data
+  - **Quick log options**: Preset time buttons for common wait durations (5, 10, 15, 30, 60 minutes)
+  - **Multi-device resilience**: Timer state persists across device orientation changes and brief disconnections
+  - **One active timer policy**: Only one attraction timer can run at a time to prevent confusion
 - **Session management** with save/cancel functionality
 
 **My Ride Logs Page** (`/my-logs`):

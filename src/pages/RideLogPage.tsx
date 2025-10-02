@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import type { User } from '@/App'
 import type { RideLog, Trip, TripPark, ExtendedAttraction } from '@/types'
 import { parkFamilies, ParkFamily, ParkInfo } from '@/data/sampleData'
+import { RideTimer } from '@/components/RideTimer'
 
 interface RideLogPageProps {
   user: User | null
@@ -374,7 +375,25 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         </div>
       </div>
 
-      {!currentTrip ? (
+        {/* Usage Guide for Timer */}
+        {!currentTrip && (
+          <Card className="border-blue-200 bg-blue-50">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-blue-800">
+                <Clock size={18} />
+                New: Smart Timer Feature
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 text-blue-700 text-sm space-y-2">
+              <p>📱 <strong>Mobile-Optimized:</strong> Timers run in the background even when you switch apps or turn off your screen</p>
+              <p>⏱️ <strong>Two Ways to Log:</strong> Use manual counting for quick entries or start a timer when joining a queue</p>
+              <p>🎯 <strong>Accurate Tracking:</strong> Timer captures your total wait time from queue entry to ride exit</p>
+              <p>💡 <strong>Smart Features:</strong> Pause/resume for bathroom breaks, quick-log buttons for common times</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {!currentTrip ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -553,6 +572,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
               onUpdateRideCount={updateRideCount}
               onVariantChange={handleVariantChange}
               onNotesChange={handleNotesChange}
+              user={user}
             />
           )}
         </div>
@@ -570,6 +590,7 @@ interface AttractionsForParkProps {
   onUpdateRideCount: (parkId: string, attractionId: string, change: number) => void
   onVariantChange: (key: string, variant: string) => void
   onNotesChange: (key: string, notes: string) => void
+  user: User | null
 }
 
 function AttractionsForPark({
@@ -580,7 +601,8 @@ function AttractionsForPark({
   notes,
   onUpdateRideCount,
   onVariantChange,
-  onNotesChange
+  onNotesChange,
+  user
 }: AttractionsForParkProps) {
   const activeAttractions = attractions.filter(a => !a.isDefunct)
   const defunctAttractions = attractions.filter(a => a.isDefunct)
@@ -611,6 +633,7 @@ function AttractionsForPark({
             onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
             onVariantChange={(variant) => onVariantChange(`${parkId}-${attraction.id}`, variant)}
             onNotesChange={(note) => onNotesChange(`${parkId}-${attraction.id}`, note)}
+            user={user}
           />
         ))}
       </TabsContent>
@@ -628,6 +651,7 @@ function AttractionsForPark({
               onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
               onVariantChange={(variant) => onVariantChange(`${parkId}-${attraction.id}`, variant)}
               onNotesChange={(note) => onNotesChange(`${parkId}-${attraction.id}`, note)}
+              user={user}
             />
           ))}
         </TabsContent>
@@ -650,6 +674,7 @@ function AttractionsForPark({
               onVariantChange={(variant) => onVariantChange(`${parkId}-${attraction.id}`, variant)}
               onNotesChange={(note) => onNotesChange(`${parkId}-${attraction.id}`, note)}
               isDefunct
+              user={user}
             />
           ))}
         </TabsContent>
@@ -668,6 +693,7 @@ interface RideLogCardProps {
   onVariantChange: (variant: string) => void
   onNotesChange: (notes: string) => void
   isDefunct?: boolean
+  user: User | null
 }
 
 function RideLogCard({ 
@@ -679,8 +705,23 @@ function RideLogCard({
   onCountChange, 
   onVariantChange, 
   onNotesChange,
-  isDefunct = false 
+  isDefunct = false,
+  user
 }: RideLogCardProps) {
+  const [useTimer, setUseTimer] = useState(false)
+  const [isLogging, setIsLogging] = useState(false)
+
+  const handleTimerLog = useCallback((minutes: number) => {
+    setIsLogging(true)
+    // Convert minutes to ride count (each ride = the time logged)
+    onCountChange(minutes)
+    
+    // Brief delay to show the logged state
+    setTimeout(() => {
+      setIsLogging(false)
+      setUseTimer(false) // Switch back to manual mode after logging
+    }, 1000)
+  }, [onCountChange])
   const getTypeIcon = (type: string) => {
     switch (type) {
       case 'thrill': return <Star size={16} />
@@ -730,19 +771,55 @@ function RideLogCard({
               variant="outline"
               size="sm"
               onClick={() => onCountChange(-1)}
-              disabled={count === 0}
+              disabled={count === 0 || isLogging}
             >
               <Minus size={16} />
             </Button>
-            <span className="w-8 text-center font-semibold">{count}</span>
+            <span className="w-12 text-center font-semibold">
+              {count} {count === 1 ? 'min' : 'mins'}
+            </span>
             <Button
               variant="outline"
               size="sm"
               onClick={() => onCountChange(1)}
+              disabled={isLogging}
             >
               <Plus size={16} />
             </Button>
           </div>
+        </div>
+
+        {/* Timer/Manual Toggle */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Button
+              variant={!useTimer ? "default" : "outline"}
+              size="sm"
+              onClick={() => setUseTimer(false)}
+              disabled={isLogging}
+            >
+              Manual Count
+            </Button>
+            <Button
+              variant={useTimer ? "default" : "outline"}  
+              size="sm"
+              onClick={() => setUseTimer(true)}
+              disabled={isLogging}
+            >
+              Use Timer
+            </Button>
+          </div>
+
+          {/* Timer Component */}
+          {useTimer && (
+            <RideTimer
+              user={user}
+              attraction={attraction}
+              parkId={parkId}
+              onTimeLogged={handleTimerLog}
+              isLogging={isLogging}
+            />
+          )}
         </div>
 
         {attraction.variants && attraction.variants.length > 0 && (

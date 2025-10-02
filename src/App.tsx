@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useKV } from '@github/spark/hooks'
 import { Header } from '@/components/Header'
 import { AuthModal } from '@/components/AuthModal'
+import { FloatingTimerIndicator } from '@/components/FloatingTimerIndicator'
 import { HomePage, ParkDetailsPage, AttractionDetailsPage, RideLogPage, MyRideLogsPage, CrowdCalendarPage, ParkSelectorPage } from '@/pages'
 import { Toaster } from 'sonner'
 import { initializeSampleData } from '@/data/sampleData'
@@ -205,6 +206,9 @@ function App() {
 
         {/* Toast notifications container */}
         <Toaster position="top-right" richColors />
+
+        {/* Floating Timer Indicator */}
+        <FloatingTimerIndicator user={currentUser ?? null} />
       </div>
     </BrowserRouter>
   )
