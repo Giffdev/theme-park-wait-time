@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { MapPin, Users, Calendar, Funnel, Timer, Clock, TrendUp } from '@phosphor-icons/react'
+import { MapPin, Users, Calendar, Funnel } from '@phosphor-icons/react'
 import { parkFamilies } from '@/data/sampleData'
 
 export function HomePage() {
@@ -37,43 +37,6 @@ export function HomePage() {
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
           Real-time wait times and crowd insights for your perfect park day across major theme park destinations
         </p>
-      </div>
-
-      {/* Feature Highlights */}
-      <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <Timer size={24} className="text-primary" />
-              <div>
-                <h3 className="font-semibold text-primary">Smart Timer</h3>
-                <p className="text-sm text-muted-foreground">Time your actual waits</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-accent/20 bg-accent/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <Clock size={24} className="text-accent" />
-              <div>
-                <h3 className="font-semibold text-accent">Live Wait Times</h3>
-                <p className="text-sm text-muted-foreground">Real-time updates</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-secondary/20 bg-secondary/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <TrendUp size={24} className="text-secondary" />
-              <div>
-                <h3 className="font-semibold text-secondary">Crowd Insights</h3>
-                <p className="text-sm text-muted-foreground">Plan your perfect day</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Filter Controls */}

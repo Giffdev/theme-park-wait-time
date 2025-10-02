@@ -114,6 +114,14 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
             >
               Home
             </Link>
+            <Link 
+              to="/about" 
+              className={`text-sm font-medium transition-colors hover:text-foreground ${
+                isActive('/about') ? 'text-foreground' : 'text-muted-foreground'
+              }`}
+            >
+              About
+            </Link>
             {user && (
               <Link 
                 to="/my-logs" 

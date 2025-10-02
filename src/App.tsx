@@ -4,7 +4,7 @@ import { useKV } from '@github/spark/hooks'
 import { Header } from '@/components/Header'
 import { AuthModal } from '@/components/AuthModal'
 import { FloatingTimerIndicator } from '@/components/FloatingTimerIndicator'
-import { HomePage, ParkDetailsPage, AttractionDetailsPage, RideLogPage, MyRideLogsPage, CrowdCalendarPage, ParkSelectorPage } from '@/pages'
+import { HomePage, AboutPage, ParkDetailsPage, AttractionDetailsPage, RideLogPage, MyRideLogsPage, CrowdCalendarPage, ParkSelectorPage } from '@/pages'
 import { Toaster } from 'sonner'
 import { initializeSampleData } from '@/data/sampleData'
 
@@ -146,6 +146,7 @@ function App() {
         ) : (
           <Routes>
             <Route path="/" element={<HomePage />} />
+            <Route path="/about" element={<AboutPage />} />
             <Route path="/parks" element={<ParkSelectorPage />} />
             <Route path="/calendar" element={<CrowdCalendarPage />} />
             <Route 
