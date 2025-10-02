@@ -31,20 +31,27 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
         // Ensure spark is available
         if (!window.spark?.kv) {
           console.error('❌ Spark KV not available in ParkOverview')
+          setAttractions([])
+          setIsLoading(false)
           return
         }
         
-        // Small delay to ensure data is loaded
-        await new Promise(resolve => setTimeout(resolve, 100))
-        
+        // Get data from KV store
         const data = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
-        console.log(`📊 ParkOverview data for ${parkId}:`, data?.length || 0, 'attractions')
+        console.log(`📊 ParkOverview raw data for ${parkId}:`, data?.length || 0, 'attractions')
         
-        if (data && Array.isArray(data)) {
+        if (data && Array.isArray(data) && data.length > 0) {
+          // Use the useKV setter to update the state and persist any changes
           setAttractions(data)
-          console.log(`✅ ParkOverview successfully loaded ${data.length} attractions`)
+          console.log(`✅ ParkOverview successfully loaded ${data.length} attractions for ${parkId}`)
         } else {
-          console.warn(`⚠️ ParkOverview no data found for ${parkId}`)
+          console.warn(`⚠️ ParkOverview no valid data found for ${parkId}`)
+          
+          // Check what keys are actually available
+          const allKeys = await window.spark.kv.keys()
+          const attractionKeys = allKeys.filter(key => key.startsWith('attractions-'))
+          console.log(`🔍 Available attraction keys:`, attractionKeys)
+          
           setAttractions([])
         }
       } catch (error) {
@@ -55,7 +62,7 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
     }
     
     loadData()
-  }, [parkId])
+  }, [parkId, setAttractions])
 
   // Sort attractions based on selected option
   const sortedAttractions = useMemo(() => {

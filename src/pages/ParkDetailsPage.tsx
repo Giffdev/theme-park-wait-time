@@ -8,7 +8,6 @@ import { CrowdCalendar } from '@/components/CrowdCalendar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { CaretLeft } from '@phosphor-icons/react'
-import { initializeSampleData } from '@/data/sampleData'
 import type { User } from '@/App'
 
 interface ParkDetailsPageProps {
@@ -60,32 +59,35 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
     navigate(`/park/${selectedPark}/attraction/${rideId}`)
   }
 
-  // Initialize sample data once on component mount
+  // Wait for data to be available (initialized by App component)
   useEffect(() => {
-    const loadData = async () => {
+    const checkDataReady = async () => {
       try {
-        console.log('🚀 Park details initializing data once')
-        
-        // Ensure spark is available
         if (!window.spark?.kv) {
-          console.error('❌ Spark KV not available in ParkDetailsPage')
+          console.log('🔄 ParkDetailsPage waiting for Spark KV to be available')
           return
         }
         
-        const success = await initializeSampleData()
-        if (!success) {
-          console.error('❌ Failed to initialize sample data')
-          return
-        }
+        // Check if we have any park data
+        const keys = await window.spark.kv.keys()
+        const attractionKeys = keys.filter(key => key.startsWith('attractions-'))
         
-        setDataInitialized(true)
-        console.log('✅ Park details data initialization completed')
+        if (attractionKeys.length > 0) {
+          console.log('✅ ParkDetailsPage found existing data, ready to go')
+          setDataInitialized(true)
+        } else {
+          console.log('⏳ ParkDetailsPage no data found yet, will retry...')
+          // Retry after a short delay
+          setTimeout(checkDataReady, 500)
+        }
       } catch (error) {
-        console.error('❌ Park details error loading sample data:', error)
+        console.error('❌ ParkDetailsPage error checking data:', error)
+        // Still allow the page to load even if there's an error
+        setDataInitialized(true)
       }
     }
     
-    loadData()
+    checkDataReady()
   }, [])
 
   return (

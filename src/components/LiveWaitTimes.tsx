@@ -136,7 +136,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
     const loadAttractionsForPark = async () => {
       setIsLoading(true)
       setError(null)
-      console.log(`🔄 Loading attractions for park: ${parkId}`)
+      console.log(`🔄 LiveWaitTimes loading attractions for park: ${parkId}`)
       
       try {
         // Ensure spark KV is available
@@ -144,61 +144,32 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
           throw new Error('Spark KV not available')
         }
         
-        console.log(`🔍 Checking all available keys...`)
-        const allKeys = await window.spark.kv.keys()
-        console.log(`📋 Available keys (${allKeys.length}):`, allKeys.slice(0, 10), allKeys.length > 10 ? `... and ${allKeys.length - 10} more` : '')
-        
-        const attractionKeys = allKeys.filter(key => key.startsWith('attractions-'))
-        console.log(`🎢 Attraction keys found:`, attractionKeys)
-        
-        // First try to get data directly
+        // Get data directly from KV store
         const lookupKey = `attractions-${parkId}`
-        console.log(`🔍 Looking for key: ${lookupKey}`)
-        let parkData = await window.spark.kv.get<ExtendedAttraction[]>(lookupKey)
-        console.log(`📊 Raw data for ${parkId}:`, parkData ? (Array.isArray(parkData) ? `${parkData.length} items` : typeof parkData) : 'null/undefined')
+        console.log(`🔍 LiveWaitTimes looking for key: ${lookupKey}`)
+        const parkData = await window.spark.kv.get<ExtendedAttraction[]>(lookupKey)
         
-        // If we got data but it's not an array, log what we got
-        if (parkData && !Array.isArray(parkData)) {
-          console.log(`⚠️ Data is not an array:`, JSON.stringify(parkData).substring(0, 200))
-        }
+        console.log(`📊 LiveWaitTimes raw data for ${parkId}:`, parkData ? (Array.isArray(parkData) ? `${parkData.length} items` : typeof parkData) : 'null/undefined')
         
-        // If no data found, check if any attractions keys exist at all
-        if (!parkData || !Array.isArray(parkData) || parkData.length === 0) {
-          console.warn(`❌ No valid data found for ${parkId}. Available attraction keys:`, attractionKeys)
+        if (parkData && Array.isArray(parkData) && parkData.length > 0) {
+          setAttractions(parkData)
+          console.log(`✅ LiveWaitTimes successfully loaded ${parkData.length} attractions for ${parkId}`)
+        } else {
+          // If no data found, check what keys exist
+          const allKeys = await window.spark.kv.keys()
+          const attractionKeys = allKeys.filter(key => key.startsWith('attractions-'))
+          console.log(`🔍 LiveWaitTimes available attraction keys:`, attractionKeys)
           
           if (attractionKeys.length === 0) {
-            // No data at all - try to initialize it now
-            console.log(`🔄 No data found anywhere, attempting to initialize sample data...`)
-            const { initializeSampleData } = await import('@/data/sampleData')
-            const success = await initializeSampleData()
-            if (success) {
-              // Try again after initialization
-              parkData = await window.spark.kv.get<ExtendedAttraction[]>(lookupKey)
-              if (parkData && Array.isArray(parkData) && parkData.length > 0) {
-                setAttractions(parkData)
-                console.log(`✅ Successfully loaded ${parkData.length} attractions for ${parkId} after initialization`)
-                return
-              }
-            }
-            setError(`Failed to initialize park data. Please refresh the page to try again.`)
+            setError(`No park data found. The app may still be initializing. Please refresh the page.`)
           } else {
             const availableParks = attractionKeys.map(k => k.replace('attractions-', '')).join(', ')
-            setError(`No attraction data available for "${parkId}". Available parks: ${availableParks}`)
-            
-            // Try to get data for the first available park as a fallback
-            if (attractionKeys.length > 0) {
-              const fallbackKey = attractionKeys[0]
-              const fallbackData = await window.spark.kv.get<ExtendedAttraction[]>(fallbackKey)
-              console.log(`🔄 Trying fallback park: ${fallbackKey} (${fallbackData?.length || 0} attractions)`)
-            }
+            setError(`No data available for "${parkId}". Available parks: ${availableParks}`)
           }
           setAttractions([])
-        } else {
-          setAttractions(parkData)
-          console.log(`✅ Successfully loaded ${parkData.length} attractions for ${parkId}`)
         }
       } catch (error) {
-        console.error(`❌ Error loading attractions for ${parkId}:`, error)
+        console.error(`❌ LiveWaitTimes error loading attractions for ${parkId}:`, error)
         setError(`Error loading park data: ${error instanceof Error ? error.message : 'Unknown error'}`)
         setAttractions([])
       } finally {

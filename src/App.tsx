@@ -58,32 +58,13 @@ function App() {
         
         console.log('✅ Spark KV is available, proceeding with data initialization')
         
-        // Check if we already have data
-        const existingKeys = await window.spark.kv.keys()
-        const attractionKeys = existingKeys.filter(key => key.startsWith('attractions-'))
-        console.log(`🔍 Found ${attractionKeys.length} existing attraction keys:`, attractionKeys)
-        
-        let shouldInitialize = attractionKeys.length === 0
-        
-        // Also check if magic-kingdom specifically exists since that's the default
-        if (!shouldInitialize) {
-          const magicKingdomData = await window.spark.kv.get('attractions-magic-kingdom')
-          if (!magicKingdomData || !Array.isArray(magicKingdomData) || magicKingdomData.length === 0) {
-            console.log('🔄 Magic Kingdom data missing, forcing re-initialization')
-            shouldInitialize = true
-          }
-        }
-        
-        if (shouldInitialize) {
-          console.log('🔄 Initializing sample data...')
-          const success = await initializeSampleData()
-          if (!success) {
-            console.error('❌ Failed to initialize sample data')
-          } else {
-            console.log('✅ App sample data initialized successfully')
-          }
+        // Always initialize/refresh data to ensure it's up to date
+        console.log('🔄 Initializing sample data...')
+        const success = await initializeSampleData()
+        if (!success) {
+          console.error('❌ Failed to initialize sample data')
         } else {
-          console.log('✅ Sample data already exists, skipping initialization')
+          console.log('✅ App sample data initialized successfully')
         }
         
         // Quick verification that data is accessible
