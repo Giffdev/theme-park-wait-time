@@ -71,18 +71,44 @@ function App() {
           console.log('✅ App sample data initialized successfully')
         }
         
-        // Quick verification that data is accessible
-        try {
-          const testParks = ['magic-kingdom', 'epcot', 'hollywood-studios']
-          for (const testPark of testParks) {
-            const testData = await window.spark.kv.get(`attractions-${testPark}`)
-            if (testData && Array.isArray(testData) && testData.length > 0) {
-              console.log(`✅ Verified ${testPark}: ${testData.length} attractions`)
-              break // Found at least one working park
+        // CRITICAL: Wait for data to be fully available with retries
+        console.log('🔍 Verifying data availability...')
+        let verificationAttempts = 0
+        const maxVerificationAttempts = 10
+        let dataVerified = false
+        
+        while (verificationAttempts < maxVerificationAttempts && !dataVerified) {
+          try {
+            const testParks = ['magic-kingdom', 'epcot', 'hollywood-studios', 'universal-studios-orlando', 'islands-of-adventure']
+            let verifiedParks = 0
+            
+            for (const testPark of testParks) {
+              const testData = await window.spark.kv.get(`attractions-${testPark}`)
+              if (testData && Array.isArray(testData) && testData.length > 0) {
+                console.log(`✅ Verified ${testPark}: ${testData.length} attractions`)
+                verifiedParks++
+              } else {
+                console.warn(`⚠️ ${testPark}: No data found`)
+              }
             }
+            
+            if (verifiedParks >= 3) {
+              console.log(`✅ Data verification complete: ${verifiedParks}/${testParks.length} parks verified`)
+              dataVerified = true
+            } else {
+              console.log(`⏳ Verification attempt ${verificationAttempts + 1}: Only ${verifiedParks} parks verified, retrying...`)
+              await new Promise(resolve => setTimeout(resolve, 200))
+            }
+          } catch (testError) {
+            console.error(`❌ Verification attempt ${verificationAttempts + 1} failed:`, testError)
+            await new Promise(resolve => setTimeout(resolve, 200))
           }
-        } catch (testError) {
-          console.error('❌ Test verification failed:', testError)
+          
+          verificationAttempts++
+        }
+        
+        if (!dataVerified) {
+          console.error('❌ Data verification failed after all attempts')
         }
       } catch (error) {
         console.error('❌ App error loading sample data:', error)

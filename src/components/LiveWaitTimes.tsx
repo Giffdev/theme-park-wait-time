@@ -8,6 +8,7 @@ import { formatTime12Hour, formatDateTime12Hour } from '@/utils/timeFormat'
 import { QuickWaitTimeModal } from '@/components/QuickWaitTimeModal'
 import { RideTimer } from '@/components/RideTimer'
 import { WaitTimeChart } from '@/components/WaitTimeChart'
+import { DebugDataViewer } from '@/components/DebugDataViewer'
 import { useReporting } from '@/hooks/useReporting'
 import { useKV } from '@github/spark/hooks'
 import { parkFamilies } from '@/data/sampleData'
@@ -144,12 +145,36 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
           throw new Error('Spark KV not available')
         }
         
-        // Get data directly from KV store
+        // CRITICAL: Wait for data to be available with retries
+        let attempts = 0
+        const maxAttempts = 10
+        let parkData: ExtendedAttraction[] | null = null
+        
         const lookupKey = `attractions-${parkId}`
         console.log(`🔍 LiveWaitTimes looking for key: ${lookupKey}`)
-        const parkData = await window.spark.kv.get<ExtendedAttraction[]>(lookupKey)
         
-        console.log(`📊 LiveWaitTimes raw data for ${parkId}:`, parkData ? (Array.isArray(parkData) ? `${parkData.length} items` : typeof parkData) : 'null/undefined')
+        while (attempts < maxAttempts && (!parkData || !Array.isArray(parkData) || parkData.length === 0)) {
+          try {
+            parkData = await window.spark.kv.get<ExtendedAttraction[]>(lookupKey) || null
+            console.log(`📊 LiveWaitTimes attempt ${attempts + 1} for ${parkId}:`, parkData ? (Array.isArray(parkData) ? `${parkData.length} items` : typeof parkData) : 'null/undefined')
+            
+            if (parkData && Array.isArray(parkData) && parkData.length > 0) {
+              break // Success!
+            }
+            
+            // Wait a bit before retrying
+            if (attempts < maxAttempts - 1) {
+              console.log(`⏳ LiveWaitTimes retrying in 100ms (attempt ${attempts + 1}/${maxAttempts})`)
+              await new Promise(resolve => setTimeout(resolve, 100))
+            }
+          } catch (attemptError) {
+            console.error(`❌ LiveWaitTimes attempt ${attempts + 1} error:`, attemptError)
+            if (attempts < maxAttempts - 1) {
+              await new Promise(resolve => setTimeout(resolve, 100))
+            }
+          }
+          attempts++
+        }
         
         if (parkData && Array.isArray(parkData) && parkData.length > 0) {
           // Filter out dining establishments - only show actual attractions
@@ -164,7 +189,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
           setAttractions(validAttractions)
           console.log(`✅ LiveWaitTimes successfully loaded ${validAttractions.length} valid attractions for ${parkId} (filtered from ${parkData.length} total)`)
         } else {
-          console.warn(`⚠️ LiveWaitTimes no valid data found for ${parkId}`)
+          console.warn(`⚠️ LiveWaitTimes no valid data found for ${parkId} after ${attempts} attempts`)
           
           // If no data found, check what keys exist
           const allKeys = await window.spark.kv.keys()
@@ -323,6 +348,9 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
           Updated: {formatTime12Hour(lastUpdate.getHours(), lastUpdate.getMinutes())}
         </div>
       </div>
+
+      {/* Debug Component - Temporary */}
+      <DebugDataViewer parkId={parkId} />
 
       {/* Loading state or error */}
       {isLoading ? (
