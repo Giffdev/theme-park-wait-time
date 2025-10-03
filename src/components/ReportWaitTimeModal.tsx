@@ -109,7 +109,7 @@ export function ReportWaitTimeModal({
     
     // Show helpful message if resuming a paused timer (only on first mount)
     if (isFirstMount.current && timerState.isPaused && timerState.elapsedTime > 0) {
-      toast.info(`Resuming ${attractionName} timer from ${formatTimerDisplay(timerState.elapsedTime)}`)
+      // Silent resume - no toast message
     }
     
     isFirstMount.current = false
@@ -135,7 +135,7 @@ export function ReportWaitTimeModal({
     // Register as active timer
     setActiveTimer(timerId, attractionName, parkId)
     
-    toast.success('Timer started!')
+
   }
 
   const pauseTimer = () => {
@@ -147,7 +147,7 @@ export function ReportWaitTimeModal({
       startTime: null
     }))
     
-    toast.info(`Timer paused for ${attractionName}`)
+
   }
 
   const resumeTimer = async () => {
@@ -176,7 +176,7 @@ export function ReportWaitTimeModal({
       startTime: null
     }))
     
-    toast.success(`Timer stopped for ${attractionName}`)
+
   }
 
   const resetTimer = () => {
@@ -197,7 +197,7 @@ export function ReportWaitTimeModal({
     // If timer is running, pause it and continue in background
     if (timerState.isRunning) {
       pauseTimer()
-      toast.info(`Timer paused and will continue in background. Return to ${attractionName} to resume.`)
+      // Silent pause - no toast message
     }
     onClose()
   }
@@ -206,7 +206,7 @@ export function ReportWaitTimeModal({
     // If timer is running or paused, cancel it completely
     if (timerState.isRunning || timerState.isPaused) {
       resetTimer()
-      toast.info(`Timer cancelled for ${attractionName}`)
+      // Silent cancellation - no toast message
     }
     onClose()
   }

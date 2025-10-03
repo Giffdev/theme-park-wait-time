@@ -95,7 +95,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
     // Register as active timer
     setActiveTimer(timerId, attractionName, parkId)
     
-    toast.success(`Timer started for ${attractionName}`)
+
   }
 
   const pauseTimer = () => {
@@ -108,7 +108,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
     }))
     
     // Keep timer registered but paused
-    toast.info(`Timer paused for ${attractionName}`)
+
   }
 
   const resumeTimer = () => {
@@ -127,7 +127,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
     // Re-register as active timer
     setActiveTimer(timerId, attractionName, parkId)
     
-    toast.success(`Timer resumed for ${attractionName}`)
+
   }
 
   const stopTimer = () => {
@@ -142,7 +142,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
     // Keep timer registered to prevent multiple timers
     // Only clear after using the time or resetting
     
-    toast.success(`Timer stopped for ${attractionName}`)
+
   }
 
   const resetTimer = () => {
@@ -158,7 +158,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
     // Clear from global timer
     clearActiveTimer()
     
-    toast.info(`Timer reset for ${attractionName}`)
+
   }
 
   const useTime = () => {
