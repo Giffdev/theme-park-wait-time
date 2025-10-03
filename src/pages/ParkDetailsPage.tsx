@@ -81,23 +81,7 @@ export function ParkDetailsPage({ user, onLoginRequired }: ParkDetailsPageProps)
         />
       </div>
 
-      {/* Log Rides Button */}
-      <div className="mb-6 flex justify-center">
-        {user ? (
-          <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
-            <Link to={`/park/${selectedPark}/log`}>
-              🎢 Log Your Rides Today
-            </Link>
-          </Button>
-        ) : (
-          <Button 
-            onClick={onLoginRequired}
-            className="bg-accent hover:bg-accent/90 text-accent-foreground"
-          >
-            🎢 Sign In to Log Rides
-          </Button>
-        )}
-      </div>
+
 
 
       {/* User Stats - Removed per user request */}
