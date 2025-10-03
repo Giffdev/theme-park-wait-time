@@ -31,7 +31,7 @@ import {
   Funnel,
   PencilSimple
 } from '@phosphor-icons/react'
-import { DateWheelPicker } from '@/components/DateWheelPicker'
+import { DatePicker } from '@/components/ui/date-picker'
 import { ParkDataService } from '@/services/parkDataService'
 import { parkFamilies } from '@/data/sampleData'
 import { isAttractionNotDining } from '@/lib/utils'
@@ -725,11 +725,12 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
             
             <div>
               <Label htmlFor="visit-date">Visit Date</Label>
-              <DateWheelPicker
+              <DatePicker
                 date={visitDate}
-                onDateChange={(date) => setVisitDate(date)}
+                onDateChange={(date) => setVisitDate(date || new Date())}
                 placeholder="Choose your visit date"
                 className="mt-1"
+                maxDate={new Date()}
               />
             </div>
 
