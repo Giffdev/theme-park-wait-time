@@ -191,15 +191,13 @@ export function ReportWaitTimeModal({
       return
     }
 
-    if (timerState.elapsedTime < 60) {
-      toast.error('Timer must run for at least 1 minute to record accurate wait times')
-      return
-    }
-
-    const minutes = Math.ceil(timerState.elapsedTime / 60)
+    // Round down to nearest minute, treating 0 minutes as walk-on
+    const minutes = Math.floor(timerState.elapsedTime / 60)
     setWaitTime(minutes.toString())
     resetTimer()
-    toast.success(`Used timer result: ${minutes} minutes`)
+    
+    const message = minutes === 0 ? 'Used timer result: Walk-on (0 minutes)' : `Used timer result: ${minutes} minutes`
+    toast.success(message)
   }
 
   const formatTimerDisplay = (seconds: number) => {
@@ -340,10 +338,9 @@ export function ReportWaitTimeModal({
                 onClick={useTimerForReport} 
                 className="w-full bg-success hover:bg-success/90 text-sm mb-3"
                 size="sm"
-                disabled={timerState.elapsedTime < 60}
               >
                 <CheckCircle size={16} className="mr-2" />
-                Use This Time ({Math.ceil(timerState.elapsedTime / 60)} min)
+                Use This Time ({Math.floor(timerState.elapsedTime / 60) === 0 ? 'Walk-on' : `${Math.floor(timerState.elapsedTime / 60)} min`})
               </Button>
             )}
 
@@ -351,12 +348,6 @@ export function ReportWaitTimeModal({
             {timerState.elapsedTime > 0 && !timerState.isStopped && (
               <p className="text-xs text-muted-foreground text-center">
                 Stop the timer to use this time for your report
-              </p>
-            )}
-
-            {timerState.isStopped && timerState.elapsedTime < 60 && (
-              <p className="text-xs text-destructive text-center">
-                Timer must run for at least 1 minute for accurate reporting
               </p>
             )}
             
@@ -412,6 +403,9 @@ export function ReportWaitTimeModal({
                   placeholder="e.g. 45"
                   className="text-center text-lg h-12 max-w-32 mx-auto block"
                 />
+                <p className="text-xs text-muted-foreground text-center">
+                  Enter 0 for walk-on, or actual wait time in line
+                </p>
               </div>
             )}
             

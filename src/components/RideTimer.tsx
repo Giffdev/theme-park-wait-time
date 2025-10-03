@@ -169,19 +169,16 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
 
     const finalTime = timerState.elapsedTime
     
-    if (finalTime < 60) {
-      toast.error('Timer must run for at least 1 minute to record accurate wait times')
-      return
-    }
-    
-    const minutes = Math.ceil(finalTime / 60)
+    // Round down to nearest minute, treating 0 minutes as walk-on
+    const minutes = Math.floor(finalTime / 60)
     
     // Reset timer after using the time
     resetTimer()
     
     if (onTimeRecorded) {
       onTimeRecorded(minutes)
-      toast.success(`Used timer result: ${minutes} minutes`)
+      const message = minutes === 0 ? 'Used timer result: Walk-on (0 minutes)' : `Used timer result: ${minutes} minutes`
+      toast.success(message)
     }
   }
 
@@ -214,7 +211,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
                 <Pause size={16} />
                 Pause
               </Button>
-              <Button onClick={stopTimer} variant="destructive" className="gap-2">
+              <Button onClick={stopTimer} variant="secondary" className="gap-2">
                 <Stop size={16} />
                 Stop
               </Button>
@@ -227,7 +224,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
                 <Play size={16} />
                 Resume
               </Button>
-              <Button onClick={stopTimer} variant="destructive" className="gap-2">
+              <Button onClick={stopTimer} variant="secondary" className="gap-2">
                 <Stop size={16} />
                 Stop
               </Button>
@@ -239,7 +236,6 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
               <Button 
                 onClick={useTime} 
                 className="gap-2 bg-success hover:bg-success/90"
-                disabled={timerState.elapsedTime < 60}
               >
                 <CheckCircle size={16} />
                 Use This Time
@@ -254,16 +250,11 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
         {timerState.elapsedTime > 0 && (
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">
-              Current wait: {Math.ceil(timerState.elapsedTime / 60)} minutes
+              Current wait: {Math.floor(timerState.elapsedTime / 60) === 0 ? 'Walk-on (0 min)' : `${Math.floor(timerState.elapsedTime / 60)} minutes`}
             </p>
             {!timerState.isStopped && (
               <p className="text-xs text-muted-foreground">
                 Stop the timer to submit this time
-              </p>
-            )}
-            {timerState.isStopped && timerState.elapsedTime < 60 && (
-              <p className="text-xs text-destructive">
-                Timer must run for at least 1 minute
               </p>
             )}
           </div>
