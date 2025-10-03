@@ -1,5 +1,6 @@
 import * as React from "react"
 import { format } from "date-fns"
+import { CalendarIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -8,26 +9,25 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { CalendarIcon } from "lucide-react"
 
 interface DatePickerProps {
   date?: Date
   onDateChange?: (date: Date | undefined) => void
   disabled?: boolean
-  minDate?: Date
-  maxDate?: Date
   placeholder?: string
   className?: string
+  minDate?: Date
+  maxDate?: Date
 }
 
 export function DatePicker({
   date,
   onDateChange,
   disabled = false,
-  minDate,
-  maxDate,
   placeholder = "Pick a date",
   className,
+  minDate,
+  maxDate,
 }: DatePickerProps) {
   return (
     <Popover>
@@ -35,7 +35,7 @@ export function DatePicker({
         <Button
           variant="outline"
           className={cn(
-            "w-[280px] justify-start text-left font-normal",
+            "w-[240px] justify-start text-left font-normal",
             !date && "text-muted-foreground",
             className
           )}
@@ -45,17 +45,17 @@ export function DatePicker({
           {date ? format(date, "PPP") : <span>{placeholder}</span>}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0">
+      <PopoverContent className="w-auto p-0" align="start">
         <Calendar
           mode="single"
           selected={date}
           onSelect={onDateChange}
-          disabled={(date) =>
-            disabled || 
-            (minDate ? date < minDate : false) ||
-            (maxDate ? date > maxDate : false)
-          }
           initialFocus
+          disabled={(date) => {
+            if (minDate && date < minDate) return true
+            if (maxDate && date > maxDate) return true
+            return false
+          }}
         />
       </PopoverContent>
     </Popover>
