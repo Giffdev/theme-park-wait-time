@@ -214,7 +214,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
                 <Pause size={16} />
                 Pause
               </Button>
-              <Button onClick={stopTimer} variant="secondary" className="gap-2">
+              <Button onClick={stopTimer} variant="destructive" className="gap-2">
                 <Stop size={16} />
                 Stop
               </Button>
@@ -227,7 +227,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
                 <Play size={16} />
                 Resume
               </Button>
-              <Button onClick={stopTimer} variant="secondary" className="gap-2">
+              <Button onClick={stopTimer} variant="destructive" className="gap-2">
                 <Stop size={16} />
                 Stop
               </Button>
