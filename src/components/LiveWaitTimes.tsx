@@ -8,7 +8,6 @@ import { formatTime12Hour, formatDateTime12Hour } from '@/utils/timeFormat'
 import { QuickWaitTimeModal } from '@/components/QuickWaitTimeModal'
 import { ReportWaitTimeModal } from '@/components/ReportWaitTimeModal'
 import { WaitTimeChart } from '@/components/WaitTimeChart'
-import { DebugDataViewer } from '@/components/DebugDataViewer'
 import { useReporting } from '@/hooks/useReporting'
 import { parkFamilies } from '@/data/sampleData'
 import { ParkDataService } from '@/services/parkDataService'
@@ -390,9 +389,6 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
           }}
         />
       )}
-      
-      {/* Debug component - remove in production */}
-      <DebugDataViewer parkId={parkId} />
     </div>
   )
 }

@@ -27,6 +27,104 @@ import {
 import type { Trip, User } from '@/types'
 import { ParkDataService } from '@/services/parkDataService'
 
+// Data cleanup utility to fix malformed ride logs
+async function cleanupUserRideLogData(userId: string): Promise<number> {
+  let fixedCount = 0
+  
+  try {
+    const tripIds = await window.spark.kv.get<string[]>(`user-trips-${userId}`) || []
+    
+    for (const tripId of tripIds) {
+      const trip = await window.spark.kv.get<Trip>(`trip-${tripId}`)
+      if (!trip) continue
+      
+      let tripModified = false
+      
+      // Fix each ride log in the trip
+      for (const log of trip.rideLogs) {
+        let logModified = false
+        
+        // Fix common park ID issues
+        if (log.parkId === 'hollywood') {
+          log.parkId = 'hollywood-studios'
+          logModified = true
+        }
+        
+        // Fix common attraction ID issues
+        if (log.attractionId?.includes('studios-alien-swirling-saurces')) {
+          log.attractionId = 'alien-swirling-saucers'
+          log.attractionName = 'Alien Swirling Saucers'
+          logModified = true
+        }
+        
+        // Fix other common malformed attraction IDs
+        if (log.attractionId?.startsWith('studios-')) {
+          const correctedId = log.attractionId.replace('studios-', '')
+          // Try to find the attraction with the corrected ID
+          try {
+            const attractions = await ParkDataService.loadAttractions('hollywood-studios')
+            const found = attractions.find(a => a.id === correctedId)
+            if (found) {
+              log.attractionId = correctedId
+              log.attractionName = found.name
+              if (log.parkId !== 'hollywood-studios') {
+                log.parkId = 'hollywood-studios'
+              }
+              logModified = true
+            }
+          } catch (error) {
+            console.warn('Could not verify corrected attraction ID:', correctedId)
+          }
+        }
+        
+        if (logModified) {
+          fixedCount++
+          tripModified = true
+        }
+      }
+      
+      // Update park information if needed
+      if (tripModified) {
+        // Rebuild park summary to match corrected data
+        const parkMap = new Map<string, { parkName: string, rideCount: number }>()
+        
+        for (const log of trip.rideLogs) {
+          const existing = parkMap.get(log.parkId) || { parkName: log.parkId, rideCount: 0 }
+          existing.rideCount += log.rideCount
+          
+          // Try to get the proper park name
+          if (log.parkId === 'hollywood-studios') {
+            existing.parkName = "Disney's Hollywood Studios"
+          } else if (log.parkId === 'magic-kingdom') {
+            existing.parkName = "Magic Kingdom"
+          } else if (log.parkId === 'epcot') {
+            existing.parkName = "EPCOT"
+          } else if (log.parkId === 'animal-kingdom') {
+            existing.parkName = "Disney's Animal Kingdom"
+          }
+          // Add more mappings as needed
+          
+          parkMap.set(log.parkId, existing)
+        }
+        
+        trip.parks = Array.from(parkMap.entries()).map(([parkId, info]) => ({
+          parkId,
+          parkName: info.parkName,
+          rideCount: info.rideCount
+        }))
+        
+        // Save the updated trip
+        await window.spark.kv.set(`trip-${tripId}`, trip)
+        console.log(`🔧 Fixed ${fixedCount} issues in trip ${tripId}`)
+      }
+    }
+  } catch (error) {
+    console.error('Error during data cleanup:', error)
+  }
+  
+  return fixedCount
+}
+
 interface MyRideLogsPageProps {
   user: User | null
   onLoginRequired: () => void
@@ -39,7 +137,7 @@ async function resolveAttractionName(log: any): Promise<string> {
     return log.attractionName
   }
   
-  // Try to find the attraction in park data
+  // Try to find the attraction in park data with the stored park ID
   try {
     const attractions = await ParkDataService.loadAttractions(log.parkId)
     const attraction = attractions.find(a => a.id === log.attractionId)
@@ -51,50 +149,93 @@ async function resolveAttractionName(log: any): Promise<string> {
     console.warn(`Could not load attractions for park ${log.parkId}:`, error)
   }
   
-  // Handle malformed keys like "kingdom-space-mountain" 
-  if (log.attractionId && log.attractionId.includes('-')) {
-    const parts = log.attractionId.split('-')
-    if (parts.length >= 2) {
-      // Try different park combinations
-      const possibleParks = ['magic-kingdom', 'universal-studios-hollywood', 'disneyland', 'epcot']
-      
-      for (const parkId of possibleParks) {
-        try {
-          const attractions = await ParkDataService.loadAttractions(parkId)
-          
-          // Try the full attractionId first
-          let attraction = attractions.find(a => a.id === log.attractionId)
-          if (attraction) {
-            return `${attraction.name} (from ${parkId})`
-          }
-          
-          // Try just the last part (e.g., "space-mountain" from "kingdom-space-mountain")
-          const lastPart = parts[parts.length - 1]
-          attraction = attractions.find(a => a.id === lastPart || a.id.endsWith('-' + lastPart))
-          if (attraction) {
-            return `${attraction.name} (from ${parkId})`
-          }
-          
-          // Try combinations of parts
-          for (let i = 1; i < parts.length; i++) {
-            const partialId = parts.slice(i).join('-')
-            attraction = attractions.find(a => a.id === partialId)
-            if (attraction) {
-              return `${attraction.name} (from ${parkId})`
-            }
-          }
-        } catch (error) {
-          continue
-        }
-      }
+  // Handle common park ID variations and malformed attraction IDs
+  const parkIdMappings: Record<string, string[]> = {
+    'hollywood': ['hollywood-studios'],
+    'kingdom': ['magic-kingdom'],
+    'studios': ['hollywood-studios', 'universal-studios-orlando', 'universal-studios-hollywood'],
+    'adventure': ['islands-of-adventure', 'disney-california-adventure'],
+    'universal': ['universal-studios-orlando', 'universal-studios-hollywood', 'islands-of-adventure']
+  }
+  
+  // Try park ID variations first
+  const possibleParks = new Set<string>()
+  
+  // Add direct mappings
+  for (const [key, parks] of Object.entries(parkIdMappings)) {
+    if (log.parkId?.toLowerCase().includes(key)) {
+      parks.forEach(park => possibleParks.add(park))
     }
   }
   
-  // Last resort: return a cleaned up version of the ID
+  // Add common parks as fallback
+  const commonParks = ['magic-kingdom', 'epcot', 'hollywood-studios', 'animal-kingdom', 
+                       'universal-studios-orlando', 'islands-of-adventure', 'disneyland', 
+                       'disney-california-adventure', 'universal-studios-hollywood']
+  commonParks.forEach(park => possibleParks.add(park))
+  
+  for (const parkId of possibleParks) {
+    try {
+      const attractions = await ParkDataService.loadAttractions(parkId)
+      
+      // Try the full attractionId first
+      let attraction = attractions.find(a => a.id === log.attractionId)
+      if (attraction) {
+        return attraction.name
+      }
+      
+      // Handle malformed attraction IDs with common corrections
+      let correctedId = log.attractionId
+      
+      // Fix common typos and malformations
+      if (correctedId?.includes('studios-')) {
+        correctedId = correctedId.replace('studios-', '')
+      }
+      if (correctedId?.includes('saurces')) {
+        correctedId = correctedId.replace('saurces', 'saucers')
+      }
+      
+      // Try corrected ID
+      attraction = attractions.find(a => a.id === correctedId)
+      if (attraction) {
+        return attraction.name
+      }
+      
+      // Try partial matches for malformed compound IDs
+      if (log.attractionId?.includes('-')) {
+        const parts = log.attractionId.split('-')
+        
+        // Try removing first part (e.g., "kingdom-space-mountain" -> "space-mountain")
+        for (let i = 1; i < parts.length; i++) {
+          const partialId = parts.slice(i).join('-')
+          attraction = attractions.find(a => a.id === partialId)
+          if (attraction) {
+            return attraction.name
+          }
+        }
+        
+        // Try fuzzy matching on the last meaningful part
+        const lastPart = parts[parts.length - 1]
+        if (lastPart && lastPart.length > 3) {
+          attraction = attractions.find(a => 
+            a.id.includes(lastPart) || 
+            a.name.toLowerCase().includes(lastPart.replace(/-/g, ' '))
+          )
+          if (attraction) {
+            return attraction.name
+          }
+        }
+      }
+    } catch (error) {
+      continue
+    }
+  }
+  
+  // Last resort: return a cleaned up version of the ID without debug info
   const cleanId = log.attractionId?.replace(/^[^-]+-/, '') || log.attractionId || 'unknown'
-  return `${cleanId.split('-').map((word: string) => 
+  return cleanId.split('-').map((word: string) => 
     word.charAt(0).toUpperCase() + word.slice(1)
-  ).join(' ')} (unresolved)`
+  ).join(' ')
 }
 
 export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
@@ -121,6 +262,16 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
     setIsLoading(true)
     try {
       console.log('🔄 Loading trips for user:', user.id)
+      
+      // Run data cleanup first (only logs issues, doesn't show to user)
+      try {
+        const fixedCount = await cleanupUserRideLogData(user.id)
+        if (fixedCount > 0) {
+          console.log(`🔧 Fixed ${fixedCount} data issues during load`)
+        }
+      } catch (cleanupError) {
+        console.warn('Data cleanup had issues, continuing with load:', cleanupError)
+      }
       
       // First, let's see what keys exist in storage for debugging
       const allKeys = await window.spark.kv.keys()
@@ -552,11 +703,6 @@ function RideLogCard({ log, getTypeIcon, getTypeColor }: RideLogCardProps) {
                 {log.notes}
               </p>
             )}
-            {displayName.includes('(unresolved)') && (
-              <p className="text-xs text-yellow-600 mt-1">
-                Debug: Park={log.parkId}, ID={log.attractionId}
-              </p>
-            )}
           </div>
         </div>
         <Badge variant="outline">
@@ -713,11 +859,6 @@ function TripCard({ trip, onDelete, onEdit, getTypeIcon, getTypeColor }: TripCar
                                   {log.notes && (
                                     <p className="text-sm text-muted-foreground mt-1">
                                       {log.notes}
-                                    </p>
-                                  )}
-                                  {displayName.includes('(unresolved)') && (
-                                    <p className="text-xs text-yellow-600 mt-1">
-                                      Debug: Park={log.parkId}, ID={log.attractionId}
                                     </p>
                                   )}
                                 </div>
