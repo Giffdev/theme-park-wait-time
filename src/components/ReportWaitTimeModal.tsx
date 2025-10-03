@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Clock, CheckCircle, XCircle, Warning } from '@phosphor-icons/react'
+import { Clock, Play, Pause, Stop, CheckCircle, XCircle, Warning } from '@phosphor-icons/react'
 import { useReporting } from '@/hooks/useReporting'
+import { useKV } from '@github/spark/hooks'
 import { formatTime12Hour } from '@/utils/timeFormat'
 import { toast } from 'sonner'
 import type { User } from '@/App'
@@ -21,6 +22,13 @@ interface ReportWaitTimeModalProps {
   onSubmit: (waitTime: number) => void
 }
 
+interface TimerState {
+  isRunning: boolean
+  startTime: number | null
+  elapsedTime: number
+  pausedTime: number
+}
+
 export function ReportWaitTimeModal({
   attractionId,
   attractionName,
@@ -31,27 +39,112 @@ export function ReportWaitTimeModal({
 }: ReportWaitTimeModalProps) {
   const [waitTime, setWaitTime] = useState('')
   const [isClosed, setIsClosed] = useState(false)
-  const [mode, setMode] = useState<'report' | 'verify'>('report')
+  const [inputMode, setInputMode] = useState<'manual' | 'timer'>('manual')
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Timer state with persistence
+  const [timerState, setTimerState] = useKV<TimerState>(`timer-${attractionId}`, {
+    isRunning: false,
+    startTime: null,
+    elapsedTime: 0,
+    pausedTime: 0
+  })
+
   const { 
     getRecentReports, 
     submitReport, 
-    verifyReport, 
     isSubmitting 
   } = useReporting()
 
   const [recentReports, setRecentReports] = useState<WaitTimeReport[]>([])
-  const [unverifiedReports, setUnverifiedReports] = useState<WaitTimeReport[]>([])
 
-  // Load reports when component mounts or attractionId changes
+  // Load recent reports when component mounts
   useEffect(() => {
-    const reports = getRecentReports(attractionId, 5)
+    const reports = getRecentReports(attractionId, 3)
     setRecentReports(reports)
-    setUnverifiedReports(reports.filter(
-      report => report.userId !== user.id && 
-               report.status === 'pending' && 
-               !report.verifications.some(v => v.userId === user.id)
-    ))
   }, [attractionId, getRecentReports])
+
+  // Timer effect
+  useEffect(() => {
+    if (timerState.isRunning && timerState.startTime) {
+      timerRef.current = setInterval(() => {
+        setTimerState(current => ({
+          ...current,
+          elapsedTime: Math.floor((Date.now() - current.startTime!) / 1000) + current.pausedTime
+        }))
+      }, 1000)
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
+      }
+    }
+  }, [timerState.isRunning, timerState.startTime, setTimerState])
+
+  const startTimer = () => {
+    setTimerState(current => ({
+      ...current,
+      isRunning: true,
+      startTime: Date.now()
+    }))
+    toast.success('Timer started! The time will persist if you leave and come back.')
+  }
+
+  const pauseTimer = () => {
+    setTimerState(current => ({
+      ...current,
+      isRunning: false,
+      pausedTime: current.elapsedTime,
+      startTime: null
+    }))
+  }
+
+  const resumeTimer = () => {
+    setTimerState(current => ({
+      ...current,
+      isRunning: true,
+      startTime: Date.now()
+    }))
+  }
+
+  const stopTimer = () => {
+    setTimerState({
+      isRunning: false,
+      startTime: null,
+      elapsedTime: 0,
+      pausedTime: 0
+    })
+  }
+
+  const useTimerForReport = () => {
+    const minutes = Math.ceil(timerState.elapsedTime / 60)
+    setWaitTime(minutes.toString())
+    setInputMode('manual')
+    stopTimer()
+    toast.success(`Used timer result: ${minutes} minutes`)
+  }
+
+  const formatTimerDisplay = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'verified':
+        return <CheckCircle size={16} className="text-success" />
+      case 'disputed':
+        return <XCircle size={16} className="text-destructive" />
+      default:
+        return <Warning size={16} className="text-muted-foreground" />
+    }
+  }
 
   const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -74,6 +167,9 @@ export function ReportWaitTimeModal({
       })
       
       await submitReport(attractionId, parkId, user.id, user.username, time)
+      
+      // Clear the timer after successful report
+      stopTimer()
       
       if (isClosed) {
         toast.success(`Reported ${attractionName} as closed`)
@@ -100,24 +196,7 @@ export function ReportWaitTimeModal({
     }
   }
 
-  const handleVerifyReport = async (report: WaitTimeReport, isAccurate: boolean) => {
-    try {
-      await verifyReport(report.id, user.id, user.username, isAccurate)
-      toast.success(`Report ${isAccurate ? 'verified as accurate' : 'marked as inaccurate'}`)
-      
-      // Refresh the local state
-      const updatedReports = getRecentReports(attractionId, 5)
-      setRecentReports(updatedReports)
-      setUnverifiedReports(updatedReports.filter(
-        report => report.userId !== user.id && 
-                 report.status === 'pending' && 
-                 !report.verifications.some(v => v.userId === user.id)
-      ))
-    } catch (error) {
-      console.error('Failed to verify report:', error)
-      toast.error('Failed to verify report. Please try again.')
-    }
-  }
+
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -130,192 +209,176 @@ export function ReportWaitTimeModal({
     }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'verified':
-        return 'bg-success text-success-foreground'
-      case 'disputed':
-        return 'bg-destructive text-destructive-foreground'
-      default:
-        return 'bg-muted text-muted-foreground'
-    }
-  }
-
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 text-lg">
             <Clock size={20} />
             {attractionName}
           </DialogTitle>
         </DialogHeader>
         
-        <div className="flex gap-2 mb-4">
+        {/* Input Mode Toggle */}
+        <div className="flex gap-1 mb-4 p-1 bg-muted rounded-lg">
           <Button
-            variant={mode === 'report' ? 'default' : 'outline'}
-            onClick={() => setMode('report')}
+            variant={inputMode === 'manual' ? 'default' : 'ghost'}
+            onClick={() => setInputMode('manual')}
             size="sm"
+            className="flex-1 h-8"
           >
-            Report Wait Time
+            Manual Entry
           </Button>
           <Button
-            variant={mode === 'verify' ? 'default' : 'outline'}
-            onClick={() => setMode('verify')}
+            variant={inputMode === 'timer' ? 'default' : 'ghost'}
+            onClick={() => setInputMode('timer')}
             size="sm"
-            disabled={unverifiedReports.length === 0}
+            className="flex-1 h-8"
           >
-            Verify Reports ({unverifiedReports.length})
+            Use Timer
           </Button>
         </div>
 
-        {mode === 'report' && (
-          <form onSubmit={handleSubmitReport} className="space-y-4">
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="ride-closed"
-                  checked={isClosed}
-                  onCheckedChange={(checked) => {
-                    setIsClosed(checked as boolean)
-                    if (checked) {
-                      setWaitTime('') // Clear wait time when marking as closed
-                    }
-                  }}
-                />
-                <Label 
-                  htmlFor="ride-closed" 
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Ride is closed
-                </Label>
+        {inputMode === 'timer' && (
+          <div className="space-y-4 mb-6">
+            {/* Timer Display */}
+            <div className="bg-card border rounded-lg p-6 text-center">
+              <div className="text-3xl font-mono font-bold text-primary mb-2">
+                {formatTimerDisplay(timerState.elapsedTime)}
+              </div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Time your actual wait in line
+              </p>
+              
+              {/* Timer Controls */}
+              <div className="flex justify-center gap-2">
+                {!timerState.isRunning && timerState.elapsedTime === 0 && (
+                  <Button onClick={startTimer} className="gap-2">
+                    <Play size={16} />
+                    Start Timer
+                  </Button>
+                )}
+                
+                {timerState.isRunning && (
+                  <Button onClick={pauseTimer} variant="outline" className="gap-2">
+                    <Pause size={16} />
+                    Pause
+                  </Button>
+                )}
+                
+                {!timerState.isRunning && timerState.elapsedTime > 0 && (
+                  <>
+                    <Button onClick={resumeTimer} className="gap-2">
+                      <Play size={16} />
+                      Resume
+                    </Button>
+                    <Button onClick={stopTimer} variant="outline" className="gap-2">
+                      <Stop size={16} />
+                      Reset
+                    </Button>
+                  </>
+                )}
               </div>
               
-              {!isClosed && (
-                <div className="space-y-2">
-                  <Label htmlFor="waitTime">Current Wait Time (minutes)</Label>
-                  <Input
-                    id="waitTime"
-                    type="number"
-                    min="0"
-                    max="300"
-                    value={waitTime}
-                    onChange={(e) => setWaitTime(e.target.value)}
-                    placeholder="Enter wait time in minutes"
-                    required
-                  />
-                </div>
+              {timerState.elapsedTime > 0 && (
+                <Button 
+                  onClick={useTimerForReport} 
+                  className="mt-3 w-full bg-accent hover:bg-accent/90"
+                  size="sm"
+                >
+                  Use This Time ({Math.ceil(timerState.elapsedTime / 60)} min)
+                </Button>
               )}
-              
-              <p className="text-sm text-muted-foreground">
-                {isClosed 
-                  ? "Your closure report helps other guests plan their visit"
-                  : "Your report helps other guests plan their visit"
-                }
-              </p>
             </div>
             
-            <div className="flex justify-end gap-2 pt-4">
-              <Button type="button" variant="outline" onClick={onClose}>
+            <p className="text-xs text-muted-foreground text-center">
+              💡 Your timer will persist if you leave and come back to this attraction
+            </p>
+          </div>
+        )}
+
+        {inputMode === 'manual' && (
+          <form onSubmit={handleSubmitReport} className="space-y-4">
+            {/* Ride Closed Checkbox */}
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="ride-closed"
+                checked={isClosed}
+                onCheckedChange={(checked) => {
+                  setIsClosed(checked as boolean)
+                  if (checked) {
+                    setWaitTime('')
+                  }
+                }}
+              />
+              <Label 
+                htmlFor="ride-closed" 
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Ride is closed
+              </Label>
+            </div>
+            
+            {/* Wait Time Input */}
+            {!isClosed && (
+              <div className="space-y-2">
+                <Label htmlFor="waitTime" className="text-sm font-medium">
+                  Wait Time (minutes)
+                </Label>
+                <Input
+                  id="waitTime"
+                  type="number"
+                  min="0"
+                  max="300"
+                  value={waitTime}
+                  onChange={(e) => setWaitTime(e.target.value)}
+                  placeholder="e.g. 45"
+                  required
+                  className="text-lg h-12"
+                />
+              </div>
+            )}
+            
+            {/* Help Text */}
+            <p className="text-sm text-muted-foreground">
+              {isClosed 
+                ? "Your closure report helps other guests plan their visit"
+                : "Your report helps other guests avoid long waits"
+              }
+            </p>
+            
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={onClose} className="flex-1">
                 Cancel
               </Button>
               <Button 
                 type="submit" 
                 disabled={isSubmitting || (!isClosed && !waitTime)}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground hover:text-primary-foreground"
+                className="flex-1 bg-primary hover:bg-primary/90"
               >
-                {isSubmitting ? 'Reporting...' : isClosed ? 'Report as Closed' : 'Submit Report'}
+                {isSubmitting ? 'Reporting...' : isClosed ? 'Report Closed' : 'Submit Report'}
               </Button>
             </div>
           </form>
         )}
 
-        {mode === 'verify' && (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Help improve data accuracy by verifying recent reports from other users
-            </p>
-            
-            {unverifiedReports.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Warning size={48} className="mx-auto mb-2 opacity-50" />
-                <p>No reports to verify right now</p>
-                <p className="text-sm">Check back later or submit your own report!</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {unverifiedReports.map((report) => (
-                  <div key={report.id} className="border rounded-lg p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="font-medium">{report.username}</div>
-                        <Badge variant="secondary" className="text-xs">
-                          {formatTime12Hour(new Date(report.reportedAt).getHours(), new Date(report.reportedAt).getMinutes())}
-                        </Badge>
-                        {getStatusIcon(report.status)}
-                      </div>
-                      <Badge className={getStatusColor(report.status)}>
-                        {report.waitTime === -1 ? 'Ride is closed' : `${report.waitTime} min`}
-                      </Badge>
-                    </div>
-                    
-                    {report.verifications.length > 0 && (
-                      <div className="text-sm text-muted-foreground">
-                        {report.verifications.length} verification(s)
-                        {report.accuracy && ` • ${Math.round(report.accuracy * 100)}% accuracy`}
-                      </div>
-                    )}
-                    
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleVerifyReport(report, true)}
-                        disabled={isSubmitting}
-                        className="flex items-center gap-1"
-                      >
-                        <CheckCircle size={14} />
-                        Accurate
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleVerifyReport(report, false)}
-                        disabled={isSubmitting}
-                        className="flex items-center gap-1"
-                      >
-                        <XCircle size={14} />
-                        Inaccurate
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            <div className="flex justify-end pt-4">
-              <Button variant="outline" onClick={onClose}>
-                Close
-              </Button>
-            </div>
-          </div>
-        )}
-
+        {/* Recent Reports */}
         {recentReports.length > 0 && (
           <div className="border-t pt-4 mt-4">
-            <h4 className="font-medium mb-3">Recent Reports</h4>
-            <div className="space-y-2 max-h-32 overflow-y-auto">
-              {recentReports.slice(0, 3).map((report) => (
-                <div key={report.id} className="flex items-center justify-between text-sm">
+            <h4 className="font-medium mb-3 text-sm">Recent Reports</h4>
+            <div className="space-y-2">
+              {recentReports.map((report) => (
+                <div key={report.id} className="flex items-center justify-between text-sm py-2 px-3 bg-muted/50 rounded-md">
                   <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">{report.username}</span>
+                    <span className="text-muted-foreground font-medium">{report.username}</span>
                     <span className="text-xs text-muted-foreground">
                       {formatTime12Hour(new Date(report.reportedAt).getHours(), new Date(report.reportedAt).getMinutes())}
                     </span>
                     {getStatusIcon(report.status)}
                   </div>
                   <Badge variant="secondary" className="text-xs">
-                    {report.waitTime === -1 ? 'Ride is closed' : `${report.waitTime} min`}
+                    {report.waitTime === -1 ? 'Closed' : `${report.waitTime} min`}
                   </Badge>
                 </div>
               ))}
