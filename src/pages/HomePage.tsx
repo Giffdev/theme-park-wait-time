@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MapPin, Users, Calendar, Funnel } from '@phosphor-icons/react'
 import { parkFamilies } from '@/data/sampleData'
 import { getTodaysBusyLevel } from '@/utils/busyLevel'
@@ -112,12 +113,19 @@ export function HomePage() {
                             const busyLevel = getTodaysBusyLevel(park.id)
                             console.log(`${park.name} busy level:`, busyLevel) // Debug logging
                             return (
-                              <Badge 
-                                className={`text-xs ${busyLevel.colorClass}`}
-                                variant="secondary"
-                              >
-                                {busyLevel.label}
-                              </Badge>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge 
+                                    className={`text-xs ${busyLevel.colorClass} cursor-help`}
+                                    variant="secondary"
+                                  >
+                                    {busyLevel.label}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Estimated crowd level for today</p>
+                                </TooltipContent>
+                              </Tooltip>
                             )
                           })()}
                         </div>
