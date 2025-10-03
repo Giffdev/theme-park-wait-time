@@ -31,6 +31,7 @@ import {
   Funnel,
   PencilSimple
 } from '@phosphor-icons/react'
+import { DateWheelPicker } from '@/components/DateWheelPicker'
 import { ParkDataService } from '@/services/parkDataService'
 import { parkFamilies } from '@/data/sampleData'
 import { isAttractionNotDining } from '@/lib/utils'
@@ -724,32 +725,12 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
             
             <div>
               <Label htmlFor="visit-date">Visit Date</Label>
-              <Select 
-                value={visitDate.toISOString().split('T')[0]} 
-                onValueChange={(value) => {
-                  setVisitDate(new Date(value + 'T00:00:00'))
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose your visit date" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={new Date().toISOString().split('T')[0]}>
-                    Today ({new Date().toLocaleDateString()})
-                  </SelectItem>
-                  {Array.from({ length: 30 }, (_, i) => {
-                    const pastDate = new Date()
-                    pastDate.setDate(pastDate.getDate() - (i + 1))
-                    const dateStr = pastDate.toISOString().split('T')[0]
-                    const displayDate = pastDate.toLocaleDateString()
-                    return (
-                      <SelectItem key={dateStr} value={dateStr}>
-                        {i === 0 ? `Yesterday (${displayDate})` : `${i + 1} days ago (${displayDate})`}
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
+              <DateWheelPicker
+                date={visitDate}
+                onDateChange={(date) => setVisitDate(date)}
+                placeholder="Choose your visit date"
+                className="mt-1"
+              />
             </div>
 
             <div>
