@@ -1,6 +1,6 @@
 import * as React from "react"
-import { format } from "date-fns"
 import { CalendarIcon } from "lucide-react"
+import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -15,49 +15,50 @@ interface DatePickerProps {
   onDateChange?: (date: Date | undefined) => void
   disabled?: boolean
   placeholder?: string
-  className?: string
-  minDate?: Date
   maxDate?: Date
+  minDate?: Date
+  className?: string
 }
 
-export function DatePicker({
-  date,
-  onDateChange,
+export function DatePicker({ 
+  date, 
+  onDateChange, 
   disabled = false,
   placeholder = "Pick a date",
-  className,
-  minDate,
   maxDate,
+  minDate,
+  className
 }: DatePickerProps) {
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          className={cn(
-            "w-[240px] justify-start text-left font-normal",
-            !date && "text-muted-foreground",
-            className
-          )}
-          disabled={disabled}
-        >
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? format(date, "PPP") : <span>{placeholder}</span>}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="single"
-          selected={date}
-          onSelect={onDateChange}
-          initialFocus
-          disabled={(date) => {
-            if (minDate && date < minDate) return true
-            if (maxDate && date > maxDate) return true
-            return false
-          }}
-        />
-      </PopoverContent>
-    </Popover>
+    <div className={className}>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant={"outline"}
+            className={cn(
+              "w-full justify-start text-left font-normal",
+              !date && "text-muted-foreground"
+            )}
+            disabled={disabled}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            {date ? format(date, "PPP") : <span>{placeholder}</span>}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0">
+          <Calendar
+            mode="single"
+            selected={date}
+            onSelect={onDateChange}
+            initialFocus
+            disabled={(date) => {
+              if (maxDate && date > maxDate) return true
+              if (minDate && date < minDate) return true
+              return false
+            }}
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
   )
 }
