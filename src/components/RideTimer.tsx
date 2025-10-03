@@ -3,11 +3,13 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Play, Pause, Stop } from '@phosphor-icons/react'
 import { useKV } from '@github/spark/hooks'
+import { useGlobalTimer } from '@/hooks/useGlobalTimer'
 import { toast } from 'sonner'
 
 interface RideTimerProps {
   attractionId: string
   attractionName: string
+  parkId: string
   onTimeRecorded?: (timeInMinutes: number) => void
 }
 
@@ -18,18 +20,22 @@ interface TimerState {
   pausedTime: number
 }
 
-export function RideTimer({ attractionId, attractionName, onTimeRecorded }: RideTimerProps) {
+export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded }: RideTimerProps) {
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const timerId = `timer-${attractionId}`
+  
+  // Global timer management
+  const { globalState, canStartTimer, setActiveTimer, clearActiveTimer, stopOtherTimers } = useGlobalTimer()
   
   // Timer state with persistence per attraction
-  const [timerState, setTimerState] = useKV<TimerState>(`timer-${attractionId}`, {
+  const [timerState, setTimerState] = useKV<TimerState>(timerId, {
     isRunning: false,
     startTime: null,
     elapsedTime: 0,
     pausedTime: 0
   })
 
-  // Timer effect
+  // Update elapsed time when timer is running
   useEffect(() => {
     if (timerState.isRunning && timerState.startTime) {
       timerRef.current = setInterval(() => {
@@ -51,12 +57,36 @@ export function RideTimer({ attractionId, attractionName, onTimeRecorded }: Ride
     }
   }, [timerState.isRunning, timerState.startTime, setTimerState])
 
-  const startTimer = () => {
+  // Sync with global timer state when component mounts
+  useEffect(() => {
+    if (timerState.isRunning && globalState.activeTimerId !== timerId) {
+      // This timer is running but not registered globally - register it
+      setActiveTimer(timerId, attractionName, parkId)
+    } else if (!timerState.isRunning && globalState.activeTimerId === timerId) {
+      // This timer is not running but is registered globally - clear it
+      clearActiveTimer()
+    }
+  }, [timerState.isRunning, globalState.activeTimerId, timerId, attractionName, parkId, setActiveTimer, clearActiveTimer])
+
+  const startTimer = async () => {
+    if (!canStartTimer(timerId)) {
+      toast.error(`Another timer is already running for ${globalState.activeAttractionName}. Only one timer can run at a time.`)
+      return
+    }
+
+    // Stop any other running timers
+    await stopOtherTimers(timerId)
+    
+    // Start this timer
     setTimerState(current => ({
       ...current,
       isRunning: true,
       startTime: Date.now()
     }))
+    
+    // Register as active timer
+    setActiveTimer(timerId, attractionName, parkId)
+    
     toast.success(`Timer started for ${attractionName}`)
   }
 
@@ -67,24 +97,41 @@ export function RideTimer({ attractionId, attractionName, onTimeRecorded }: Ride
       pausedTime: current.elapsedTime,
       startTime: null
     }))
+    
+    // Keep timer registered but paused
+    toast.info(`Timer paused for ${attractionName}`)
   }
 
   const resumeTimer = () => {
+    if (!canStartTimer(timerId)) {
+      toast.error(`Another timer is already running for ${globalState.activeAttractionName}. Only one timer can run at a time.`)
+      return
+    }
+
     setTimerState(current => ({
       ...current,
       isRunning: true,
       startTime: Date.now()
     }))
+    
+    // Re-register as active timer
+    setActiveTimer(timerId, attractionName, parkId)
+    
+    toast.success(`Timer resumed for ${attractionName}`)
   }
 
   const stopTimer = () => {
     const finalTime = timerState.elapsedTime
+    
     setTimerState({
       isRunning: false,
       startTime: null,
       elapsedTime: 0,
       pausedTime: 0
     })
+    
+    // Clear from global timer
+    clearActiveTimer()
     
     if (finalTime > 0 && onTimeRecorded) {
       // Enforce minimum 1 minute for realistic wait time reporting

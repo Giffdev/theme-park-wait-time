@@ -978,11 +978,10 @@ function RideLogCard({
           {/* Timer Component */}
           {useTimer && (
             <RideTimer
-              user={user}
-              attraction={attraction}
-              parkId={parkId}
-              onTimeLogged={handleTimerLog}
-              isLogging={isLogging}
+              attractionId={attraction.id}
+              attractionName={attraction.name}
+              parkId={parkId || ''}
+              onTimeRecorded={handleTimerLog}
             />
           )}
         </div>

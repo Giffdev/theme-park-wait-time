@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Clock, Play, Pause, Stop, CheckCircle, XCircle, Warning } from '@phosphor-icons/react'
 import { useReporting } from '@/hooks/useReporting'
 import { useKV } from '@github/spark/hooks'
+import { useGlobalTimer } from '@/hooks/useGlobalTimer'
 import { formatTime12Hour } from '@/utils/timeFormat'
 import { toast } from 'sonner'
 import type { User } from '@/App'
@@ -41,9 +42,13 @@ export function ReportWaitTimeModal({
   const [isClosed, setIsClosed] = useState(false)
   const [inputMode, setInputMode] = useState<'manual' | 'timer'>('manual')
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const timerId = `timer-${attractionId}`
+  
+  // Global timer management
+  const { globalState, canStartTimer, setActiveTimer, clearActiveTimer, stopOtherTimers } = useGlobalTimer()
   
   // Timer state with persistence
-  const [timerState, setTimerState] = useKV<TimerState>(`timer-${attractionId}`, {
+  const [timerState, setTimerState] = useKV<TimerState>(timerId, {
     isRunning: false,
     startTime: null,
     elapsedTime: 0,
@@ -86,12 +91,35 @@ export function ReportWaitTimeModal({
     }
   }, [timerState.isRunning, timerState.startTime, setTimerState])
 
-  const startTimer = () => {
+  // Sync with global timer state when component mounts
+  useEffect(() => {
+    if (timerState.isRunning && globalState.activeTimerId !== timerId) {
+      // This timer is running but not registered globally - register it
+      setActiveTimer(timerId, attractionName, parkId)
+    } else if (!timerState.isRunning && globalState.activeTimerId === timerId) {
+      // This timer is not running but is registered globally - clear it
+      clearActiveTimer()
+    }
+  }, [timerState.isRunning, globalState.activeTimerId, timerId, attractionName, parkId, setActiveTimer, clearActiveTimer])
+
+  const startTimer = async () => {
+    if (!canStartTimer(timerId)) {
+      toast.error(`Another timer is already running for ${globalState.activeAttractionName}. Only one timer can run at a time.`)
+      return
+    }
+
+    // Stop any other running timers
+    await stopOtherTimers(timerId)
+    
     setTimerState(current => ({
       ...current,
       isRunning: true,
       startTime: Date.now()
     }))
+    
+    // Register as active timer
+    setActiveTimer(timerId, attractionName, parkId)
+    
     toast.success('Timer started! The time will persist if you leave and come back.')
   }
 
@@ -102,14 +130,24 @@ export function ReportWaitTimeModal({
       pausedTime: current.elapsedTime,
       startTime: null
     }))
+    
+    toast.info(`Timer paused for ${attractionName}`)
   }
 
-  const resumeTimer = () => {
+  const resumeTimer = async () => {
+    if (!canStartTimer(timerId)) {
+      toast.error(`Another timer is already running for ${globalState.activeAttractionName}. Only one timer can run at a time.`)
+      return
+    }
+    
     setTimerState(current => ({
       ...current,
       isRunning: true,
       startTime: Date.now()
     }))
+    
+    // Re-register as active timer
+    setActiveTimer(timerId, attractionName, parkId)
   }
 
   const stopTimer = () => {
@@ -119,6 +157,9 @@ export function ReportWaitTimeModal({
       elapsedTime: 0,
       pausedTime: 0
     })
+    
+    // Clear from global timer
+    clearActiveTimer()
   }
 
   const useTimerForReport = () => {
@@ -170,6 +211,7 @@ export function ReportWaitTimeModal({
       
       // Clear the timer after successful report
       stopTimer()
+      clearActiveTimer()
       
       if (isClosed) {
         toast.success(`Reported ${attractionName} as closed`)
