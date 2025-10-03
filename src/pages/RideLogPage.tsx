@@ -416,7 +416,11 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       Object.entries(updatedRideCounts).forEach(([key, count]) => {
         console.log(`🎢 Processing ride: ${key} = ${count}`)
         if (count > 0) {
-          const [parkId, attractionId] = key.split('-', 2) // Limit split to avoid issues with attraction IDs containing dashes
+          const parts = key.split('-')
+          // Handle attraction IDs that might contain dashes - take first part as parkId, rest as attractionId
+          const parkId = parts[0]
+          const attractionId = parts.slice(1).join('-')
+          
           const attraction = attractions[parkId]?.find(a => a.id === attractionId)
           
           if (attraction) {
@@ -457,6 +461,23 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
               console.log(`✅ Added fallback ride log for ${existingLog.attractionName}: ${count} rides`)
             } else {
               console.error(`❌ No fallback data available for ${key}`)
+              // As last resort, create a basic log entry to prevent total failure
+              console.log(`🆘 Creating emergency fallback log for ${key}`)
+              const rideLog: RideLog = {
+                id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                userId: user.id,
+                tripId: currentTrip.id,
+                parkId,
+                attractionId,
+                attractionName: `Unknown Attraction (${attractionId})`,
+                attractionType: 'experience' as any,
+                rideCount: count,
+                trackVariant: selectedVariants[key] || undefined,
+                loggedAt: new Date().toISOString(),
+                notes: notes[key] || undefined
+              }
+              logsToSave.push(rideLog)
+              console.log(`⚠️ Created emergency fallback log`)
             }
           }
         } else {
@@ -772,7 +793,11 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
                           Object.entries(rideCounts).forEach(([key, count]) => {
                             if (count > 0) {
-                              const [parkId, attractionId] = key.split('-', 2)
+                              const parts = key.split('-')
+                              // Handle attraction IDs that might contain dashes - take first part as parkId, rest as attractionId
+                              const parkId = parts[0]
+                              const attractionId = parts.slice(1).join('-')
+                              
                               console.log(`🔍 Processing ride log for key: ${key}, parkId: ${parkId}, attractionId: ${attractionId}, count: ${count}`)
                               console.log(`🏗️ Available attractions for park ${parkId}:`, attractions[parkId]?.map(a => ({ id: a.id, name: a.name })) || 'No attractions loaded')
                               
@@ -819,6 +844,23 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                                   console.log(`✅ Created fallback ride log for ${existingLog.attractionName}`)
                                 } else {
                                   console.error(`❌ No fallback data available for ${key}`)
+                                  // As a last resort, create a basic log entry to prevent total failure
+                                  console.log(`🆘 Creating emergency fallback log for ${key}`)
+                                  const rideLog: RideLog = {
+                                    id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                    userId: user.id,
+                                    tripId: currentTrip.id,
+                                    parkId,
+                                    attractionId,
+                                    attractionName: `Unknown Attraction (${attractionId})`,
+                                    attractionType: 'experience' as any,
+                                    rideCount: count,
+                                    trackVariant: selectedVariants[key] || undefined,
+                                    loggedAt: new Date().toISOString(),
+                                    notes: notes[key] || undefined
+                                  }
+                                  finalLogsToSave.push(rideLog)
+                                  console.log(`⚠️ Created emergency fallback log`)
                                 }
                               }
                             }
