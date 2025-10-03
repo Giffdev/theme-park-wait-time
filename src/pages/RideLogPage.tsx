@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
+import { DatePicker } from '@/components/ui/date-picker'
 
 import { 
   ArrowLeft, 
@@ -52,7 +53,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const [rideCounts, setRideCounts] = useState<Record<string, number>>({}) // key: "parkId-attractionId"
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
-  const [visitDate, setVisitDate] = useState(new Date().toISOString().split('T')[0])
+  const [visitDate, setVisitDate] = useState<Date>(new Date())
   const [selectedParks, setSelectedParks] = useState<string[]>(parkId ? [parkId] : [])
   const [isLoading, setIsLoading] = useState(true)
   const [tripNotes, setTripNotes] = useState('')
@@ -352,7 +353,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       const newTrip: Trip = {
         id: tripId,
         userId: user.id,
-        visitDate,
+        visitDate: visitDate.toISOString().split('T')[0], // Convert Date to string
         parks: tripParks,
         rideLogs: [],
         totalRides: 0,
@@ -723,35 +724,17 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
             
             <div>
               <Label htmlFor="visit-date">Visit Date</Label>
-              <div 
-                className="relative cursor-pointer"
-                onClick={(e) => {
-                  // Find the date input within this div and trigger its picker
-                  const input = e.currentTarget.querySelector('input[type="date"]') as HTMLInputElement
-                  if (input) {
-                    // Use optional chaining since showPicker is not available in all browsers
-                    if (input.showPicker && typeof input.showPicker === 'function') {
-                      try {
-                        input.showPicker()
-                      } catch {
-                        // Fallback for browsers that don't support showPicker
-                        input.focus()
-                      }
-                    } else {
-                      input.focus()
-                    }
+              <DatePicker
+                date={visitDate}
+                onDateChange={(date) => {
+                  if (date) {
+                    setVisitDate(date)
                   }
                 }}
-              >
-                <Input
-                  id="visit-date"
-                  type="date"
-                  value={visitDate}
-                  onChange={(e) => setVisitDate(e.target.value)}
-                  max={new Date().toISOString().split('T')[0]}
-                  className="cursor-pointer w-full"
-                />
-              </div>
+                maxDate={new Date()} // Don't allow future dates
+                placeholder="Choose your visit date"
+                className="w-full"
+              />
             </div>
 
             <div>
