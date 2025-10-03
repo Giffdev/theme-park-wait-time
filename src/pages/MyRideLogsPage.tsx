@@ -27,6 +27,33 @@ import {
 import type { Trip, User } from '@/types'
 import { ParkDataService } from '@/services/parkDataService'
 
+// Helper function to get proper park names from IDs
+function getParkNameFromId(parkId: string): string {
+  const parkNameMap: Record<string, string> = {
+    'magic-kingdom': 'Magic Kingdom',
+    'epcot': 'EPCOT',
+    'hollywood-studios': "Disney's Hollywood Studios",
+    'animal-kingdom': "Disney's Animal Kingdom",
+    'disneyland': 'Disneyland Park',
+    'disney-california-adventure': 'Disney California Adventure',
+    'universal-studios-orlando': 'Universal Studios Florida',
+    'universal-studios-florida': 'Universal Studios Florida',
+    'islands-of-adventure': "Universal's Islands of Adventure",
+    'universal-studios-hollywood': 'Universal Studios Hollywood',
+    'blizzard-beach': "Disney's Blizzard Beach",
+    'typhoon-lagoon': "Disney's Typhoon Lagoon",
+    // Handle common malformed IDs
+    'hollywood': "Disney's Hollywood Studios",
+    'studios': "Disney's Hollywood Studios",
+    'kingdom': 'Magic Kingdom',
+    'universal': 'Universal Studios Florida'
+  }
+  
+  return parkNameMap[parkId] || parkId.split('-').map(word => 
+    word.charAt(0).toUpperCase() + word.slice(1)
+  ).join(' ')
+}
+
 // Data cleanup utility to fix malformed ride logs
 async function cleanupUserRideLogData(userId: string): Promise<number> {
   let fixedCount = 0
@@ -43,6 +70,18 @@ async function cleanupUserRideLogData(userId: string): Promise<number> {
       // Fix each ride log in the trip
       for (const log of trip.rideLogs) {
         let logModified = false
+        
+        // Clean up any debug information in attraction names
+        if (log.attractionName && log.attractionName.includes('debug:')) {
+          // Remove debug prefixes and clean up the name
+          const cleanName = log.attractionName.replace(/^debug:\s*park=.*?,\s*ID=/, '').trim()
+          if (cleanName) {
+            log.attractionName = cleanName.split('-').map((word: string) => 
+              word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ')
+            logModified = true
+          }
+        }
         
         // Fix common park ID issues
         if (log.parkId === 'hollywood') {
@@ -73,7 +112,7 @@ async function cleanupUserRideLogData(userId: string): Promise<number> {
               logModified = true
             }
           } catch (error) {
-            console.warn('Could not verify corrected attraction ID:', correctedId)
+            // Silently continue if we can't verify
           }
         }
         
@@ -89,21 +128,8 @@ async function cleanupUserRideLogData(userId: string): Promise<number> {
         const parkMap = new Map<string, { parkName: string, rideCount: number }>()
         
         for (const log of trip.rideLogs) {
-          const existing = parkMap.get(log.parkId) || { parkName: log.parkId, rideCount: 0 }
+          const existing = parkMap.get(log.parkId) || { parkName: getParkNameFromId(log.parkId), rideCount: 0 }
           existing.rideCount += log.rideCount
-          
-          // Try to get the proper park name
-          if (log.parkId === 'hollywood-studios') {
-            existing.parkName = "Disney's Hollywood Studios"
-          } else if (log.parkId === 'magic-kingdom') {
-            existing.parkName = "Magic Kingdom"
-          } else if (log.parkId === 'epcot') {
-            existing.parkName = "EPCOT"
-          } else if (log.parkId === 'animal-kingdom') {
-            existing.parkName = "Disney's Animal Kingdom"
-          }
-          // Add more mappings as needed
-          
           parkMap.set(log.parkId, existing)
         }
         
@@ -132,9 +158,20 @@ interface MyRideLogsPageProps {
 
 // Helper function to resolve attraction names from stored logs
 async function resolveAttractionName(log: any): Promise<string> {
+  // Clean any debug information first
+  let cleanName = log.attractionName
+  if (cleanName && cleanName.includes('debug:')) {
+    cleanName = cleanName.replace(/^debug:\s*park=.*?,\s*ID=/, '').trim()
+    if (cleanName) {
+      return cleanName.split('-').map((word: string) => 
+        word.charAt(0).toUpperCase() + word.slice(1)
+      ).join(' ')
+    }
+  }
+  
   // If we already have a clean attraction name, use it
-  if (log.attractionName && !log.attractionName.includes('Unknown Attraction')) {
-    return log.attractionName
+  if (cleanName && !cleanName.includes('Unknown Attraction')) {
+    return cleanName
   }
   
   // Try to find the attraction in park data with the stored park ID
@@ -146,7 +183,7 @@ async function resolveAttractionName(log: any): Promise<string> {
       return attraction.name
     }
   } catch (error) {
-    console.warn(`Could not load attractions for park ${log.parkId}:`, error)
+    // Silently continue to fallback strategies
   }
   
   // Handle common park ID variations and malformed attraction IDs
@@ -428,7 +465,7 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
   const uniqueParks = Array.from(new Set(trips.flatMap(trip => trip.parks.map(park => park.parkId))))
     .map(parkId => {
       const parkInfo = trips.flatMap(trip => trip.parks).find(park => park.parkId === parkId)
-      return { id: parkId, name: parkInfo?.parkName || parkId }
+      return { id: parkId, name: parkInfo?.parkName || getParkNameFromId(parkId) }
     })
 
   // Calculate stats
@@ -664,7 +701,7 @@ function RideLogCard({ log, getTypeIcon, getTypeColor }: RideLogCardProps) {
         const name = await resolveAttractionName(log)
         setResolvedName(name)
       } catch (error) {
-        console.warn(`Failed to resolve name for log ${log.id}:`, error)
+        // Never show debug information to users
         setResolvedName(log.attractionName || 'Unknown Attraction')
       }
     }
@@ -691,7 +728,7 @@ function RideLogCard({ log, getTypeIcon, getTypeColor }: RideLogCardProps) {
             <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
               <span className="flex items-center gap-1">
                 <MapPin size={12} />
-                {log.trip.parks.find((p: any) => p.parkId === log.parkId)?.parkName}
+                {log.trip.parks.find((p: any) => p.parkId === log.parkId)?.parkName || getParkNameFromId(log.parkId)}
               </span>
               <span className="flex items-center gap-1">
                 <Calendar size={12} />
@@ -736,7 +773,7 @@ function TripCard({ trip, onDelete, onEdit, getTypeIcon, getTypeColor }: TripCar
             const resolvedName = await resolveAttractionName(log)
             newResolvedNames[log.id] = resolvedName
           } catch (error) {
-            console.warn(`Failed to resolve name for log ${log.id}:`, error)
+            // Never show debug information to users
             newResolvedNames[log.id] = log.attractionName || 'Unknown Attraction'
           }
         }
