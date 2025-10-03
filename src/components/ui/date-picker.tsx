@@ -1,7 +1,6 @@
 import * as React from "react"
+import { Calendar as CalendarIcon } from "lucide-react"
 import { format } from "date-fns"
-import { Calendar as CalendarIcon } from "@phosphor-icons/react"
-
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -28,34 +27,29 @@ export function DatePicker({
   disabled = false,
   minDate,
   maxDate,
-  className
+  className,
 }: DatePickerProps) {
-  const [open, setOpen] = React.useState(false)
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover>
       <PopoverTrigger asChild>
         <Button
-          variant="outline"
+          variant={"outline"}
           className={cn(
-            "w-full justify-start text-left font-normal",
+            "w-[240px] justify-start text-left font-normal",
             !date && "text-muted-foreground",
             className
           )}
           disabled={disabled}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? format(date, "PPP") : placeholder}
+          {date ? format(date, "PPP") : <span>{placeholder}</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
         <Calendar
           mode="single"
           selected={date}
-          onSelect={(selectedDate) => {
-            onDateChange?.(selectedDate)
-            setOpen(false)
-          }}
+          onSelect={onDateChange}
           disabled={(date) => {
             if (minDate && date < minDate) return true
             if (maxDate && date > maxDate) return true
