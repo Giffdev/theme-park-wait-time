@@ -3,9 +3,10 @@ import { useState, useCallback } from 'react'
 import type { WaitTimeReport, Verification, UserContribution } from '@/types'
 
 export function useReporting() {
-  const [reports, setReports] = useKV<WaitTimeReport[]>('reports', [])
-  const [verifications, setVerifications] = useKV<Verification[]>('verifications', [])
-  const [contributions, setContributions] = useKV<UserContribution[]>('contributions', [])
+  // Use more descriptive, stable keys for KV storage
+  const [reports, setReports] = useKV<WaitTimeReport[]>('parkflow-reports', [])
+  const [verifications, setVerifications] = useKV<Verification[]>('parkflow-verifications', [])
+  const [contributions, setContributions] = useKV<UserContribution[]>('parkflow-contributions', [])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Ensure arrays are properly initialized
@@ -32,9 +33,25 @@ export function useReporting() {
         waitTime
       })
       
-      // Validate inputs
+      // Validate inputs more thoroughly
       if (!attractionId || !parkId || !userId || !username) {
         throw new Error('Missing required parameters for report submission')
+      }
+
+      if (typeof attractionId !== 'string' || attractionId.length < 3) {
+        throw new Error('Invalid attraction ID')
+      }
+
+      if (typeof parkId !== 'string' || parkId.length < 3) {
+        throw new Error('Invalid park ID')
+      }
+
+      if (typeof userId !== 'string' || userId.length < 3) {
+        throw new Error('Invalid user ID - please try logging out and back in')
+      }
+
+      if (typeof username !== 'string' || username.length < 1) {
+        throw new Error('Invalid username - please try logging out and back in')
       }
       
       // Allow -1 for closed rides, otherwise must be 0-300 minutes
@@ -42,27 +59,21 @@ export function useReporting() {
         throw new Error('Wait time must be between 0 and 300 minutes, or -1 for closed rides')
       }
 
-      // Check if spark KV is available
+      // Wait for KV to be fully initialized
+      let attempts = 0
+      while (attempts < 10 && !window.spark?.kv) {
+        console.log(`⏳ Waiting for KV storage... attempt ${attempts + 1}`)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        attempts++
+      }
+
       if (!window.spark?.kv) {
-        throw new Error('KV storage is not available - please wait a moment and try again')
+        throw new Error('KV storage is not available - please refresh the page and try again')
       }
 
-      // Test basic KV operation first
-      console.log('🧪 Testing basic KV operation...')
-      const testKey = 'test-key'
-      const testValue = { test: 'data', timestamp: Date.now() }
-      
-      try {
-        await window.spark.kv.set(testKey, testValue)
-        const retrieved = await window.spark.kv.get(testKey)
-        console.log('✅ Basic KV test passed:', retrieved)
-        await window.spark.kv.delete(testKey)
-      } catch (kvError) {
-        console.error('❌ Basic KV test failed:', kvError)
-        throw new Error(`KV storage test failed: ${kvError instanceof Error ? kvError.message : 'Unknown error'}`)
-      }
+      console.log('✅ KV storage is available, proceeding with submission')
 
-      const reportId = `rep.${Date.now()}.${Math.random().toString(36).substring(2, 8)}`
+      const reportId = `rep-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`
       const newReport: WaitTimeReport = {
         id: reportId,
         attractionId,
@@ -77,52 +88,40 @@ export function useReporting() {
 
       console.log('✅ Created report object:', newReport)
 
-      // Try to update reports with better error handling
-      try {
-        console.log('🔄 Updating reports array...')
-        setReports(current => {
-          const currentReports = Array.isArray(current) ? current : []
-          console.log('📊 Adding report to', currentReports.length, 'existing reports')
-          const updated = [...currentReports, newReport]
-          console.log('📊 New reports array will have', updated.length, 'items')
-          return updated
-        })
-        console.log('✅ Reports updated successfully')
-      } catch (reportsError) {
-        console.error('❌ Failed to update reports:', reportsError)
-        throw new Error(`Failed to save report: ${reportsError instanceof Error ? reportsError.message : 'Unknown error'}`)
-      }
+      // Update reports with improved error handling
+      console.log('🔄 Updating reports array...')
+      setReports(current => {
+        const currentReports = Array.isArray(current) ? current : []
+        console.log('📊 Adding report to', currentReports.length, 'existing reports')
+        const updated = [...currentReports, newReport]
+        console.log('📊 New reports array will have', updated.length, 'items')
+        return updated
+      })
+      console.log('✅ Reports updated successfully, now updating contributions...')
 
-      // Try to update user contributions with better error handling
-      try {
-        console.log('🔄 Updating user contributions...')
-        setContributions(current => {
-          const contributions = Array.isArray(current) ? current : []
-          const userIndex = contributions.findIndex(c => c.userId === userId)
-          if (userIndex >= 0) {
-            const updated = [...contributions]
-            updated[userIndex] = {
-              ...updated[userIndex],
-              reportsSubmitted: updated[userIndex].reportsSubmitted + 1
-            }
-            return updated
-          } else {
-            return [...contributions, {
-              userId,
-              reportsSubmitted: 1,
-              verificationsProvided: 0,
-              accuracyScore: 0,
-              trustLevel: 'new' as const,
-              badges: ['first-report']
-            }]
+      // Update user contributions with better error handling
+      setContributions(current => {
+        const contributions = Array.isArray(current) ? current : []
+        const userIndex = contributions.findIndex(c => c.userId === userId)
+        if (userIndex >= 0) {
+          const updated = [...contributions]
+          updated[userIndex] = {
+            ...updated[userIndex],
+            reportsSubmitted: updated[userIndex].reportsSubmitted + 1
           }
-        })
-        console.log('✅ Contributions updated successfully')
-      } catch (contributionsError) {
-        console.error('❌ Failed to update contributions:', contributionsError)
-        // Don't throw here, as the report was already saved successfully
-        console.warn('⚠️ Report saved but contribution tracking failed')
-      }
+          return updated
+        } else {
+          return [...contributions, {
+            userId,
+            reportsSubmitted: 1,
+            verificationsProvided: 0,
+            accuracyScore: 0,
+            trustLevel: 'new' as const,
+            badges: ['first-report']
+          }]
+        }
+      })
+      console.log('✅ Contributions updated successfully')
 
       console.log('✅ Report submission completed successfully')
       return newReport

@@ -85,15 +85,17 @@ export function ReportWaitTimeModal({
     } catch (error) {
       console.error('❌ Failed to submit report:', error)
       
-      // Provide more specific error messages
+      // Provide more helpful error messages
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       
-      if (errorMessage.includes('key')) {
-        toast.error('Storage key error - please try again or contact support')
-      } else if (errorMessage.includes('KV storage is not available')) {
-        toast.error('Storage system not ready - please wait a moment and try again')
+      if (errorMessage.includes('KV storage is not available')) {
+        toast.error('Storage system not ready - please refresh the page and try again')
+      } else if (errorMessage.includes('Missing required parameters')) {
+        toast.error('Missing information - please try logging out and back in')
+      } else if (errorMessage.includes('Wait time must be')) {
+        toast.error('Please enter a valid wait time between 0 and 300 minutes')
       } else {
-        toast.error(`Failed to submit report: ${errorMessage}`)
+        toast.error(`Unable to submit report: ${errorMessage}`)
       }
     }
   }

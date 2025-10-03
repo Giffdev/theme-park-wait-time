@@ -4,11 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, Clock, TrendUp, Calendar } from '@phosphor-icons/react'
+import { ArrowLeft, Clock, TrendUp, Calendar, ClockCounterClockwise } from '@phosphor-icons/react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { parkFamilies } from '@/data/sampleData'
 import { ParkDataService } from '@/services/parkDataService'
 import { formatTime12Hour, formatChartTimestamp } from '@/utils/timeFormat'
+import { ReportWaitTimeModal } from '@/components/ReportWaitTimeModal'
 import { toast } from 'sonner'
 import type { Park, User } from '@/App'
 import type { ExtendedAttraction } from '@/types'
@@ -50,6 +51,7 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
   const [timeRange, setTimeRange] = useState<TimeRange>('week')
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([])
   const [loading, setLoading] = useState(true)
+  const [showReportModal, setShowReportModal] = useState(false)
 
 
   useEffect(() => {
@@ -313,6 +315,20 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
     return 'Long Wait'
   }
 
+  const handleReportSubmit = useCallback((waitTime: number) => {
+    // Refresh data after successful report
+    // The actual submission is handled by the ReportWaitTimeModal
+    console.log('Report submitted successfully:', waitTime)
+  }, [])
+
+  const handleReportClick = useCallback(() => {
+    if (!user) {
+      onLoginRequired?.()
+      return
+    }
+    setShowReportModal(true)
+  }, [user, onLoginRequired])
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -368,6 +384,13 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
         </div>
         
         <div className="flex items-center gap-3">
+          <Button 
+            onClick={handleReportClick}
+            className="bg-accent hover:bg-accent/90 text-accent-foreground hover:text-accent-foreground"
+          >
+            <ClockCounterClockwise className="w-4 h-4 mr-2" />
+            Report Wait Time
+          </Button>
           <Badge className={getStatusColor(attraction.currentWaitTime)}>
             <Clock className="w-4 h-4 mr-1" />
             {attraction.currentWaitTime} min - {getStatusText(attraction.currentWaitTime)}
@@ -546,6 +569,18 @@ export function AttractionDetailsPage({ user, onLoginRequired }: { user?: User |
           </Card>
         </div>
       </div>
+
+      {/* Report Wait Time Modal */}
+      {showReportModal && user && park && attraction && (
+        <ReportWaitTimeModal
+          attractionId={attraction.id}
+          attractionName={attraction.name}
+          parkId={park.id}
+          user={user}
+          onClose={() => setShowReportModal(false)}
+          onSubmit={handleReportSubmit}
+        />
+      )}
 
     </div>
   )

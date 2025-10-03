@@ -29,7 +29,7 @@ export function AuthModal({ onLogin, onClose }: AuthModalProps) {
       await new Promise(resolve => setTimeout(resolve, 1000))
       
       const user: UserType = {
-        id: '1',
+        id: `user-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         username: formData.email.split('@')[0],
         email: formData.email,
         contributionCount: Math.floor(Math.random() * 50),
@@ -54,7 +54,7 @@ export function AuthModal({ onLogin, onClose }: AuthModalProps) {
       await new Promise(resolve => setTimeout(resolve, 1000))
       
       const user: UserType = {
-        id: '1',
+        id: `user-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         username: formData.username,
         email: formData.email,
         contributionCount: 0,
