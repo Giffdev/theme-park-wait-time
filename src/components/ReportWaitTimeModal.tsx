@@ -43,6 +43,7 @@ export function ReportWaitTimeModal({
   const [waitTime, setWaitTime] = useState('')
   const [isClosed, setIsClosed] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const isFirstMount = useRef(true)
   const timerId = `timer-${attractionId}`
   
   // Global timer management
@@ -105,6 +106,13 @@ export function ReportWaitTimeModal({
         clearActiveTimer()
       }
     }
+    
+    // Show helpful message if resuming a paused timer (only on first mount)
+    if (isFirstMount.current && timerState.isPaused && timerState.elapsedTime > 0) {
+      toast.info(`Resuming ${attractionName} timer from ${formatTimerDisplay(timerState.elapsedTime)}`)
+    }
+    
+    isFirstMount.current = false
   }, [timerState.isRunning, timerState.isPaused, timerState.isStopped, timerState.elapsedTime, globalState.activeTimerId, timerId, attractionName, parkId, setActiveTimer, clearActiveTimer])
 
   const startTimer = async () => {
@@ -183,6 +191,15 @@ export function ReportWaitTimeModal({
     
     // Clear from global timer
     clearActiveTimer()
+  }
+
+  const handleModalClose = () => {
+    // If timer is running, pause it and continue in background
+    if (timerState.isRunning) {
+      pauseTimer()
+      toast.info(`Timer paused and will continue in background. Return to ${attractionName} to resume.`)
+    }
+    onClose()
   }
 
   const useTimerForReport = () => {
@@ -268,7 +285,7 @@ export function ReportWaitTimeModal({
   }
 
   return (
-    <Dialog open onOpenChange={onClose}>
+    <Dialog open onOpenChange={handleModalClose}>
       <DialogContent className="sm:max-w-lg w-[95vw] max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
@@ -419,7 +436,7 @@ export function ReportWaitTimeModal({
             
             {/* Action Buttons */}
             <div className="flex gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={onClose} className="flex-1">
+              <Button type="button" variant="outline" onClick={handleModalClose} className="flex-1">
                 Cancel
               </Button>
               <Button 
