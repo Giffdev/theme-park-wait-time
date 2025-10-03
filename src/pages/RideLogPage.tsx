@@ -1123,9 +1123,9 @@ function AttractionsForPark({
   const attractionOnlyFilter = isAttractionNotDining
 
   const activeAttractions = attractions.filter(a => !a.isDefunct && attractionOnlyFilter(a))
-  const defunctAttractions = attractions.filter(a => a.isDefunct && attractionOnlyFilter(a))
-  const seasonalAttractions = activeAttractions.filter(a => a.isSeasonal)
-  const regularAttractions = activeAttractions.filter(a => !a.isSeasonal)
+  const defunctAttractions = attractions.filter(a => a.isDefunct && attractionOnlyFilter(a)).sort((a, b) => a.name.localeCompare(b.name))
+  const seasonalAttractions = activeAttractions.filter(a => a.isSeasonal).sort((a, b) => a.name.localeCompare(b.name))
+  const regularAttractions = activeAttractions.filter(a => !a.isSeasonal).sort((a, b) => a.name.localeCompare(b.name))
 
   return (
     <Tabs defaultValue="regular" className="space-y-4">
