@@ -1417,7 +1417,9 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">Choose a resort group...</SelectItem>
-            {parkFamilies.map((family) => {
+            {[...parkFamilies]
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((family) => {
               const familyParksWithData = family.parks.filter(park => availableParks.includes(park.id))
               return (
                 <SelectItem key={family.id} value={family.id}>

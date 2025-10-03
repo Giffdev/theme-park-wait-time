@@ -136,7 +136,9 @@ export function HomePage() {
                 <SelectItem value="all">
                   All Parks ({parkFamilies.length} groups)
                 </SelectItem>
-                {parkFamilies.map((family) => (
+                {[...parkFamilies]
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((family) => (
                   <SelectItem key={family.id} value={family.id}>
                     {family.name} ({family.parks.length} parks)
                   </SelectItem>
