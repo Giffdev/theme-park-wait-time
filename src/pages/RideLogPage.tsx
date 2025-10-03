@@ -29,8 +29,6 @@ import {
   Trash,
   Funnel
 } from '@phosphor-icons/react'
-
-import { RideTimer } from '@/components/RideTimer'
 import { ParkDataService } from '@/services/parkDataService'
 import { parkFamilies } from '@/data/sampleData'
 import { isAttractionNotDining } from '@/lib/utils'
@@ -887,42 +885,6 @@ function RideLogCard({
   isDefunct = false,
   user
 }: RideLogCardProps) {
-  const [useTimer, setUseTimer] = useState(false)
-  const [isLogging, setIsLogging] = useState(false)
-
-  const handleTimerLog = useCallback(async (minutes: number) => {
-    setIsLogging(true)
-    
-    try {
-      console.log(`🕒 Logging timer result: ${minutes} minutes for ${attraction.name}`)
-      
-      // Validate the minutes value
-      if (!minutes || minutes < 1 || !Number.isInteger(minutes)) {
-        throw new Error(`Invalid time value: ${minutes}. Please use a positive whole number.`)
-      }
-
-      if (minutes > 300) { // 5 hours
-        throw new Error('Time value seems too high. Please check and try again.')
-      }
-
-      // Convert minutes to ride count (each ride = the time logged)
-      onCountChange(minutes)
-      
-      toast.success(`Logged ${minutes} minute${minutes > 1 ? 's' : ''} for ${attraction.name}`)
-      
-      // Brief delay to show the logged state
-      setTimeout(() => {
-        setIsLogging(false)
-        setUseTimer(false) // Switch back to manual mode after logging
-      }, 1000)
-      
-    } catch (error) {
-      console.error('❌ Failed to log timer result:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      toast.error(`Failed to log wait time: ${errorMessage}`)
-      setIsLogging(false)
-    }
-  }, [onCountChange, attraction.name])
   const getTypeIcon = (type: string) => {
     switch (type) {
       case 'thrill': return <Star size={16} />
@@ -944,7 +906,7 @@ function RideLogCard({
   return (
     <Card className={`transition-all ${count > 0 ? 'ring-2 ring-primary' : ''} ${isDefunct ? 'opacity-75' : ''}`}>
       <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <Badge className={getTypeColor(attraction.type)} variant="secondary">
               {getTypeIcon(attraction.type)}
@@ -967,59 +929,30 @@ function RideLogCard({
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          {/* Simple ride counter */}
+          <div className="flex items-center gap-3">
             <Button
               variant="outline"
               size="sm"
               onClick={() => onCountChange(-1)}
-              disabled={count === 0 || isLogging}
+              disabled={count === 0}
             >
               <Minus size={16} />
             </Button>
-            <span className="w-12 text-center font-semibold">
-              {count} {count === 1 ? 'min' : 'mins'}
-            </span>
+            <div className="text-center min-w-[60px]">
+              <div className="text-2xl font-bold">{count}</div>
+              <div className="text-xs text-muted-foreground">
+                {count === 1 ? 'ride' : 'rides'}
+              </div>
+            </div>
             <Button
               variant="outline"
               size="sm"
               onClick={() => onCountChange(1)}
-              disabled={isLogging}
             >
               <Plus size={16} />
             </Button>
           </div>
-        </div>
-
-        {/* Timer/Manual Toggle */}
-        <div className="mb-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Button
-              variant={!useTimer ? "default" : "outline"}
-              size="sm"
-              onClick={() => setUseTimer(false)}
-              disabled={isLogging}
-            >
-              Manual Count
-            </Button>
-            <Button
-              variant={useTimer ? "default" : "outline"}  
-              size="sm"
-              onClick={() => setUseTimer(true)}
-              disabled={isLogging}
-            >
-              Use Timer
-            </Button>
-          </div>
-
-          {/* Timer Component */}
-          {useTimer && (
-            <RideTimer
-              attractionId={attraction.id}
-              attractionName={attraction.name}
-              parkId={parkId || ''}
-              onTimeRecorded={handleTimerLog}
-            />
-          )}
         </div>
 
         {attraction.variants && attraction.variants.length > 0 && (
