@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -20,7 +20,8 @@ import {
   MagnifyingGlass,
   Eye,
   Trash,
-  Funnel
+  Funnel,
+  PencilSimple
 } from '@phosphor-icons/react'
 
 import type { Trip, User } from '@/types'
@@ -97,6 +98,7 @@ async function resolveAttractionName(log: any): Promise<string> {
 }
 
 export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
+  const navigate = useNavigate()
   const [trips, setTrips] = useState<Trip[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterPark, setFilterPark] = useState('all')
@@ -196,6 +198,28 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
     } catch (error) {
       console.error('Failed to delete trip:', error)
       toast.error('Failed to delete trip')
+    }
+  }
+
+  const editTrip = async (trip: Trip) => {
+    if (!user) return
+
+    try {
+      // Set this trip as the current trip for editing
+      await window.spark.kv.set(`current-trip-${user.id}`, trip)
+      
+      // Navigate to the ride log page
+      const primaryPark = trip.parks[0]?.parkId
+      if (primaryPark) {
+        navigate(`/log/${primaryPark}`)
+      } else {
+        navigate('/log')
+      }
+      
+      toast.success('Trip loaded for editing')
+    } catch (error) {
+      console.error('Failed to load trip for editing:', error)
+      toast.error('Failed to load trip for editing')
     }
   }
 
@@ -427,6 +451,7 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
                   key={trip.id} 
                   trip={trip} 
                   onDelete={deleteTrip}
+                  onEdit={editTrip}
                   getTypeIcon={getTypeIcon}
                   getTypeColor={getTypeColor}
                 />
@@ -545,11 +570,12 @@ function RideLogCard({ log, getTypeIcon, getTypeColor }: RideLogCardProps) {
 interface TripCardProps {
   trip: Trip
   onDelete: (tripId: string) => void
+  onEdit: (trip: Trip) => void
   getTypeIcon: (type: string) => React.ReactElement
   getTypeColor: (type: string) => string
 }
 
-function TripCard({ trip, onDelete, getTypeIcon, getTypeColor }: TripCardProps) {
+function TripCard({ trip, onDelete, onEdit, getTypeIcon, getTypeColor }: TripCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [resolvedNames, setResolvedNames] = useState<Record<string, string>>({})
 
@@ -597,6 +623,14 @@ function TripCard({ trip, onDelete, getTypeIcon, getTypeColor }: TripCardProps) 
             </CardDescription>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onEdit(trip)}
+            >
+              <PencilSimple size={16} className="mr-2" />
+              Edit Trip
+            </Button>
             <Button
               variant="outline"
               size="sm"

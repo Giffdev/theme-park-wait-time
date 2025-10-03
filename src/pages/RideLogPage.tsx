@@ -27,7 +27,8 @@ import {
   MagnifyingGlass,
   Eye,
   Trash,
-  Funnel
+  Funnel,
+  PencilSimple
 } from '@phosphor-icons/react'
 import { ParkDataService } from '@/services/parkDataService'
 import { parkFamilies } from '@/data/sampleData'
@@ -57,6 +58,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const [tripNotes, setTripNotes] = useState('')
   const [activePark, setActivePark] = useState<string>(parkId || '')
   const [isSaving, setIsSaving] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
 
   // Get attraction ID from URL search params
   const searchParams = new URLSearchParams(location.search)
@@ -96,8 +98,17 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     if (currentTrip && currentTrip.rideLogs.length > 0) {
       console.log('🔄 Restoring state from existing trip with', currentTrip.rideLogs.length, 'logs')
       
+      // Check if this is an existing trip being edited (has a createdAt date in the past)
+      const tripCreated = new Date(currentTrip.createdAt)
+      const now = new Date()
+      const timeDiff = now.getTime() - tripCreated.getTime()
+      const isExistingTrip = timeDiff > 60000 // More than 1 minute ago
+      
+      setIsEditing(isExistingTrip)
+      console.log(`✏️ Trip editing mode: ${isExistingTrip ? 'EDITING' : 'NEW'}`)
+      
       const restoredRideCounts: Record<string, number> = {}
-      const restoredVariants: Record<string, string> = {}  
+      const restoredVariants: Record<string, string> = {}
       const restoredNotes: Record<string, string> = {}
       
       currentTrip.rideLogs.forEach(log => {
@@ -123,6 +134,8 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         variants: Object.keys(restoredVariants).length,
         notes: Object.keys(restoredNotes).length
       })
+    } else {
+      setIsEditing(false)
     }
   }, [currentTrip])
 
@@ -658,12 +671,34 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
           </Link>
         </Button>
         <div>
-          <h1 className="text-3xl font-bold">Log Your Park Trip</h1>
+          <h1 className="text-3xl font-bold">
+            {isEditing ? 'Edit Your Park Trip' : 'Log Your Park Trip'}
+          </h1>
           <p className="text-muted-foreground">
-            Track your rides across multiple parks in a single trip
+            {isEditing 
+              ? 'Continue adding rides to your existing trip or modify current entries'
+              : 'Track your rides across multiple parks in a single trip'
+            }
           </p>
         </div>
       </div>
+
+      {/* Show editing banner */}
+      {isEditing && currentTrip && (
+        <Card className="border-accent/50 bg-accent/5">
+          <CardContent className="flex items-center gap-3 py-3">
+            <div className="flex items-center gap-2 text-accent">
+              <PencilSimple size={18} />
+              <span className="font-medium">Editing Existing Trip</span>
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Trip from {new Date(currentTrip.visitDate).toLocaleDateString()} • 
+              {currentTrip.totalRides} rides currently logged •
+              {currentTrip.rideLogs.length} attractions
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
 
 
