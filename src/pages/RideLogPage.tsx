@@ -716,13 +716,6 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Debug info for development */}
-            {process.env.NODE_ENV === 'development' && (
-              <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                Debug: User ID: {user?.id}, KV Available: {window.spark?.kv ? 'Yes' : 'No'}
-              </div>
-            )}
-            
             <div>
               <Label htmlFor="visit-date">Visit Date</Label>
               <div className="mt-1 p-3 bg-muted rounded-md border">
