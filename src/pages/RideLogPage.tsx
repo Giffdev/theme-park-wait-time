@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
-import { DatePicker } from '@/components/ui/date-picker'
+
 
 import { 
   ArrowLeft, 
@@ -724,18 +724,32 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
             
             <div>
               <Label htmlFor="visit-date">Visit Date</Label>
-              <DatePicker
-                date={visitDate}
-                onDateChange={(date) => {
-                  if (date) {
-                    setVisitDate(date)
-                  }
+              <Select 
+                value={visitDate.toISOString().split('T')[0]} 
+                onValueChange={(value) => {
+                  setVisitDate(new Date(value + 'T00:00:00'))
                 }}
-                maxDate={new Date()} // Don't allow future dates
-                minDate={new Date(new Date().getFullYear() - 10, 0, 1)} // Don't allow dates more than 10 years ago
-                placeholder="Choose your visit date"
-                className="w-full"
-              />
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Choose your visit date" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={new Date().toISOString().split('T')[0]}>
+                    Today ({new Date().toLocaleDateString()})
+                  </SelectItem>
+                  {Array.from({ length: 30 }, (_, i) => {
+                    const pastDate = new Date()
+                    pastDate.setDate(pastDate.getDate() - (i + 1))
+                    const dateStr = pastDate.toISOString().split('T')[0]
+                    const displayDate = pastDate.toLocaleDateString()
+                    return (
+                      <SelectItem key={dateStr} value={dateStr}>
+                        {i === 0 ? `Yesterday (${displayDate})` : `${i + 1} days ago (${displayDate})`}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
