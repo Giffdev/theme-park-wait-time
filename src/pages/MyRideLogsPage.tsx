@@ -97,17 +97,6 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
       
       console.log(`✅ Loaded ${validTrips.length} valid trips out of ${tripIds.length} trip IDs`)
       
-      // Debug: Log detailed trip information
-      validTrips.forEach(trip => {
-        console.log(`🔍 Trip ${trip.id} full details:`, {
-          visitDate: trip.visitDate,
-          totalRides: trip.totalRides,
-          rideLogsCount: trip.rideLogs.length,
-          parks: trip.parks.map(p => ({ name: p.parkName, rideCount: p.rideCount })),
-          rideLogsDetails: trip.rideLogs.map(log => ({ name: log.attractionName, count: log.rideCount }))
-        })
-      })
-      
       // Sort by visit date descending
       validTrips.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime())
       setTrips(validTrips)
@@ -521,7 +510,11 @@ function TripCard({ trip, onDelete, getTypeIcon, getTypeColor }: TripCardProps) 
           
           <div className="space-y-4">
             {trip.parks.map(park => {
-              const parkLogs = trip.rideLogs.filter(log => log.parkId === park.parkId)
+              // More robust filtering - check both exact match and potential variations
+              const parkLogs = trip.rideLogs.filter(log => {
+                return log.parkId === park.parkId || 
+                       log.parkId?.toString() === park.parkId?.toString()
+              })
               const actualRideCount = parkLogs.reduce((sum, log) => sum + log.rideCount, 0)
               
               return (
