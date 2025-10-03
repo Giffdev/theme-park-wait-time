@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Clock, Play, Pause, Stop, CheckCircle, XCircle, Warning } from '@phosphor-icons/react'
+import { Clock, Play, Pause, Stop, CheckCircle, XCircle, Warning, X } from '@phosphor-icons/react'
 import { useReporting } from '@/hooks/useReporting'
 import { useKV } from '@github/spark/hooks'
 import { useGlobalTimer } from '@/hooks/useGlobalTimer'
@@ -135,7 +135,7 @@ export function ReportWaitTimeModal({
     // Register as active timer
     setActiveTimer(timerId, attractionName, parkId)
     
-    toast.success('Timer started! The time will persist if you leave and come back.')
+    toast.success('Timer started!')
   }
 
   const pauseTimer = () => {
@@ -202,20 +202,21 @@ export function ReportWaitTimeModal({
     onClose()
   }
 
-  // Prevent modal from closing if timer is running or paused
-  const canCloseModal = () => {
-    return !timerState.isRunning && !timerState.isPaused
+  const handleExplicitClose = () => {
+    // If timer is running or paused, cancel it completely
+    if (timerState.isRunning || timerState.isPaused) {
+      resetTimer()
+      toast.info(`Timer cancelled for ${attractionName}`)
+    }
+    onClose()
   }
 
   const handleOpenChange = (open: boolean) => {
-    if (!open) {
-      if (!canCloseModal()) {
-        // Don't close if timer is active, just show a message
-        toast.info(`Timer is still running for ${attractionName}. Use the controls to pause or stop it first.`)
-        return
-      }
-      handleModalClose()
+    // Only allow closing via overlay click if no active timer
+    if (!open && !timerState.isRunning && !timerState.isPaused) {
+      onClose()
     }
+    // If timer is active, prevent closing via overlay (but X button will still work)
   }
 
   const useTimerForReport = () => {
@@ -302,7 +303,18 @@ export function ReportWaitTimeModal({
 
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg w-[95vw] max-h-[85vh] overflow-y-auto p-4 sm:p-6">
+      <DialogContent className="sm:max-w-lg w-[95vw] max-h-[85vh] overflow-y-auto p-4 sm:p-6" showClose={false}>
+        {/* Custom X button that handles timer cancellation */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden h-8 w-8 z-10"
+          onClick={handleExplicitClose}
+        >
+          <X size={16} />
+          <span className="sr-only">Close</span>
+        </Button>
+        
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Clock size={20} />
@@ -386,7 +398,7 @@ export function ReportWaitTimeModal({
             
             {timerState.elapsedTime === 0 && (
               <p className="text-xs text-muted-foreground text-center">
-                💡 Start the timer when you join the line - it will persist if you leave and come back
+                💡 Start the timer when you join the line
               </p>
             )}
           </div>
