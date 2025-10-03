@@ -1,6 +1,9 @@
 import { sampleAttractions } from '@/data/sampleData'
 import type { ExtendedAttraction } from '@/types'
 
+// Version identifier for data updates - increment when data structure changes
+const DATA_VERSION = '2024-12-19-v2'
+
 /**
  * Service for reliably loading park attraction data with fallback mechanisms
  */
@@ -14,10 +17,15 @@ export class ParkDataService {
     // Strategy 1: Load from KV store
     try {
       if (window.spark?.kv) {
+        // Check data version first
+        const storedVersion = await window.spark.kv.get<string>('data-version')
         const kvData = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
-        if (kvData && Array.isArray(kvData) && kvData.length > 0) {
+        
+        if (storedVersion === DATA_VERSION && kvData && Array.isArray(kvData) && kvData.length > 0) {
           console.log(`✅ ParkDataService loaded from KV: ${kvData.length} attractions`)
           return kvData
+        } else if (storedVersion !== DATA_VERSION) {
+          console.log(`🔄 ParkDataService data version outdated, refreshing data`)
         }
       }
     } catch (kvError) {
@@ -35,6 +43,7 @@ export class ParkDataService {
       try {
         if (window.spark?.kv) {
           await window.spark.kv.set(`attractions-${parkId}`, sampleData)
+          await window.spark.kv.set('data-version', DATA_VERSION)
           console.log(`💾 ParkDataService saved sample data to KV`)
         }
       } catch (saveError) {
@@ -77,14 +86,24 @@ export class ParkDataService {
     
     console.log(`🚀 ParkDataService initializing ${parks.length} parks`)
     
+    // Check and update data version
+    const storedVersion = await window.spark.kv.get<string>('data-version')
+    const shouldRefresh = storedVersion !== DATA_VERSION
+    
+    if (shouldRefresh) {
+      console.log(`🔄 ParkDataService updating data from version ${storedVersion} to ${DATA_VERSION}`)
+    }
+    
     for (const [parkId, attractions] of parks) {
       try {
-        // Check if already exists
-        const existing = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
-        if (existing && Array.isArray(existing) && existing.length > 0) {
-          console.log(`✅ ${parkId} already initialized (${existing.length} attractions)`)
-          successCount++
-          continue
+        // Check if already exists and version is current
+        if (!shouldRefresh) {
+          const existing = await window.spark.kv.get<ExtendedAttraction[]>(`attractions-${parkId}`)
+          if (existing && Array.isArray(existing) && existing.length > 0) {
+            console.log(`✅ ${parkId} already initialized (${existing.length} attractions)`)
+            successCount++
+            continue
+          }
         }
         
         // Initialize with sample data
@@ -97,6 +116,16 @@ export class ParkDataService {
         
       } catch (error) {
         console.error(`❌ ParkDataService failed to initialize ${parkId}:`, error)
+      }
+    }
+    
+    // Update version after successful initialization
+    if (shouldRefresh) {
+      try {
+        await window.spark.kv.set('data-version', DATA_VERSION)
+        console.log(`✅ ParkDataService updated data version to ${DATA_VERSION}`)
+      } catch (error) {
+        console.warn('ParkDataService could not update data version:', error)
       }
     }
     

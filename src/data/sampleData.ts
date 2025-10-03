@@ -555,14 +555,6 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       lastUpdated: new Date().toISOString()
     },
     {
-      id: 'muppet-vision-3d',
-      name: 'MuppetVision 3D',
-      type: 'show',
-      currentWaitTime: 5,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
       id: 'lightning-mcqueen-racing',
       name: 'Lightning McQueen\'s Racing Academy',
       type: 'show',

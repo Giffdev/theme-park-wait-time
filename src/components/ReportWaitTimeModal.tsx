@@ -202,6 +202,22 @@ export function ReportWaitTimeModal({
     onClose()
   }
 
+  // Prevent modal from closing if timer is running or paused
+  const canCloseModal = () => {
+    return !timerState.isRunning && !timerState.isPaused
+  }
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      if (!canCloseModal()) {
+        // Don't close if timer is active, just show a message
+        toast.info(`Timer is still running for ${attractionName}. Use the controls to pause or stop it first.`)
+        return
+      }
+      handleModalClose()
+    }
+  }
+
   const useTimerForReport = () => {
     if (!timerState.isStopped) {
       toast.error('Stop the timer first before using this time')
@@ -285,7 +301,7 @@ export function ReportWaitTimeModal({
   }
 
   return (
-    <Dialog open onOpenChange={handleModalClose}>
+    <Dialog open onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg w-[95vw] max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
