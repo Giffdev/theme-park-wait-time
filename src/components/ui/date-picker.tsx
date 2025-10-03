@@ -1,65 +1,65 @@
 import * as React from "react"
-import { Calendar as CalendarIcon } from "@phosphor-icons/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar as CalendarIcon } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils"
+import { format } from "date-fns"
 
 interface DatePickerProps {
+  placeholder?: string
   date?: Date
   onDateChange?: (date: Date | undefined) => void
-  placeholder?: string
   minDate?: Date
   maxDate?: Date
-  className?: string
   disabled?: boolean
+  className?: string
 }
 
 export function DatePicker({
+  placeholder = "Pick a date",
   date,
   onDateChange,
-  placeholder = "Pick a date",
   minDate,
   maxDate,
-  className,
-  disabled = false
+  disabled = false,
+  className
 }: DatePickerProps) {
-  const formatDateForInput = (date: Date | undefined): string => {
-    if (!date) return ""
-    return date.toISOString().split('T')[0]
-  }
-
-  const handleDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value
-    if (!value) {
-      onDateChange?.(undefined)
-      return
-    }
-    
-    const selectedDate = new Date(value + 'T00:00:00')
-    onDateChange?.(selectedDate)
-  }
-
-  const formatMinDate = minDate ? formatDateForInput(minDate) : undefined
-  const formatMaxDate = maxDate ? formatDateForInput(maxDate) : undefined
+  const [open, setOpen] = React.useState(false)
 
   return (
-    <div className={cn("relative", className)}>
-      <div className="relative">
-        <Input
-          type="date"
-          value={formatDateForInput(date)}
-          onChange={handleDateChange}
-          min={formatMinDate}
-          max={formatMaxDate}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className={cn(
+            "w-full justify-start text-left font-normal",
+            !date && "text-muted-foreground",
+            className
+          )}
           disabled={disabled}
-          className="pl-10"
-          placeholder={placeholder}
+        >
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {date ? format(date, "PPP") : placeholder}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={date}
+          onSelect={(selectedDate) => {
+            onDateChange?.(selectedDate)
+            setOpen(false)
+          }}
+          disabled={(date) => {
+            if (minDate && date < minDate) return true
+            if (maxDate && date > maxDate) return true
+            return false
+          }}
+          initialFocus
         />
-        <CalendarIcon 
-          size={16} 
-          className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none"
-        />
-      </div>
-    </div>
+      </PopoverContent>
+    </Popover>
   )
 }
