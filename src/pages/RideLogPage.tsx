@@ -1,4 +1,40 @@
-// This page has been removed as part of simplifying the app to focus on wait time reporting only
+import React, { useState, useEffect, useCallback } from 'react'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
+import { useKV } from '@github/spark/hooks'
+import { toast } from 'sonner'
+
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Checkbox } from '@/components/ui/checkbox'
+
+import { 
+  ArrowLeft, 
+  Calendar, 
+  Ticket, 
+  MapPin, 
+  Plus, 
+  Minus, 
+  Star, 
+  Users, 
+  Clock,
+  CaretDown,
+  MagnifyingGlass,
+  Eye,
+  Trash,
+  Funnel
+} from '@phosphor-icons/react'
+
+import { RideTimer } from '@/components/RideTimer'
+import { ParkDataService } from '@/services/parkDataService'
+import { parkFamilies } from '@/data/sampleData'
+import { isAttractionNotDining } from '@/lib/utils'
+import type { ExtendedAttraction, Trip, TripPark, RideLog, User } from '@/types'
 
 interface RideLogPageProps {
   user: User | null

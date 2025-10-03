@@ -1,4 +1,29 @@
-// This page has been removed as part of simplifying the app to focus on wait time reporting only
+import React, { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import { toast } from 'sonner'
+
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+
+import { 
+  Calendar, 
+  Ticket, 
+  MapPin, 
+  Star, 
+  Users, 
+  Clock,
+  MagnifyingGlass,
+  Eye,
+  Trash,
+  Funnel
+} from '@phosphor-icons/react'
+
+import type { Trip, User } from '@/types'
 
 interface MyRideLogsPageProps {
   user: User | null

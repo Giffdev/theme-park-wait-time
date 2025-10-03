@@ -1,45 +1,27 @@
-// This service has been removed as part of simplifying the app to focus on wait time reporting only
+import type { Trip } from '@/types'
 
 export class TripService {
   /**
-   * Generate a simple, safe trip ID that passes KV validation
+   * Generate a simple, safe trip ID
    */
   static generateTripId(): string {
     const timestamp = Date.now().toString()
     const random = Math.random().toString(36).substring(2, 6)
-    const tripId = `trip-${timestamp}-${random}`
-    
-    // Validate the generated trip ID
-    const validation = KVService.validateKey(tripId)
-    if (!validation.isValid) {
-      throw new Error(`Generated trip ID is invalid: ${validation.error}`)
-    }
-    
-    return validation.cleanKey!
+    return `trip-${timestamp}-${random}`
   }
 
   /**
-   * Generate a safe storage key for user trips using KVService validation
+   * Generate a safe storage key for user trips
    */
   static getUserTripsKey(userId: string): string {
-    try {
-      return KVService.generateUserKey(userId, 'trips')
-    } catch (error) {
-      console.error('Failed to generate user trips key:', error)
-      throw new Error('Invalid user ID for trip storage')
-    }
+    return `user-trips-${userId}`
   }
 
   /**
-   * Get current trip key using KVService validation
+   * Get current trip key
    */
   static getCurrentTripKey(userId: string): string {
-    try {
-      return KVService.generateUserKey(userId, 'current-trip')
-    } catch (error) {
-      console.error('Failed to generate current trip key:', error)
-      throw new Error('Invalid user ID for current trip storage')
-    }
+    return `current-trip-${userId}`
   }
 
   /**
@@ -63,25 +45,24 @@ export class TripService {
   }
 
   /**
-   * Save a trip to storage using safe KV operations
+   * Save a trip to storage
    */
   static async saveTrip(trip: Trip): Promise<void> {
     try {
-      // Validate trip data before saving
       if (!trip.id || !trip.userId) {
         throw new Error('Invalid trip data: missing ID or user ID')
       }
 
-      // Save trip data using validated key
-      await KVService.set(trip.id, trip)
+      // Save trip data
+      await window.spark.kv.set(trip.id, trip)
 
       // Update user's trip list
       const userTripsKey = this.getUserTripsKey(trip.userId)
-      const existingTripIds = await KVService.get<string[]>(userTripsKey) || []
+      const existingTripIds = await window.spark.kv.get<string[]>(userTripsKey) || []
       
       if (!existingTripIds.includes(trip.id)) {
         existingTripIds.push(trip.id)
-        await KVService.set(userTripsKey, existingTripIds)
+        await window.spark.kv.set(userTripsKey, existingTripIds)
       }
       
       console.log('✅ Trip saved successfully:', trip.id)
@@ -92,19 +73,19 @@ export class TripService {
   }
 
   /**
-   * Get all trips for a user using safe KV operations
+   * Get all trips for a user
    */
   static async getUserTrips(userId: string): Promise<Trip[]> {
     try {
       const userTripsKey = this.getUserTripsKey(userId)
-      const tripIds = await KVService.get<string[]>(userTripsKey) || []
+      const tripIds = await window.spark.kv.get<string[]>(userTripsKey) || []
       
       const trips: Trip[] = []
       
       // Load each trip
       for (const tripId of tripIds) {
         try {
-          const trip = await KVService.get<Trip>(tripId)
+          const trip = await window.spark.kv.get<Trip>(tripId)
           if (trip) {
             trips.push(trip)
           }
@@ -122,18 +103,18 @@ export class TripService {
   }
 
   /**
-   * Delete a trip using safe KV operations
+   * Delete a trip
    */
   static async deleteTrip(userId: string, tripId: string): Promise<void> {
     try {
       // Remove from user's trip list
       const userTripsKey = this.getUserTripsKey(userId)
-      const tripIds = await KVService.get<string[]>(userTripsKey) || []
+      const tripIds = await window.spark.kv.get<string[]>(userTripsKey) || []
       const updatedTripIds = tripIds.filter(id => id !== tripId)
-      await KVService.set(userTripsKey, updatedTripIds)
+      await window.spark.kv.set(userTripsKey, updatedTripIds)
 
       // Delete the trip data
-      await KVService.delete(tripId)
+      await window.spark.kv.delete(tripId)
       
       console.log('✅ Trip deleted successfully:', tripId)
     } catch (error) {
@@ -143,48 +124,16 @@ export class TripService {
   }
 
   /**
-   * Clear all user data (recovery option) using safe KV operations
-   */
-  static async clearUserData(userId: string): Promise<void> {
-    try {
-      const userTripsKey = this.getUserTripsKey(userId)
-      const currentTripKey = this.getCurrentTripKey(userId)
-      
-      // Get all trip IDs
-      const tripIds = await KVService.get<string[]>(userTripsKey) || []
-      
-      // Delete all trips
-      for (const tripId of tripIds) {
-        try {
-          await KVService.delete(tripId)
-        } catch (error) {
-          console.warn(`Could not delete trip ${tripId}:`, error)
-        }
-      }
-      
-      // Delete user keys
-      await KVService.delete(userTripsKey)
-      await KVService.delete(currentTripKey)
-      
-      console.log('✅ All user data cleared successfully')
-    } catch (error) {
-      console.error('❌ Failed to clear user data:', error)
-      throw new Error(`Failed to clear user data: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
-  }
-
-  /**
-   * Save current trip (in progress) using safe KV operations
+   * Save current trip (in progress)
    */
   static async saveCurrentTrip(userId: string, trip: Trip): Promise<void> {
     try {
-      // Validate trip data
       if (!trip.id || !trip.userId) {
         throw new Error('Invalid trip data: missing ID or user ID')
       }
 
       const currentTripKey = this.getCurrentTripKey(userId)
-      await KVService.set(currentTripKey, trip)
+      await window.spark.kv.set(currentTripKey, trip)
       console.log('✅ Current trip saved successfully:', trip.id)
     } catch (error) {
       console.error('❌ Failed to save current trip:', error)
@@ -193,12 +142,12 @@ export class TripService {
   }
 
   /**
-   * Get current trip (in progress) using safe KV operations
+   * Get current trip (in progress)
    */
   static async getCurrentTrip(userId: string): Promise<Trip | null> {
     try {
       const currentTripKey = this.getCurrentTripKey(userId)
-      const trip = await KVService.get<Trip>(currentTripKey)
+      const trip = await window.spark.kv.get<Trip>(currentTripKey)
       return trip || null
     } catch (error) {
       console.error('❌ Failed to get current trip:', error)
@@ -207,16 +156,15 @@ export class TripService {
   }
 
   /**
-   * Clear current trip using safe KV operations
+   * Clear current trip
    */
   static async clearCurrentTrip(userId: string): Promise<void> {
     try {
       const currentTripKey = this.getCurrentTripKey(userId)
-      await KVService.delete(currentTripKey)
+      await window.spark.kv.delete(currentTripKey)
       console.log('✅ Current trip cleared successfully')
     } catch (error) {
       console.error('❌ Failed to clear current trip:', error)
-      // Don't throw here as this is often called during cleanup
     }
   }
 }

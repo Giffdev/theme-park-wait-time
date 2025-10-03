@@ -55,3 +55,43 @@ export type ExtendedAttraction = {
   seasonalPeriod?: string // e.g., "Halloween", "Christmas"
   variants?: AttractionVariant[] // For multi-track rides
 }
+
+export type TripPark = {
+  parkId: string
+  parkName: string
+  rideCount: number
+}
+
+export type RideLog = {
+  id: string
+  userId: string
+  tripId: string
+  parkId: string
+  attractionId: string
+  attractionName: string
+  attractionType: string
+  rideCount: number
+  trackVariant?: string
+  loggedAt: string
+  notes?: string
+}
+
+export type Trip = {
+  id: string
+  userId: string
+  visitDate: string
+  parks: TripPark[]
+  rideLogs: RideLog[]
+  totalRides: number
+  createdAt: string
+  updatedAt: string
+  notes?: string
+}
+
+export type User = {
+  id: string
+  username: string
+  email: string
+  contributionCount: number
+  joinDate: string
+}
