@@ -176,7 +176,7 @@ export function QuickWaitTimeModal({
               required={!isClosed}
               disabled={isClosed}
               autoFocus={!isClosed}
-              className="text-center text-lg"
+              className="text-center text-lg h-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
             <p className="text-xs text-muted-foreground text-center">
               Enter 0 for walk-on, or actual wait time in line
