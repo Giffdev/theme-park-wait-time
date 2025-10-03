@@ -529,11 +529,6 @@ function TripCard({ trip, onDelete, getTypeIcon, getTypeColor }: TripCardProps) 
                   <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
                     <MapPin size={14} />
                     {park.parkName} ({actualRideCount} rides)
-                    {process.env.NODE_ENV === 'development' && (
-                      <span className="text-xs text-muted-foreground ml-2">
-                        [Debug: stored={park.rideCount}, logs={parkLogs.length}]
-                      </span>
-                    )}
                   </h4>
                   <div className="grid gap-2 pl-4">
                     {parkLogs.length === 0 ? (
