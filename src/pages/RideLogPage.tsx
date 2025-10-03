@@ -458,6 +458,14 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       }
 
       console.log(`💾 Saving trip with ${logsToSave.length} logs, ${updatedTrip.totalRides} total rides`)
+      console.log('📊 Trip data to save:', {
+        id: updatedTrip.id,
+        userId: updatedTrip.userId,
+        visitDate: updatedTrip.visitDate,
+        parks: updatedTrip.parks.map(p => ({ parkId: p.parkId, parkName: p.parkName, rideCount: p.rideCount })),
+        totalRides: updatedTrip.totalRides,
+        logCount: updatedTrip.rideLogs.length
+      })
 
       // Update current trip state first
       setCurrentTrip(updatedTrip)
@@ -480,6 +488,8 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
             await window.spark.kv.set(`user-trips-${user.id}`, userTrips)
             console.log('✅ User trip history updated')
           }
+        } else {
+          console.log('ℹ️ No rides logged yet, trip not saved to permanent storage')
         }
         
       } catch (kvError) {
@@ -697,11 +707,29 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                         if (!user || !currentTrip) return
 
                         try {
+                          console.log('🔄 Completing trip session...')
+                          
                           // Ensure final save to permanent storage
                           await autoSaveTrip(rideCounts)
                           
+                          // Force save to permanent storage if there are rides
+                          const totalRides = Object.values(rideCounts).reduce((sum, count) => sum + count, 0)
+                          if (totalRides > 0) {
+                            console.log('💾 Forcing final save to permanent storage')
+                            await window.spark.kv.set(`trip-${currentTrip.id}`, currentTrip)
+                            
+                            // Ensure user trip history is updated
+                            const userTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
+                            if (!userTrips.includes(currentTrip.id)) {
+                              userTrips.push(currentTrip.id)
+                              await window.spark.kv.set(`user-trips-${user.id}`, userTrips)
+                              console.log('✅ Added trip to user history during completion')
+                            }
+                          }
+                          
                           // Clear current trip session
                           await window.spark.kv.delete(`current-trip-${user.id}`)
+                          console.log('🗑️ Cleared current trip session')
                           
                           // Clear local state
                           setCurrentTrip(null)

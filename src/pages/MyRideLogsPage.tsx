@@ -52,16 +52,34 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
 
     setIsLoading(true)
     try {
+      console.log('🔄 Loading trips for user:', user.id)
+      
       const tripIds = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
-      const tripPromises = tripIds.map(id => window.spark.kv.get<Trip>(`trip-${id}`))
+      console.log('📋 Found trip IDs:', tripIds)
+      
+      if (tripIds.length === 0) {
+        console.log('ℹ️ No trip IDs found for user')
+        setTrips([])
+        setIsLoading(false)
+        return
+      }
+      
+      const tripPromises = tripIds.map(async (id) => {
+        const trip = await window.spark.kv.get<Trip>(`trip-${id}`)
+        console.log(`📁 Trip ${id}:`, trip ? 'found' : 'missing')
+        return trip
+      })
+      
       const tripResults = await Promise.all(tripPromises)
       const validTrips = tripResults.filter(Boolean) as Trip[]
+      
+      console.log(`✅ Loaded ${validTrips.length} valid trips out of ${tripIds.length} trip IDs`)
       
       // Sort by visit date descending
       validTrips.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime())
       setTrips(validTrips)
     } catch (error) {
-      console.error('Failed to load user trips:', error)
+      console.error('❌ Failed to load user trips:', error)
     }
     setIsLoading(false)
   }
@@ -190,12 +208,17 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
             Your complete theme park experience history
           </p>
         </div>
-        <Button asChild>
-          <Link to="/log">
-            <Ticket size={16} className="mr-2" />
-            Log New Trip
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadUserTrips}>
+            Refresh
+          </Button>
+          <Button asChild>
+            <Link to="/log">
+              <Ticket size={16} className="mr-2" />
+              Log New Trip
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {trips.length === 0 ? (
