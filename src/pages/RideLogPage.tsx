@@ -1383,133 +1383,186 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
     }))
   }
 
+  // Reset park filter when changing family selection
+  const handleFamilyChange = (familyId: string) => {
+    setSelectedFamily(familyId)
+    // Auto-expand the newly selected family
+    if (familyId) {
+      setShowParkFilter(prev => ({
+        ...prev,
+        [familyId]: true
+      }))
+    }
+  }
+
+  // Get families to display - filtered by selection
+  const familiesToShow = selectedFamily 
+    ? parkFamilies.filter(family => family.id === selectedFamily)
+    : []
+
   return (
     <div className="space-y-6">
-      {/* Helpful info about data availability */}
-      <div className="bg-muted/50 border border-muted rounded-lg p-3">
-        <p className="text-sm text-muted-foreground">
-          <strong>Note:</strong> Only parks with attraction data available can be selected. 
-          Parks marked "No Data" are coming soon! Currently {availableParks.length} parks are available.
-        </p>
+      {/* Resort Group Selection */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Funnel size={16} className="text-muted-foreground" />
+          <Label className="text-sm font-medium">Step 1: Choose Resort Group</Label>
+        </div>
+        <Select
+          value={selectedFamily || 'none'}
+          onValueChange={(value) => handleFamilyChange(value === 'none' ? '' : value)}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select a resort group to view parks" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Choose a resort group...</SelectItem>
+            {parkFamilies.map((family) => {
+              const familyParksWithData = family.parks.filter(park => availableParks.includes(park.id))
+              return (
+                <SelectItem key={family.id} value={family.id}>
+                  {family.name} ({familyParksWithData.length} parks available)
+                </SelectItem>
+              )
+            })}
+          </SelectContent>
+        </Select>
       </div>
-      
-      {parkFamilies.map(family => {
-        const familyParks = family.parks
-        const parksWithData = familyParks.filter(park => availableParks.includes(park.id))
-        const selectedFamilyParks = selectedParks.filter(parkId => 
-          familyParks.some(p => p.id === parkId)
-        )
-        const isExpanded = showParkFilter[family.id]
 
-        return (
-          <div key={family.id} className="border rounded-lg p-4 space-y-3">
-            {/* Family Header */}
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <MapPin size={16} className="text-muted-foreground" />
-                  <h3 className="font-semibold text-foreground">{family.name}</h3>
-                  <Badge variant="outline" className="text-xs">
-                    {family.location}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {selectedFamilyParks.length > 0 
-                    ? `${selectedFamilyParks.length} of ${parksWithData.length} parks selected`
-                    : `${parksWithData.length} of ${familyParks.length} parks have data available`
-                  }
-                </p>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => toggleFamilyFilter(family.id)}
-                  className="gap-1 text-muted-foreground hover:text-foreground"
-                >
-                  <CaretDown 
-                    size={16} 
-                    className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
-                  />
-                  {isExpanded ? 'Hide' : 'Show'}
-                </Button>
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            {isExpanded && (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleFamilySelectAll(family.id)}
-                  disabled={selectedFamilyParks.length === parksWithData.length || parksWithData.length === 0}
-                >
-                  Select All Available
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleFamilyDeselectAll(family.id)}
-                  disabled={selectedFamilyParks.length === 0}
-                >
-                  Deselect All
-                </Button>
-              </div>
-            )}
-
-            {/* Parks List */}
-            {isExpanded && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
-                {familyParks.map(park => {
-                  const hasData = availableParks.includes(park.id)
-                  return (
-                    <div key={park.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={park.id}
-                        checked={selectedParks.includes(park.id)}
-                        onCheckedChange={(checked) => handleParkToggle(park.id, checked as boolean)}
-                        disabled={!hasData}
-                      />
-                      <Label 
-                        htmlFor={park.id} 
-                        className={`text-sm cursor-pointer flex items-center gap-2 ${!hasData ? 'text-muted-foreground' : ''}`}
-                      >
-                        {park.name}
-                        {park.type === 'water-park' && (
-                          <Badge variant="secondary" className="text-xs">
-                            Water Park
-                          </Badge>
-                        )}
-                        {!hasData && (
-                          <Badge variant="outline" className="text-xs text-muted-foreground">
-                            No Data
-                          </Badge>
-                        )}
-                      </Label>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {/* Show selected parks when collapsed */}
-            {!isExpanded && selectedFamilyParks.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {selectedFamilyParks.map(parkId => {
-                  const park = familyParks.find(p => p.id === parkId)
-                  return park ? (
-                    <Badge key={parkId} variant="secondary" className="text-xs">
-                      {park.shortName || park.name}
-                    </Badge>
-                  ) : null
-                })}
-              </div>
-            )}
+      {/* Parks Selection - Only show if family is selected */}
+      {selectedFamily && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <MapPin size={16} className="text-muted-foreground" />
+            <Label className="text-sm font-medium">Step 2: Choose Parks from Selected Resort</Label>
           </div>
-        )
-      })}
+          
+          {/* Helpful info about data availability */}
+          <div className="bg-muted/50 border border-muted rounded-lg p-3">
+            <p className="text-sm text-muted-foreground">
+              <strong>Note:</strong> Only parks with attraction data available can be selected. 
+              Parks marked "No Data" are coming soon!
+            </p>
+          </div>
+          
+          {familiesToShow.map(family => {
+            const familyParks = family.parks
+            const parksWithData = familyParks.filter(park => availableParks.includes(park.id))
+            const selectedFamilyParks = selectedParks.filter(parkId => 
+              familyParks.some(p => p.id === parkId)
+            )
+            const isExpanded = showParkFilter[family.id] !== false // Default to expanded
+
+            return (
+              <div key={family.id} className="border rounded-lg p-4 space-y-3">
+                {/* Family Header */}
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-foreground">{family.name}</h3>
+                      <Badge variant="outline" className="text-xs">
+                        {family.location}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedFamilyParks.length > 0 
+                        ? `${selectedFamilyParks.length} of ${parksWithData.length} parks selected`
+                        : `${parksWithData.length} of ${familyParks.length} parks have data available`
+                      }
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleFamilyFilter(family.id)}
+                      className="gap-1 text-muted-foreground hover:text-foreground"
+                    >
+                      <CaretDown 
+                        size={16} 
+                        className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
+                      />
+                      {isExpanded ? 'Hide' : 'Show'}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Quick Actions */}
+                {isExpanded && (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleFamilySelectAll(family.id)}
+                      disabled={selectedFamilyParks.length === parksWithData.length || parksWithData.length === 0}
+                    >
+                      Select All Available
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleFamilyDeselectAll(family.id)}
+                      disabled={selectedFamilyParks.length === 0}
+                    >
+                      Deselect All
+                    </Button>
+                  </div>
+                )}
+
+                {/* Parks List */}
+                {isExpanded && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
+                    {familyParks.map(park => {
+                      const hasData = availableParks.includes(park.id)
+                      return (
+                        <div key={park.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={park.id}
+                            checked={selectedParks.includes(park.id)}
+                            onCheckedChange={(checked) => handleParkToggle(park.id, checked as boolean)}
+                            disabled={!hasData}
+                          />
+                          <Label 
+                            htmlFor={park.id} 
+                            className={`text-sm cursor-pointer flex items-center gap-2 ${!hasData ? 'text-muted-foreground' : ''}`}
+                          >
+                            {park.name}
+                            {park.type === 'water-park' && (
+                              <Badge variant="secondary" className="text-xs">
+                                Water Park
+                              </Badge>
+                            )}
+                            {!hasData && (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">
+                                No Data
+                              </Badge>
+                            )}
+                          </Label>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Show selected parks when collapsed */}
+                {!isExpanded && selectedFamilyParks.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {selectedFamilyParks.map(parkId => {
+                      const park = familyParks.find(p => p.id === parkId)
+                      return park ? (
+                        <Badge key={parkId} variant="secondary" className="text-xs">
+                          {park.shortName || park.name}
+                        </Badge>
+                      ) : null
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
       
       {selectedParks.length > 0 && (
         <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
