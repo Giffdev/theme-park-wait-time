@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Play, Pause, Stop } from '@phosphor-icons/react'
+import { Play, Pause, Stop, CheckCircle } from '@phosphor-icons/react'
 import { useKV } from '@github/spark/hooks'
 import { useGlobalTimer } from '@/hooks/useGlobalTimer'
 import { toast } from 'sonner'
@@ -15,6 +15,8 @@ interface RideTimerProps {
 
 interface TimerState {
   isRunning: boolean
+  isPaused: boolean
+  isStopped: boolean
   startTime: number | null
   elapsedTime: number
   pausedTime: number
@@ -30,6 +32,8 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
   // Timer state with persistence per attraction
   const [timerState, setTimerState] = useKV<TimerState>(timerId, {
     isRunning: false,
+    isPaused: false,
+    isStopped: false,
     startTime: null,
     elapsedTime: 0,
     pausedTime: 0
@@ -59,14 +63,16 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
 
   // Sync with global timer state when component mounts
   useEffect(() => {
-    if (timerState.isRunning && globalState.activeTimerId !== timerId) {
-      // This timer is running but not registered globally - register it
+    if ((timerState.isRunning || timerState.isPaused) && globalState.activeTimerId !== timerId) {
+      // This timer is active but not registered globally - register it
       setActiveTimer(timerId, attractionName, parkId)
-    } else if (!timerState.isRunning && globalState.activeTimerId === timerId) {
-      // This timer is not running but is registered globally - clear it
-      clearActiveTimer()
+    } else if (!timerState.isRunning && !timerState.isPaused && globalState.activeTimerId === timerId) {
+      // This timer is not active but is registered globally - clear it (unless stopped with time)
+      if (!timerState.isStopped || timerState.elapsedTime === 0) {
+        clearActiveTimer()
+      }
     }
-  }, [timerState.isRunning, globalState.activeTimerId, timerId, attractionName, parkId, setActiveTimer, clearActiveTimer])
+  }, [timerState.isRunning, timerState.isPaused, timerState.isStopped, timerState.elapsedTime, globalState.activeTimerId, timerId, attractionName, parkId, setActiveTimer, clearActiveTimer])
 
   const startTimer = async () => {
     if (!canStartTimer(timerId)) {
@@ -81,6 +87,8 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
     setTimerState(current => ({
       ...current,
       isRunning: true,
+      isPaused: false,
+      isStopped: false,
       startTime: Date.now()
     }))
     
@@ -94,6 +102,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
     setTimerState(current => ({
       ...current,
       isRunning: false,
+      isPaused: true,
       pausedTime: current.elapsedTime,
       startTime: null
     }))
@@ -111,6 +120,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
     setTimerState(current => ({
       ...current,
       isRunning: true,
+      isPaused: false,
       startTime: Date.now()
     }))
     
@@ -121,10 +131,25 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
   }
 
   const stopTimer = () => {
-    const finalTime = timerState.elapsedTime
+    setTimerState(current => ({
+      ...current,
+      isRunning: false,
+      isPaused: false,
+      isStopped: true,
+      startTime: null
+    }))
     
+    // Keep timer registered to prevent multiple timers
+    // Only clear after using the time or resetting
+    
+    toast.success(`Timer stopped for ${attractionName}`)
+  }
+
+  const resetTimer = () => {
     setTimerState({
       isRunning: false,
+      isPaused: false,
+      isStopped: false,
       startTime: null,
       elapsedTime: 0,
       pausedTime: 0
@@ -133,16 +158,30 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
     // Clear from global timer
     clearActiveTimer()
     
-    if (finalTime > 0 && onTimeRecorded) {
-      // Enforce minimum 1 minute for realistic wait time reporting
-      if (finalTime < 60) {
-        toast.error('Timer must run for at least 1 minute to record accurate wait times')
-        return
-      }
-      
-      const minutes = Math.ceil(finalTime / 60)
+    toast.info(`Timer reset for ${attractionName}`)
+  }
+
+  const useTime = () => {
+    if (!timerState.isStopped) {
+      toast.error('Stop the timer first before using this time')
+      return
+    }
+
+    const finalTime = timerState.elapsedTime
+    
+    if (finalTime < 60) {
+      toast.error('Timer must run for at least 1 minute to record accurate wait times')
+      return
+    }
+    
+    const minutes = Math.ceil(finalTime / 60)
+    
+    // Reset timer after using the time
+    resetTimer()
+    
+    if (onTimeRecorded) {
       onTimeRecorded(minutes)
-      toast.success(`Timer stopped: ${minutes} minutes`)
+      toast.success(`Used timer result: ${minutes} minutes`)
     }
   }
 
@@ -162,7 +201,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
         </div>
         
         <div className="flex justify-center gap-2">
-          {!timerState.isRunning && timerState.elapsedTime === 0 && (
+          {!timerState.isRunning && !timerState.isPaused && !timerState.isStopped && (
             <Button onClick={startTimer} className="gap-2">
               <Play size={16} />
               Start Timer
@@ -170,30 +209,64 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
           )}
           
           {timerState.isRunning && (
-            <Button onClick={pauseTimer} variant="outline" className="gap-2">
-              <Pause size={16} />
-              Pause
-            </Button>
+            <>
+              <Button onClick={pauseTimer} variant="outline" className="gap-2">
+                <Pause size={16} />
+                Pause
+              </Button>
+              <Button onClick={stopTimer} variant="secondary" className="gap-2">
+                <Stop size={16} />
+                Stop
+              </Button>
+            </>
           )}
           
-          {!timerState.isRunning && timerState.elapsedTime > 0 && (
+          {timerState.isPaused && (
             <>
               <Button onClick={resumeTimer} className="gap-2">
                 <Play size={16} />
                 Resume
               </Button>
-              <Button onClick={stopTimer} variant="outline" className="gap-2">
+              <Button onClick={stopTimer} variant="secondary" className="gap-2">
                 <Stop size={16} />
                 Stop
+              </Button>
+            </>
+          )}
+
+          {timerState.isStopped && (
+            <>
+              <Button 
+                onClick={useTime} 
+                className="gap-2 bg-success hover:bg-success/90"
+                disabled={timerState.elapsedTime < 60}
+              >
+                <CheckCircle size={16} />
+                Use This Time
+              </Button>
+              <Button onClick={resetTimer} variant="outline" className="gap-2">
+                Reset
               </Button>
             </>
           )}
         </div>
         
         {timerState.elapsedTime > 0 && (
-          <p className="text-sm text-muted-foreground">
-            Current wait: {Math.ceil(timerState.elapsedTime / 60)} minutes
-          </p>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">
+              Current wait: {Math.ceil(timerState.elapsedTime / 60)} minutes
+            </p>
+            {!timerState.isStopped && (
+              <p className="text-xs text-muted-foreground">
+                Stop the timer to submit this time
+              </p>
+            )}
+            {timerState.isStopped && timerState.elapsedTime < 60 && (
+              <p className="text-xs text-destructive">
+                Timer must run for at least 1 minute
+              </p>
+            )}
+          </div>
         )}
       </div>
     </Card>

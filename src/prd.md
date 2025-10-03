@@ -39,9 +39,19 @@
 - **Success Criteria**: Users can create accounts and log in to report wait times
 
 ### Wait Time Reporting System
-- **What**: Users can report current wait times for attractions
+- **What**: Users can report current wait times for attractions via manual entry or built-in timer
 - **Why**: Creates real-time, community-driven data for better park planning
 - **Success Criteria**: Users can successfully submit wait time reports, data is saved reliably
+
+### Real-Time Wait Time Timer
+- **What**: Integrated timer system allowing users to time their actual wait in line and submit precise wait times
+- **Why**: Provides more accurate wait time data compared to estimates, with persistence across page navigation
+- **Success Criteria**: Timer persists across app navigation, only one timer can run at a time, users must stop timer before submitting time
+
+### Global Timer Navigation
+- **What**: Persistent timer indicator showing active timer status with click-to-navigate functionality
+- **Why**: Allows users to navigate the app while timing their wait and easily return to the timer
+- **Success Criteria**: Timer indicator remains visible with accurate time display, clicking navigates to attraction details page
 
 ### Comprehensive Park Coverage
 - **What**: Support for major US theme park destinations including Disney World, Disneyland, Universal Orlando/Hollywood, Six Flags, Cedar Point, Knott's Berry Farm

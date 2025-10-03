@@ -10,6 +10,8 @@ interface GlobalTimerState {
 
 interface TimerState {
   isRunning: boolean
+  isPaused: boolean
+  isStopped: boolean
   startTime: number | null
   elapsedTime: number
   pausedTime: number
@@ -24,6 +26,7 @@ export function useGlobalTimer() {
 
   // Check if a timer can start (no other timer is running)
   const canStartTimer = useCallback((timerId: string): boolean => {
+    // Allow if no active timer, or if this is the same timer (resume case)
     return globalState.activeTimerId === null || globalState.activeTimerId === timerId
   }, [globalState.activeTimerId])
 
@@ -51,12 +54,13 @@ export function useGlobalTimer() {
       // Stop the other running timer
       try {
         const otherTimerState = await window.spark.kv.get<TimerState>(globalState.activeTimerId)
-        if (otherTimerState?.isRunning) {
+        if (otherTimerState?.isRunning || otherTimerState?.isPaused) {
           // Stop the other timer
           await window.spark.kv.set(globalState.activeTimerId, {
             ...otherTimerState,
             isRunning: false,
-            pausedTime: otherTimerState.elapsedTime,
+            isPaused: false,
+            isStopped: true,
             startTime: null
           })
           

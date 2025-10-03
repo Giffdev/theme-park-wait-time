@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Clock, TrendUp, Plus, Users, CheckCircle, Warning } from '@phosphor-icons/react'
 import { formatTime12Hour, formatDateTime12Hour } from '@/utils/timeFormat'
 import { QuickWaitTimeModal } from '@/components/QuickWaitTimeModal'
+import { ReportWaitTimeModal } from '@/components/ReportWaitTimeModal'
 import { WaitTimeChart } from '@/components/WaitTimeChart'
 import { DebugDataViewer } from '@/components/DebugDataViewer'
 import { useReporting } from '@/hooks/useReporting'
@@ -214,11 +215,6 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
     setShowReportModal(true)
   }
 
-  const handleTimerClick = (attraction: ExtendedAttraction) => {
-    // Timer functionality has been removed to simplify the app
-    toast.info('Timer functionality has been disabled. Use wait time reporting instead.')
-  }
-
   const handleTrendsClick = (attractionId: string) => {
     navigate(`/park/${parkId}/attraction/${attractionId}`)
   }
@@ -379,17 +375,19 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
       )}
 
       {showReportModal && selectedAttraction && user && (
-        <QuickWaitTimeModal
+        <ReportWaitTimeModal
           attractionId={selectedAttraction}
           attractionName={attractions?.find(a => a.id === selectedAttraction)?.name || ''}
           parkId={parkId}
-          parkName={getParkDisplayName(parkId)}
           user={user}
           onClose={() => {
             setShowReportModal(false)
             setSelectedAttraction(null)
           }}
-          onLoginRequired={onLoginRequired}
+          onSubmit={(waitTime) => {
+            // Refresh the data after a successful report
+            loadAttractionsForPark()
+          }}
         />
       )}
       

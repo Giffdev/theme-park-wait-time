@@ -7,6 +7,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 
 interface TimerState {
   isRunning: boolean
+  isPaused: boolean
+  isStopped: boolean
   startTime: number | null
   elapsedTime: number
   pausedTime: number
@@ -23,6 +25,8 @@ export function GlobalTimerIndicator() {
     globalState.activeTimerId || 'no-timer', 
     {
       isRunning: false,
+      isPaused: false,
+      isStopped: false,
       startTime: null,
       elapsedTime: 0,
       pausedTime: 0
@@ -43,8 +47,8 @@ export function GlobalTimerIndicator() {
     }
   }, [activeTimerState.isRunning, activeTimerState.startTime, activeTimerState.elapsedTime, activeTimerState.pausedTime])
 
-  // Don't show if no active timer or if timer has no elapsed time
-  if (!globalState.activeTimerId || (!activeTimerState.isRunning && activeTimerState.elapsedTime === 0)) {
+  // Don't show if no active timer or if timer has no elapsed time and isn't running/paused
+  if (!globalState.activeTimerId || (!activeTimerState.isRunning && !activeTimerState.isPaused && activeTimerState.elapsedTime === 0)) {
     return null
   }
 
@@ -77,6 +81,12 @@ export function GlobalTimerIndicator() {
       {formatTimerDisplay(currentElapsedTime)}
       {activeTimerState.isRunning && (
         <span className="ml-2 h-2 w-2 bg-green-500 rounded-full animate-pulse" />
+      )}
+      {activeTimerState.isPaused && (
+        <span className="ml-2 h-2 w-2 bg-yellow-500 rounded-full" />
+      )}
+      {activeTimerState.isStopped && (
+        <span className="ml-2 h-2 w-2 bg-red-500 rounded-full" />
       )}
       <div className="ml-2 text-xs opacity-75 max-w-24 truncate">
         {globalState.activeAttractionName}
