@@ -5,29 +5,22 @@ import { Calendar } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 
 interface DateWheelPickerProps {
-  date: Date
+  date: Date | undefined
   onDateChange: (date: Date) => void
-  placeholder?: string
   className?: string
-  disabled?: boolean
+  placeholder?: string
 }
 
-export function DateWheelPicker({
-  date,
-  onDateChange,
-  placeholder = "Pick a date",
-  className,
-  disabled = false
-}: DateWheelPickerProps) {
-  const [isOpen, setIsOpen] = useState(false)
+export function DateWheelPicker({ date, onDateChange, className, placeholder }: DateWheelPickerProps) {
+  const currentDate = new Date()
+  const [selectedMonth, setSelectedMonth] = useState(date ? date.getMonth() : currentDate.getMonth())
+  const [selectedYear, setSelectedYear] = useState(date ? date.getFullYear() : currentDate.getFullYear())
+  const [selectedDay, setSelectedDay] = useState(date ? date.getDate() : currentDate.getDate())
+  const [open, setOpen] = useState(false)
+
   const monthRef = useRef<HTMLDivElement>(null)
   const dayRef = useRef<HTMLDivElement>(null)
   const yearRef = useRef<HTMLDivElement>(null)
-  
-  const currentDate = new Date()
-  const selectedMonth = date.getMonth()
-  const selectedDay = date.getDate()
-  const selectedYear = date.getFullYear()
 
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -44,7 +37,7 @@ export function DateWheelPicker({
   
   const days = Array.from({ length: getDaysInMonth(selectedMonth, selectedYear) }, (_, i) => i + 1)
 
-  const handleWheelScroll = (element: HTMLDivElement | null, items: any[], getValue: (item: any, index?: number) => number, onChange: (value: number) => void) => {
+  const handleWheelScroll = (element: HTMLDivElement | null, items: any[], getValue: (item: any) => number, onChange: (value: number) => void) => {
     if (!element) return
 
     const handleScroll = (e: WheelEvent) => {
@@ -53,7 +46,6 @@ export function DateWheelPicker({
       
       const itemHeight = 40 // Height of each item
       const containerHeight = element.clientHeight
-      const centerIndex = Math.floor(containerHeight / itemHeight / 2)
       
       const currentScroll = element.scrollTop
       const delta = e.deltaY > 0 ? itemHeight : -itemHeight
@@ -62,135 +54,80 @@ export function DateWheelPicker({
       element.scrollTop = newScroll
       
       const newIndex = Math.round(newScroll / itemHeight)
-      const selectedValue = getValue(items[newIndex], newIndex)
-      onChange(selectedValue)
+      const newValue = getValue(items[newIndex])
+      onChange(newValue)
     }
 
     element.addEventListener('wheel', handleScroll, { passive: false })
     return () => element.removeEventListener('wheel', handleScroll)
   }
 
-  // Center the selected values when opening
-  useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => {
-        if (monthRef.current) {
-          monthRef.current.scrollTop = selectedMonth * 40
-        }
-        if (dayRef.current) {
-          dayRef.current.scrollTop = (selectedDay - 1) * 40
-        }
-        if (yearRef.current) {
-          const yearIndex = years.indexOf(selectedYear)
-          yearRef.current.scrollTop = yearIndex * 40
-        }
-      }, 50)
-    }
-  }, [isOpen, selectedMonth, selectedDay, selectedYear, years])
-
-  // Set up wheel event listeners
-  useEffect(() => {
-    if (!isOpen) return
-
-    const cleanupMonth = handleWheelScroll(
-      monthRef.current,
-      months,
-      (_, index) => index ?? 0,
-      (month: number) => {
-        const newDate = new Date(selectedYear, month, Math.min(selectedDay, getDaysInMonth(month, selectedYear)))
-        onDateChange(newDate)
-      }
-    )
-
-    const cleanupDay = handleWheelScroll(
-      dayRef.current,
-      days,
-      (day) => day,
-      (day: number) => {
-        const newDate = new Date(selectedYear, selectedMonth, day)
-        onDateChange(newDate)
-      }
-    )
-
-    const cleanupYear = handleWheelScroll(
-      yearRef.current,
-      years,
-      (year) => year,
-      (year: number) => {
-        const newDate = new Date(year, selectedMonth, Math.min(selectedDay, getDaysInMonth(selectedMonth, year)))
-        onDateChange(newDate)
-      }
-    )
-
-    return () => {
-      cleanupMonth?.()
-      cleanupDay?.()
-      cleanupYear?.()
-    }
-  }, [isOpen, months, days, years, selectedMonth, selectedDay, selectedYear, onDateChange])
-
-  const formatDate = (date: Date) => {
+  const formatDateDisplay = (date: Date | undefined) => {
+    if (!date) return placeholder || "Pick a date"
+    
     const today = new Date()
     const yesterday = new Date(today)
-    yesterday.setDate(today.getDate() - 1)
-    
+    yesterday.setDate(yesterday.getDate() - 1)
+
     if (date.toDateString() === today.toDateString()) {
-      return `Today (${date.toLocaleDateString()})`
+      return "Today"
     } else if (date.toDateString() === yesterday.toDateString()) {
-      return `Yesterday (${date.toLocaleDateString()})`
-    } else {
-      return date.toLocaleDateString()
+      return "Yesterday"
     }
+
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short', 
+      day: 'numeric'
+    })
   }
 
-  const WheelColumn = ({ 
-    items, 
+  const WheelPicker = ({ 
     selectedValue, 
+    items, 
+    renderItem, 
     wheelRef, 
-    renderItem 
   }: { 
-    items: any[], 
     selectedValue: any, 
-    wheelRef: React.RefObject<HTMLDivElement>,
-    renderItem: (item: any, index: number) => React.ReactNode
+    items: any[], 
+    renderItem: (item: any, index: number) => React.ReactNode,
+    wheelRef: React.RefObject<HTMLDivElement | null>
   }) => (
-    <div className="flex-1 relative">
+    <div className="relative h-32 overflow-hidden">
       <div 
         ref={wheelRef}
-        className="h-40 overflow-hidden relative"
+        className="h-full overflow-y-auto scrollbar-hide"
         style={{ scrollBehavior: 'smooth' }}
       >
-        <div className="py-16">
+        <div className="py-12">
           {items.map((item, index) => (
             <div
               key={index}
               className={cn(
-                "h-10 flex items-center justify-center text-sm cursor-pointer transition-all",
+                "h-10 flex items-center justify-center text-sm transition-colors",
                 item === selectedValue 
-                  ? "text-primary font-semibold scale-110" 
+                  ? "text-primary font-medium" 
                   : "text-muted-foreground hover:text-foreground"
               )}
-              onClick={() => {
-                if (wheelRef.current) {
-                  wheelRef.current.scrollTop = index * 40
-                }
-              }}
             >
               {renderItem(item, index)}
             </div>
           ))}
         </div>
       </div>
-      
       {/* Selection indicator */}
-      <div className="absolute inset-x-0 top-1/2 transform -translate-y-1/2 pointer-events-none">
-        <div className="h-10 border-t border-b border-primary/20 bg-primary/5"></div>
-      </div>
+      <div className="absolute top-1/2 left-0 right-0 h-10 -translate-y-1/2 border-t border-b border-border bg-accent/10 pointer-events-none" />
     </div>
   )
 
+  const handleConfirm = () => {
+    const newDate = new Date(selectedYear, selectedMonth, selectedDay)
+    onDateChange(newDate)
+    setOpen(false)
+  }
+
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -199,45 +136,48 @@ export function DateWheelPicker({
             !date && "text-muted-foreground",
             className
           )}
-          disabled={disabled}
         >
           <Calendar className="mr-2 h-4 w-4" />
-          {date ? formatDate(date) : <span>{placeholder}</span>}
+          {formatDateDisplay(date)}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-0" align="start">
         <div className="p-4">
-          <h4 className="font-medium text-center mb-4">Select Visit Date</h4>
-          <div className="flex gap-2">
-            <WheelColumn
-              items={months}
-              selectedValue={months[selectedMonth]}
-              wheelRef={monthRef as React.RefObject<HTMLDivElement>}
-              renderItem={(month) => month.slice(0, 3)}
-            />
-            <WheelColumn
-              items={days}
-              selectedValue={selectedDay}
-              wheelRef={dayRef as React.RefObject<HTMLDivElement>}
-              renderItem={(day) => day}
-            />
-            <WheelColumn
-              items={years}
-              selectedValue={selectedYear}
-              wheelRef={yearRef as React.RefObject<HTMLDivElement>}
-              renderItem={(year) => year}
-            />
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-2 block">Month</label>
+              <WheelPicker
+                selectedValue={selectedMonth}
+                items={months}
+                renderItem={(month, index) => month}
+                wheelRef={monthRef}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-2 block">Day</label>
+              <WheelPicker
+                selectedValue={selectedDay}
+                items={days}
+                renderItem={(day) => day}
+                wheelRef={dayRef}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-2 block">Year</label>
+              <WheelPicker
+                selectedValue={selectedYear}
+                items={years}
+                renderItem={(year) => year}
+                wheelRef={yearRef}
+              />
+            </div>
           </div>
-          <div className="mt-4 pt-3 border-t text-center">
-            <p className="text-xs text-muted-foreground mb-2">
-              Selected: {formatDate(date)}
-            </p>
-            <Button 
-              size="sm" 
-              onClick={() => setIsOpen(false)}
-              className="w-full"
-            >
-              Done
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirm}>
+              Confirm
             </Button>
           </div>
         </div>
