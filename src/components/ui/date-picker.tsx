@@ -1,6 +1,6 @@
 import * as React from "react"
-import { Calendar as CalendarIcon } from "@phosphor-icons/react"
 import { format } from "date-fns"
+import { Calendar as CalendarIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -14,18 +14,18 @@ import {
 interface DatePickerProps {
   date?: Date
   onDateChange?: (date: Date | undefined) => void
+  placeholder?: string
   minDate?: Date
   maxDate?: Date
-  placeholder?: string
   className?: string
 }
 
 export function DatePicker({
   date,
   onDateChange,
+  placeholder = "Pick a date",
   minDate,
   maxDate,
-  placeholder = "Pick a date",
   className,
 }: DatePickerProps) {
   return (
