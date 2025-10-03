@@ -401,7 +401,7 @@ export function ReportWaitTimeModal({
                   value={waitTime}
                   onChange={(e) => setWaitTime(e.target.value)}
                   placeholder="e.g. 45"
-                  className="text-center text-lg h-12 max-w-32 mx-auto block"
+                  className="text-center text-lg h-14 max-w-32 mx-auto block"
                 />
                 <p className="text-xs text-muted-foreground text-center">
                   Enter 0 for walk-on, or actual wait time in line
