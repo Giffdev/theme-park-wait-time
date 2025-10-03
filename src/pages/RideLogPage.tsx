@@ -485,7 +485,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         console.log('✅ Current trip saved to KV')
         
         // If there are rides logged, save to permanent trip storage
-        if (logsToSave.length > 0) {
+        if (updatedTrip.totalRides > 0) {
           await window.spark.kv.set(`trip-${updatedTrip.id}`, updatedTrip)
           console.log('✅ Trip record saved to KV permanent storage with proper ride counts')
           
@@ -494,7 +494,9 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
           if (!userTrips.includes(updatedTrip.id)) {
             userTrips.push(updatedTrip.id)
             await window.spark.kv.set(`user-trips-${user.id}`, userTrips)
-            console.log('✅ User trip history updated')
+            console.log('✅ User trip history updated - trip added to permanent storage')
+          } else {
+            console.log('ℹ️ Trip already exists in user trip history')
           }
         } else {
           console.log('ℹ️ No rides logged yet, trip not saved to permanent storage')

@@ -54,11 +54,21 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
     try {
       console.log('🔄 Loading trips for user:', user.id)
       
+      // Check if there's also a current trip that should be included
+      const currentTrip = await window.spark.kv.get<Trip>(`current-trip-${user.id}`)
+      if (currentTrip && currentTrip.totalRides > 0) {
+        console.log('📋 Found active current trip with rides:', {
+          id: currentTrip.id,
+          totalRides: currentTrip.totalRides,
+          logsCount: currentTrip.rideLogs.length
+        })
+      }
+      
       const tripIds = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
-      console.log('📋 Found trip IDs:', tripIds)
+      console.log('📋 Found trip IDs in user history:', tripIds)
       
       if (tripIds.length === 0) {
-        console.log('ℹ️ No trip IDs found for user')
+        console.log('ℹ️ No trip IDs found in user history')
         setTrips([])
         setIsLoading(false)
         return
@@ -66,7 +76,14 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
       
       const tripPromises = tripIds.map(async (id) => {
         const trip = await window.spark.kv.get<Trip>(`trip-${id}`)
-        console.log(`📁 Trip ${id}:`, trip ? 'found' : 'missing')
+        console.log(`📁 Trip ${id}:`, trip ? `found (${trip.totalRides} rides, ${trip.rideLogs.length} logs)` : 'MISSING')
+        if (trip) {
+          console.log(`📋 Trip ${id} details:`, {
+            visitDate: trip.visitDate,
+            totalRides: trip.totalRides,
+            parks: trip.parks.map(p => `${p.parkName}(${p.rideCount})`)
+          })
+        }
         return trip
       })
       
@@ -77,7 +94,7 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
       
       // Debug: Log detailed trip information
       validTrips.forEach(trip => {
-        console.log(`🔍 Trip ${trip.id}:`, {
+        console.log(`🔍 Trip ${trip.id} full details:`, {
           visitDate: trip.visitDate,
           totalRides: trip.totalRides,
           rideLogsCount: trip.rideLogs.length,
