@@ -91,6 +91,41 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     }
   }, [user, parkId, currentTrip, setCurrentTrip])
 
+  // Restore state from existing current trip
+  useEffect(() => {
+    if (currentTrip && currentTrip.rideLogs.length > 0) {
+      console.log('🔄 Restoring state from existing trip with', currentTrip.rideLogs.length, 'logs')
+      
+      const restoredRideCounts: Record<string, number> = {}
+      const restoredVariants: Record<string, string> = {}  
+      const restoredNotes: Record<string, string> = {}
+      
+      currentTrip.rideLogs.forEach(log => {
+        const key = `${log.parkId}-${log.attractionId}`
+        restoredRideCounts[key] = log.rideCount
+        
+        if (log.trackVariant) {
+          restoredVariants[key] = log.trackVariant
+        }
+        
+        if (log.notes) {
+          restoredNotes[key] = log.notes
+        }
+      })
+      
+      setRideCounts(restoredRideCounts)
+      setSelectedVariants(restoredVariants)
+      setNotes(restoredNotes)
+      setTripNotes(currentTrip.notes || '')
+      
+      console.log('✅ State restored from trip:', {
+        rideCount: Object.keys(restoredRideCounts).length,
+        variants: Object.keys(restoredVariants).length,
+        notes: Object.keys(restoredNotes).length
+      })
+    }
+  }, [currentTrip])
+
   // Pre-select attraction if specified in URL
   useEffect(() => {
     if (preselectedAttractionId && parkId && attractions[parkId]) {
@@ -658,14 +693,29 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                     <Button 
                       variant="outline" 
                       size="sm"
-                      onClick={() => {
-                        setCurrentTrip(null)
-                        setRideCounts({})
-                        setSelectedVariants({})
-                        setNotes({})
-                        setTripNotes('')
-                        toast.success('Trip session ended. Your rides have been saved!')
-                        navigate('/my-logs')
+                      onClick={async () => {
+                        if (!user || !currentTrip) return
+
+                        try {
+                          // Ensure final save to permanent storage
+                          await autoSaveTrip(rideCounts)
+                          
+                          // Clear current trip session
+                          await window.spark.kv.delete(`current-trip-${user.id}`)
+                          
+                          // Clear local state
+                          setCurrentTrip(null)
+                          setRideCounts({})
+                          setSelectedVariants({})
+                          setNotes({})
+                          setTripNotes('')
+                          
+                          toast.success('Trip completed and saved to your trip history!')
+                          navigate('/my-logs')
+                        } catch (error) {
+                          console.error('❌ Error completing trip:', error)
+                          toast.error('Failed to complete trip. Please try again.')
+                        }
                       }}
                     >
                       End Trip Session
