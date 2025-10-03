@@ -42,7 +42,6 @@ export function ReportWaitTimeModal({
 }: ReportWaitTimeModalProps) {
   const [waitTime, setWaitTime] = useState('')
   const [isClosed, setIsClosed] = useState(false)
-  const [inputMode, setInputMode] = useState<'manual' | 'timer'>('manual')
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const timerId = `timer-${attractionId}`
   
@@ -199,7 +198,6 @@ export function ReportWaitTimeModal({
 
     const minutes = Math.ceil(timerState.elapsedTime / 60)
     setWaitTime(minutes.toString())
-    setInputMode('manual')
     resetTimer()
     toast.success(`Used timer result: ${minutes} minutes`)
   }
@@ -281,112 +279,103 @@ export function ReportWaitTimeModal({
           </DialogTitle>
         </DialogHeader>
         
-        {/* Input Mode Toggle */}
-        <div className="flex gap-1 mb-4 p-1 bg-muted rounded-lg">
-          <Button
-            variant={inputMode === 'manual' ? 'default' : 'ghost'}
-            onClick={() => setInputMode('manual')}
-            size="sm"
-            className="flex-1 h-8 text-xs sm:text-sm"
-          >
-            Manual Entry
-          </Button>
-          <Button
-            variant={inputMode === 'timer' ? 'default' : 'ghost'}
-            onClick={() => setInputMode('timer')}
-            size="sm"
-            className="flex-1 h-8 text-xs sm:text-sm"
-          >
-            Use Timer
-          </Button>
-        </div>
-
-        {inputMode === 'timer' && (
-          <div className="space-y-4 mb-6">
-            {/* Timer Display */}
-            <div className="bg-card border rounded-lg p-4 sm:p-6 text-center">
-              <div className="text-2xl sm:text-3xl font-mono font-bold text-primary mb-2">
+        <form onSubmit={handleSubmitReport} className="space-y-6">
+          {/* Timer Section */}
+          <div className="bg-card border rounded-lg p-4 sm:p-6">
+            <div className="text-center mb-4">
+              <div className="text-2xl sm:text-3xl font-mono font-bold text-primary mb-1">
                 {formatTimerDisplay(timerState.elapsedTime)}
               </div>
-              <p className="text-xs sm:text-sm text-muted-foreground mb-4">
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 Time your actual wait in line
               </p>
-              
-              {/* Timer Controls */}
-              <div className="flex justify-center gap-2 flex-wrap">
-                {!timerState.isRunning && !timerState.isPaused && !timerState.isStopped && (
-                  <Button onClick={startTimer} className="gap-2 text-sm">
-                    <Play size={16} />
-                    Start Timer
-                  </Button>
-                )}
-                
-                {timerState.isRunning && (
-                  <>
-                    <Button onClick={pauseTimer} variant="outline" className="gap-2 text-sm">
-                      <Pause size={16} />
-                      Pause
-                    </Button>
-                    <Button onClick={stopTimer} variant="secondary" className="gap-2 text-sm">
-                      <Stop size={16} />
-                      Stop
-                    </Button>
-                  </>
-                )}
-                
-                {timerState.isPaused && (
-                  <>
-                    <Button onClick={resumeTimer} className="gap-2 text-sm">
-                      <Play size={16} />
-                      Resume
-                    </Button>
-                    <Button onClick={stopTimer} variant="secondary" className="gap-2 text-sm">
-                      <Stop size={16} />
-                      Stop
-                    </Button>
-                  </>
-                )}
-
-                {timerState.isStopped && (
-                  <Button onClick={resetTimer} variant="outline" className="gap-2 text-sm">
-                    Reset
-                  </Button>
-                )}
-              </div>
-              
-              {timerState.isStopped && timerState.elapsedTime > 0 && (
-                <Button 
-                  onClick={useTimerForReport} 
-                  className="mt-3 w-full bg-success hover:bg-success/90 text-sm"
-                  size="sm"
-                  disabled={timerState.elapsedTime < 60}
-                >
-                  <CheckCircle size={16} className="mr-2" />
-                  Use This Time ({Math.ceil(timerState.elapsedTime / 60)} min)
+            </div>
+            
+            {/* Timer Controls */}
+            <div className="flex justify-center gap-2 flex-wrap mb-4">
+              {!timerState.isRunning && !timerState.isPaused && !timerState.isStopped && (
+                <Button type="button" onClick={startTimer} className="gap-2 text-sm">
+                  <Play size={16} />
+                  Start Timer
                 </Button>
               )}
-
-              {timerState.elapsedTime > 0 && !timerState.isStopped && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  Stop the timer to submit this time
-                </p>
+              
+              {timerState.isRunning && (
+                <>
+                  <Button type="button" onClick={pauseTimer} variant="outline" className="gap-2 text-sm">
+                    <Pause size={16} />
+                    Pause
+                  </Button>
+                  <Button type="button" onClick={stopTimer} variant="secondary" className="gap-2 text-sm">
+                    <Stop size={16} />
+                    Stop
+                  </Button>
+                </>
+              )}
+              
+              {timerState.isPaused && (
+                <>
+                  <Button type="button" onClick={resumeTimer} className="gap-2 text-sm">
+                    <Play size={16} />
+                    Resume
+                  </Button>
+                  <Button type="button" onClick={stopTimer} variant="secondary" className="gap-2 text-sm">
+                    <Stop size={16} />
+                    Stop
+                  </Button>
+                </>
               )}
 
-              {timerState.isStopped && timerState.elapsedTime < 60 && (
-                <p className="text-xs text-destructive mt-2">
-                  Timer must run for at least 1 minute
-                </p>
+              {timerState.isStopped && (
+                <Button type="button" onClick={resetTimer} variant="outline" className="gap-2 text-sm">
+                  Reset
+                </Button>
               )}
             </div>
             
-            <p className="text-xs text-muted-foreground text-center">
-              💡 Your timer will persist if you leave and come back to this attraction
-            </p>
-          </div>
-        )}
+            {/* Use Timer Button */}
+            {timerState.isStopped && timerState.elapsedTime > 0 && (
+              <Button 
+                type="button"
+                onClick={useTimerForReport} 
+                className="w-full bg-success hover:bg-success/90 text-sm mb-3"
+                size="sm"
+                disabled={timerState.elapsedTime < 60}
+              >
+                <CheckCircle size={16} className="mr-2" />
+                Use This Time ({Math.ceil(timerState.elapsedTime / 60)} min)
+              </Button>
+            )}
 
-        {inputMode === 'manual' && (
-          <form onSubmit={handleSubmitReport} className="space-y-4">
+            {/* Timer Status Messages */}
+            {timerState.elapsedTime > 0 && !timerState.isStopped && (
+              <p className="text-xs text-muted-foreground text-center">
+                Stop the timer to use this time for your report
+              </p>
+            )}
+
+            {timerState.isStopped && timerState.elapsedTime < 60 && (
+              <p className="text-xs text-destructive text-center">
+                Timer must run for at least 1 minute for accurate reporting
+              </p>
+            )}
+            
+            {timerState.elapsedTime === 0 && (
+              <p className="text-xs text-muted-foreground text-center">
+                💡 Start the timer when you join the line - it will persist if you leave and come back
+              </p>
+            )}
+          </div>
+          
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 border-t border-border"></div>
+            <span className="text-xs text-muted-foreground bg-background px-2">OR</span>
+            <div className="flex-1 border-t border-border"></div>
+          </div>
+
+          {/* Manual Entry Section */}
+          <div className="space-y-4">
             {/* Ride Closed Checkbox */}
             <div className="flex items-center space-x-2">
               <Checkbox
@@ -411,7 +400,7 @@ export function ReportWaitTimeModal({
             {!isClosed && (
               <div className="space-y-2">
                 <Label htmlFor="waitTime" className="text-sm font-medium">
-                  Wait Time (minutes)
+                  Enter Wait Time Manually (minutes)
                 </Label>
                 <Input
                   id="waitTime"
@@ -421,7 +410,6 @@ export function ReportWaitTimeModal({
                   value={waitTime}
                   onChange={(e) => setWaitTime(e.target.value)}
                   placeholder="e.g. 45"
-                  required
                   className="text-center text-lg h-12 max-w-32 mx-auto block"
                 />
               </div>
@@ -448,8 +436,8 @@ export function ReportWaitTimeModal({
                 {isSubmitting ? 'Reporting...' : isClosed ? 'Report Closed' : 'Submit Report'}
               </Button>
             </div>
-          </form>
-        )}
+          </div>
+        </form>
 
         {/* Recent Reports */}
         {recentReports.length > 0 && (
