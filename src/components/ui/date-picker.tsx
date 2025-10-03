@@ -1,29 +1,33 @@
 import * as React from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Calendar as CalendarIcon } from "@phosphor-icons/react"
-import { cn } from "@/lib/utils"
 import { format } from "date-fns"
+import { Calendar as CalendarIcon } from "@phosphor-icons/react"
+
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 interface DatePickerProps {
-  placeholder?: string
   date?: Date
   onDateChange?: (date: Date | undefined) => void
+  placeholder?: string
+  disabled?: boolean
   minDate?: Date
   maxDate?: Date
-  disabled?: boolean
   className?: string
 }
 
 export function DatePicker({
-  placeholder = "Pick a date",
   date,
   onDateChange,
+  placeholder = "Pick a date",
+  disabled = false,
   minDate,
   maxDate,
-  disabled = false,
   className
 }: DatePickerProps) {
   const [open, setOpen] = React.useState(false)
