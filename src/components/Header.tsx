@@ -133,25 +133,23 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
             >
               Calendar
             </Link>
+            <Link 
+              to="/log" 
+              className={`text-sm font-medium transition-colors hover:text-foreground ${
+                isActive('/log') ? 'text-foreground' : 'text-muted-foreground'
+              }`}
+            >
+              Log Trip
+            </Link>
             {user && (
-              <>
-                <Link 
-                  to="/log" 
-                  className={`text-sm font-medium transition-colors hover:text-foreground ${
-                    isActive('/log') ? 'text-foreground' : 'text-muted-foreground'
-                  }`}
-                >
-                  Log Trip
-                </Link>
-                <Link 
-                  to="/my-logs" 
-                  className={`text-sm font-medium transition-colors hover:text-foreground ${
-                    isActive('/my-logs') ? 'text-foreground' : 'text-muted-foreground'
-                  }`}
-                >
-                  My Trips
-                </Link>
-              </>
+              <Link 
+                to="/my-logs" 
+                className={`text-sm font-medium transition-colors hover:text-foreground ${
+                  isActive('/my-logs') ? 'text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                My Trips
+              </Link>
             )}
             <Link 
               to="/about" 
@@ -223,27 +221,25 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
               >
                 Calendar
               </Link>
+              <Link 
+                to="/log" 
+                onClick={closeMobileMenu}
+                className={`text-sm font-medium transition-colors hover:text-foreground px-2 py-1 ${
+                  isActive('/log') ? 'text-foreground' : 'text-muted-foreground'
+                }`}
+              >
+                Log Trip
+              </Link>
               {user && (
-                <>
-                  <Link 
-                    to="/log" 
-                    onClick={closeMobileMenu}
-                    className={`text-sm font-medium transition-colors hover:text-foreground px-2 py-1 ${
-                      isActive('/log') ? 'text-foreground' : 'text-muted-foreground'
-                    }`}
-                  >
-                    Log Trip
-                  </Link>
-                  <Link 
-                    to="/my-logs" 
-                    onClick={closeMobileMenu}
-                    className={`text-sm font-medium transition-colors hover:text-foreground px-2 py-1 ${
-                      isActive('/my-logs') ? 'text-foreground' : 'text-muted-foreground'
-                    }`}
-                  >
-                    My Trips
-                  </Link>
-                </>
+                <Link 
+                  to="/my-logs" 
+                  onClick={closeMobileMenu}
+                  className={`text-sm font-medium transition-colors hover:text-foreground px-2 py-1 ${
+                    isActive('/my-logs') ? 'text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  My Trips
+                </Link>
               )}
               <Link 
                 to="/about" 

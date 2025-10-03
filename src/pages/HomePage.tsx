@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { MapPin, Users, Calendar, Funnel } from '@phosphor-icons/react'
+import { MapPin, Users, Calendar, Funnel, NotePencil, ChartLine } from '@phosphor-icons/react'
 import { parkFamilies } from '@/data/sampleData'
 import { getTodaysBusyLevel } from '@/utils/busyLevel'
 
@@ -39,6 +39,82 @@ export function HomePage() {
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
           Real-time wait times and crowd insights for your perfect park day across major theme park destinations
         </p>
+      </div>
+
+      {/* Quick Actions Section */}
+      <div className="mb-8">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {/* Log Trip Action */}
+          <Card className="border-2 border-primary/20 hover:border-primary/40 transition-all duration-300 group">
+            <CardHeader className="pb-3">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center group-hover:bg-accent/30 transition-colors">
+                  <NotePencil size={20} className="text-accent" />
+                </div>
+                <CardTitle className="text-lg">Log Your Trip</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-sm text-muted-foreground mb-4">
+                Track wait times, rate attractions, and help the community with real-time insights
+              </p>
+              <Button 
+                onClick={() => navigate('/log')} 
+                className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
+              >
+                Start Logging
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* View Predictions Action */}
+          <Card className="hover:shadow-md transition-all duration-300">
+            <CardHeader className="pb-3">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                  <ChartLine size={20} className="text-primary" />
+                </div>
+                <CardTitle className="text-lg">View Predictions</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-sm text-muted-foreground mb-4">
+                See crowd forecasts and plan your perfect park day with our calendar
+              </p>
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/calendar')} 
+                className="w-full"
+              >
+                View Calendar
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Browse Parks Action */}
+          <Card className="hover:shadow-md transition-all duration-300 md:col-span-2 lg:col-span-1">
+            <CardHeader className="pb-3">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-full bg-secondary/20 flex items-center justify-center">
+                  <MapPin size={20} className="text-secondary" />
+                </div>
+                <CardTitle className="text-lg">Explore Parks</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-sm text-muted-foreground mb-4">
+                Browse all theme parks and check current wait times for attractions
+              </p>
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/parks')} 
+                className="w-full"
+              >
+                Browse Parks
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Filter Controls */}
