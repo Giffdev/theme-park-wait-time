@@ -729,6 +729,22 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                 value={visitDate}
                 onChange={(e) => setVisitDate(e.target.value)}
                 max={new Date().toISOString().split('T')[0]}
+                className="cursor-pointer"
+                onClick={(e) => {
+                  // For date inputs, clicking anywhere should open the calendar
+                  const input = e.target as HTMLInputElement
+                  // Use optional chaining since showPicker is not available in all browsers
+                  if (input.showPicker && typeof input.showPicker === 'function') {
+                    try {
+                      input.showPicker()
+                    } catch {
+                      // Fallback for browsers that don't support showPicker
+                      input.focus()
+                    }
+                  } else {
+                    input.focus()
+                  }
+                }}
               />
             </div>
 
