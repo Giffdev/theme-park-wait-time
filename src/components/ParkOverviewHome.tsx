@@ -1,9 +1,10 @@
+import React, { useState, useEffect } from 'react'
 import { useKV } from '@github/spark/hooks'
-import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { Clock, MapPin } from '@phosphor-icons/react'
 
 interface ParkOverviewProps {
@@ -114,11 +115,36 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
     : PARK_FAMILIES.filter(family => family.name === selectedFamily)
 
   const getWaitTimeBadge = (avgWaitTime: number, maxWaitTime: number) => {
-    if (avgWaitTime === 0) return { color: 'bg-success/10', text: 'Great Day!', textColor: 'text-success' }
-    if (avgWaitTime <= 15) return { color: 'bg-success/10', text: 'Low Crowds', textColor: 'text-success' }
-    if (avgWaitTime <= 30) return { color: 'bg-accent/10', text: 'Moderate', textColor: 'text-accent-foreground' }
-    if (avgWaitTime <= 60) return { color: 'bg-secondary/10', text: 'Busy', textColor: 'text-secondary-foreground' }
-    return { color: 'bg-destructive/10', text: 'Very Busy', textColor: 'text-destructive' }
+    if (avgWaitTime === 0) return { 
+      color: 'bg-success/10', 
+      text: 'Great Day!', 
+      textColor: 'text-success',
+      tooltip: 'No wait times - perfect day to visit!'
+    }
+    if (avgWaitTime <= 15) return { 
+      color: 'bg-success/10', 
+      text: 'Low Crowds', 
+      textColor: 'text-success',
+      tooltip: 'Average wait times under 15 minutes - excellent conditions!'
+    }
+    if (avgWaitTime <= 30) return { 
+      color: 'bg-accent/10', 
+      text: 'Moderate', 
+      textColor: 'text-accent-foreground',
+      tooltip: 'Average wait times 15-30 minutes - typical crowd levels'
+    }
+    if (avgWaitTime <= 60) return { 
+      color: 'bg-secondary/10', 
+      text: 'Busy', 
+      textColor: 'text-secondary-foreground',
+      tooltip: 'Average wait times 30-60 minutes - busier than usual'
+    }
+    return { 
+      color: 'bg-destructive/10', 
+      text: 'Very Busy', 
+      textColor: 'text-destructive',
+      tooltip: 'Average wait times over 60 minutes - peak crowd levels'
+    }
   }
 
   if (isLoading) {
@@ -206,9 +232,16 @@ export function ParkOverview({ onParkSelect }: ParkOverviewProps) {
                         <div className="space-y-3">
                           <div className="flex justify-between items-start">
                             <h4 className="font-medium text-sm leading-tight">{data.name}</h4>
-                            <Badge variant="secondary" className={`text-xs ${waitBadge.color} ${waitBadge.textColor} border-0`}>
-                              {waitBadge.text}
-                            </Badge>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge variant="secondary" className={`text-xs ${waitBadge.color} ${waitBadge.textColor} border-0 cursor-help`}>
+                                  {waitBadge.text}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{waitBadge.tooltip}</p>
+                              </TooltipContent>
+                            </Tooltip>
                           </div>
                           
                           <div className="flex justify-between text-xs text-muted-foreground">

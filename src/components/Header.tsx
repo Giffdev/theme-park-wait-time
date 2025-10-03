@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { SignOut, User as UserIcon, List, X } from '@phosphor-icons/react'
 import { Link, useLocation } from 'react-router-dom'
