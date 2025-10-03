@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MapPin, Users, Calendar, Funnel } from '@phosphor-icons/react'
 import { parkFamilies } from '@/data/sampleData'
+import { getTodaysBusyLevel } from '@/utils/busyLevel'
 
 export function HomePage() {
   const navigate = useNavigate()
@@ -100,13 +101,25 @@ export function HomePage() {
                         <CardTitle className="text-xl font-semibold group-hover:text-primary transition-colors">
                           {park.name}
                         </CardTitle>
-                        <div className="flex items-center mt-2">
+                        <div className="flex items-center gap-2 mt-2">
                           <Badge 
                             variant={park.type === 'theme-park' ? 'default' : 'secondary'}
                             className="text-xs"
                           >
                             {park.type === 'theme-park' ? 'Theme Park' : 'Water Park'}
                           </Badge>
+                          {(() => {
+                            const busyLevel = getTodaysBusyLevel(park.id)
+                            console.log(`${park.name} busy level:`, busyLevel) // Debug logging
+                            return (
+                              <Badge 
+                                className={`text-xs ${busyLevel.colorClass}`}
+                                variant="secondary"
+                              >
+                                {busyLevel.label}
+                              </Badge>
+                            )
+                          })()}
                         </div>
                       </div>
                     </div>
