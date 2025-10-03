@@ -24,10 +24,76 @@ import {
 } from '@phosphor-icons/react'
 
 import type { Trip, User } from '@/types'
+import { ParkDataService } from '@/services/parkDataService'
 
 interface MyRideLogsPageProps {
   user: User | null
   onLoginRequired: () => void
+}
+
+// Helper function to resolve attraction names from stored logs
+async function resolveAttractionName(log: any): Promise<string> {
+  // If we already have a clean attraction name, use it
+  if (log.attractionName && !log.attractionName.includes('Unknown Attraction')) {
+    return log.attractionName
+  }
+  
+  // Try to find the attraction in park data
+  try {
+    const attractions = await ParkDataService.loadAttractions(log.parkId)
+    const attraction = attractions.find(a => a.id === log.attractionId)
+    
+    if (attraction) {
+      return attraction.name
+    }
+  } catch (error) {
+    console.warn(`Could not load attractions for park ${log.parkId}:`, error)
+  }
+  
+  // Handle malformed keys like "kingdom-space-mountain" 
+  if (log.attractionId && log.attractionId.includes('-')) {
+    const parts = log.attractionId.split('-')
+    if (parts.length >= 2) {
+      // Try different park combinations
+      const possibleParks = ['magic-kingdom', 'universal-studios-hollywood', 'disneyland', 'epcot']
+      
+      for (const parkId of possibleParks) {
+        try {
+          const attractions = await ParkDataService.loadAttractions(parkId)
+          
+          // Try the full attractionId first
+          let attraction = attractions.find(a => a.id === log.attractionId)
+          if (attraction) {
+            return `${attraction.name} (from ${parkId})`
+          }
+          
+          // Try just the last part (e.g., "space-mountain" from "kingdom-space-mountain")
+          const lastPart = parts[parts.length - 1]
+          attraction = attractions.find(a => a.id === lastPart || a.id.endsWith('-' + lastPart))
+          if (attraction) {
+            return `${attraction.name} (from ${parkId})`
+          }
+          
+          // Try combinations of parts
+          for (let i = 1; i < parts.length; i++) {
+            const partialId = parts.slice(i).join('-')
+            attraction = attractions.find(a => a.id === partialId)
+            if (attraction) {
+              return `${attraction.name} (from ${parkId})`
+            }
+          }
+        } catch (error) {
+          continue
+        }
+      }
+    }
+  }
+  
+  // Last resort: return a cleaned up version of the ID
+  const cleanId = log.attractionId?.replace(/^[^-]+-/, '') || log.attractionId || 'unknown'
+  return `${cleanId.split('-').map((word: string) => 
+    word.charAt(0).toUpperCase() + word.slice(1)
+  ).join(' ')} (unresolved)`
 }
 
 export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
@@ -86,7 +152,12 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
           console.log(`📋 Trip ${id} details:`, {
             visitDate: trip.visitDate,
             totalRides: trip.totalRides,
-            parks: trip.parks.map(p => `${p.parkName}(${p.rideCount})`)
+            parks: trip.parks.map(p => `${p.parkName}(${p.rideCount})`),
+            rideLogs: trip.rideLogs.map(log => ({
+              attractionId: log.attractionId,
+              attractionName: log.attractionName,
+              parkId: log.parkId
+            }))
           })
         }
         return trip
@@ -379,41 +450,7 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
                 {filteredRideLogs
                   .sort((a, b) => new Date(b.trip.visitDate).getTime() - new Date(a.trip.visitDate).getTime())
                   .map(({ trip, ...log }) => (
-                  <Card key={`${trip.id}-${log.id}`} className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Badge className={getTypeColor(log.attractionType)} variant="secondary">
-                          {getTypeIcon(log.attractionType)}
-                        </Badge>
-                        <div>
-                          <span className="font-medium">{log.attractionName}</span>
-                          {log.trackVariant && (
-                            <span className="text-sm text-muted-foreground ml-2">
-                              ({log.trackVariant})
-                            </span>
-                          )}
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                            <span className="flex items-center gap-1">
-                              <MapPin size={12} />
-                              {trip.parks.find(p => p.parkId === log.parkId)?.parkName}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Calendar size={12} />
-                              {new Date(trip.visitDate).toLocaleDateString()}
-                            </span>
-                          </div>
-                          {log.notes && (
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {log.notes}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <Badge variant="outline">
-                        {log.rideCount}x
-                      </Badge>
-                    </div>
-                  </Card>
+                  <RideLogCard key={`${trip.id}-${log.id}`} log={{ ...log, trip }} getTypeIcon={getTypeIcon} getTypeColor={getTypeColor} />
                 ))}
               </div>
               
@@ -436,6 +473,75 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
   )
 }
 
+interface RideLogCardProps {
+  log: any
+  getTypeIcon: (type: string) => React.ReactElement
+  getTypeColor: (type: string) => string
+}
+
+function RideLogCard({ log, getTypeIcon, getTypeColor }: RideLogCardProps) {
+  const [resolvedName, setResolvedName] = useState<string | null>(null)
+
+  useEffect(() => {
+    const resolveName = async () => {
+      try {
+        const name = await resolveAttractionName(log)
+        setResolvedName(name)
+      } catch (error) {
+        console.warn(`Failed to resolve name for log ${log.id}:`, error)
+        setResolvedName(log.attractionName || 'Unknown Attraction')
+      }
+    }
+    
+    resolveName()
+  }, [log])
+
+  const displayName = resolvedName || log.attractionName || 'Loading...'
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Badge className={getTypeColor(log.attractionType)} variant="secondary">
+            {getTypeIcon(log.attractionType)}
+          </Badge>
+          <div>
+            <span className="font-medium">{displayName}</span>
+            {log.trackVariant && (
+              <span className="text-sm text-muted-foreground ml-2">
+                ({log.trackVariant})
+              </span>
+            )}
+            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+              <span className="flex items-center gap-1">
+                <MapPin size={12} />
+                {log.trip.parks.find((p: any) => p.parkId === log.parkId)?.parkName}
+              </span>
+              <span className="flex items-center gap-1">
+                <Calendar size={12} />
+                {new Date(log.trip.visitDate).toLocaleDateString()}
+              </span>
+            </div>
+            {log.notes && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {log.notes}
+              </p>
+            )}
+            {displayName.includes('(unresolved)') && (
+              <p className="text-xs text-yellow-600 mt-1">
+                Debug: Park={log.parkId}, ID={log.attractionId}
+              </p>
+            )}
+          </div>
+        </div>
+        <Badge variant="outline">
+          {log.rideCount}x
+        </Badge>
+      </div>
+    </Card>
+  )
+}
+
 interface TripCardProps {
   trip: Trip
   onDelete: (tripId: string) => void
@@ -445,6 +551,30 @@ interface TripCardProps {
 
 function TripCard({ trip, onDelete, getTypeIcon, getTypeColor }: TripCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const [resolvedNames, setResolvedNames] = useState<Record<string, string>>({})
+
+  // Resolve attraction names when expanded
+  useEffect(() => {
+    if (expanded && trip.rideLogs.length > 0) {
+      const resolveNames = async () => {
+        const newResolvedNames: Record<string, string> = {}
+        
+        for (const log of trip.rideLogs) {
+          try {
+            const resolvedName = await resolveAttractionName(log)
+            newResolvedNames[log.id] = resolvedName
+          } catch (error) {
+            console.warn(`Failed to resolve name for log ${log.id}:`, error)
+            newResolvedNames[log.id] = log.attractionName || 'Unknown Attraction'
+          }
+        }
+        
+        setResolvedNames(newResolvedNames)
+      }
+      
+      resolveNames()
+    }
+  }, [expanded, trip.rideLogs])
 
   return (
     <Card className="overflow-hidden">
@@ -531,31 +661,39 @@ function TripCard({ trip, onDelete, getTypeIcon, getTypeColor }: TripCardProps) 
                     ) : (
                       parkLogs
                         .sort((a, b) => b.rideCount - a.rideCount)
-                        .map(log => (
-                          <div key={log.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
-                            <div className="flex items-center gap-3">
-                              <Badge className={getTypeColor(log.attractionType)} variant="secondary">
-                                {getTypeIcon(log.attractionType)}
-                              </Badge>
-                              <div>
-                                <span className="font-medium">{log.attractionName}</span>
-                                {log.trackVariant && (
-                                  <span className="text-sm text-muted-foreground ml-2">
-                                    ({log.trackVariant})
-                                  </span>
-                                )}
-                                {log.notes && (
-                                  <p className="text-sm text-muted-foreground mt-1">
-                                    {log.notes}
-                                  </p>
-                                )}
+                        .map(log => {
+                          const displayName = resolvedNames[log.id] || log.attractionName || 'Loading...'
+                          return (
+                            <div key={log.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
+                              <div className="flex items-center gap-3">
+                                <Badge className={getTypeColor(log.attractionType)} variant="secondary">
+                                  {getTypeIcon(log.attractionType)}
+                                </Badge>
+                                <div>
+                                  <span className="font-medium">{displayName}</span>
+                                  {log.trackVariant && (
+                                    <span className="text-sm text-muted-foreground ml-2">
+                                      ({log.trackVariant})
+                                    </span>
+                                  )}
+                                  {log.notes && (
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                      {log.notes}
+                                    </p>
+                                  )}
+                                  {displayName.includes('(unresolved)') && (
+                                    <p className="text-xs text-yellow-600 mt-1">
+                                      Debug: Park={log.parkId}, ID={log.attractionId}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
+                              <Badge variant="outline">
+                                {log.rideCount}x
+                              </Badge>
                             </div>
-                            <Badge variant="outline">
-                              {log.rideCount}x
-                            </Badge>
-                          </div>
-                        ))
+                          )
+                        })
                     )}
                   </div>
                 </div>
