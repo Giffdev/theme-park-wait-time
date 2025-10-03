@@ -47,6 +47,7 @@ export function DatePicker({
             className
           )}
           disabled={disabled}
+          type="button"
         >
           <CalendarIcon size={16} className="mr-2 h-4 w-4" />
           {date ? format(date, "PPP") : <span>{placeholder}</span>}

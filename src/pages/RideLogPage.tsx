@@ -732,6 +732,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                   }
                 }}
                 maxDate={new Date()} // Don't allow future dates
+                minDate={new Date(new Date().getFullYear() - 10, 0, 1)} // Don't allow dates more than 10 years ago
                 placeholder="Choose your visit date"
                 className="w-full"
               />

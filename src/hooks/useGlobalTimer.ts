@@ -17,18 +17,20 @@ interface TimerState {
   pausedTime: number
 }
 
+const defaultGlobalState: GlobalTimerState = {
+  activeTimerId: null,
+  activeAttractionName: null,
+  activeParkId: null
+}
+
 export function useGlobalTimer() {
-  const [globalState, setGlobalState] = useKV<GlobalTimerState>('global-timer-state', {
-    activeTimerId: null,
-    activeAttractionName: null,
-    activeParkId: null
-  })
+  const [globalState, setGlobalState] = useKV<GlobalTimerState>('global-timer-state', defaultGlobalState)
 
   // Check if a timer can start (no other timer is running)
   const canStartTimer = useCallback((timerId: string): boolean => {
     // Allow if no active timer, or if this is the same timer (resume case)
-    return globalState.activeTimerId === null || globalState.activeTimerId === timerId
-  }, [globalState.activeTimerId])
+    return globalState?.activeTimerId === null || globalState?.activeTimerId === timerId
+  }, [globalState?.activeTimerId])
 
   // Register a timer as active
   const setActiveTimer = useCallback((timerId: string, attractionName: string, parkId: string) => {
@@ -50,7 +52,7 @@ export function useGlobalTimer() {
 
   // Stop any other running timer when starting a new one
   const stopOtherTimers = useCallback(async (currentTimerId: string) => {
-    if (globalState.activeTimerId && globalState.activeTimerId !== currentTimerId) {
+    if (globalState?.activeTimerId && globalState.activeTimerId !== currentTimerId) {
       // Stop the other running timer
       try {
         const otherTimerState = await window.spark.kv.get<TimerState>(globalState.activeTimerId)
@@ -70,10 +72,10 @@ export function useGlobalTimer() {
         console.warn('Failed to stop other timer:', error)
       }
     }
-  }, [globalState.activeTimerId, globalState.activeAttractionName])
+  }, [globalState?.activeTimerId, globalState?.activeAttractionName])
 
   return {
-    globalState,
+    globalState: globalState || defaultGlobalState,
     canStartTimer,
     setActiveTimer,
     clearActiveTimer,

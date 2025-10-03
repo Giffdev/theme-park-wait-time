@@ -22,6 +22,15 @@ interface TimerState {
   pausedTime: number
 }
 
+const defaultTimerState: TimerState = {
+  isRunning: false,
+  isPaused: false,
+  isStopped: false,
+  startTime: null,
+  elapsedTime: 0,
+  pausedTime: 0
+}
+
 export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded }: RideTimerProps) {
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const timerId = `timer-${attractionId}`
@@ -30,22 +39,25 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
   const { globalState, canStartTimer, setActiveTimer, clearActiveTimer, stopOtherTimers } = useGlobalTimer()
   
   // Timer state with persistence per attraction
-  const [timerState, setTimerState] = useKV<TimerState>(timerId, {
-    isRunning: false,
-    isPaused: false,
-    isStopped: false,
-    startTime: null,
-    elapsedTime: 0,
-    pausedTime: 0
-  })
+  const [timerStateRaw, setTimerState] = useKV<TimerState>(timerId, defaultTimerState)
+  
+  // Ensure we always have a valid timer state
+  const timerState = timerStateRaw || defaultTimerState
 
   // Update elapsed time when timer is running
   useEffect(() => {
-    if (timerState.isRunning && timerState.startTime) {
+    if (timerState?.isRunning && timerState?.startTime) {
       timerRef.current = setInterval(() => {
         setTimerState(current => ({
-          ...current,
-          elapsedTime: Math.floor((Date.now() - current.startTime!) / 1000) + current.pausedTime
+          ...(current || {
+            isRunning: false,
+            isPaused: false,
+            isStopped: false,
+            startTime: null,
+            elapsedTime: 0,
+            pausedTime: 0
+          }),
+          elapsedTime: Math.floor((Date.now() - (current?.startTime || Date.now())) / 1000) + (current?.pausedTime || 0)
         }))
       }, 1000)
     } else if (timerRef.current) {
@@ -59,7 +71,7 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
         timerRef.current = null
       }
     }
-  }, [timerState.isRunning, timerState.startTime, setTimerState])
+  }, [timerState?.isRunning, timerState?.startTime, setTimerState])
 
   // Sync with global timer state when component mounts
   useEffect(() => {
@@ -85,11 +97,13 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
     
     // Start this timer
     setTimerState(current => ({
-      ...current,
+      ...(current || defaultTimerState),
       isRunning: true,
       isPaused: false,
       isStopped: false,
-      startTime: Date.now()
+      startTime: Date.now(),
+      elapsedTime: current?.elapsedTime || 0,
+      pausedTime: current?.pausedTime || 0
     }))
     
     // Register as active timer
@@ -100,11 +114,12 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
 
   const pauseTimer = () => {
     setTimerState(current => ({
-      ...current,
+      ...(current || defaultTimerState),
       isRunning: false,
       isPaused: true,
-      pausedTime: current.elapsedTime,
-      startTime: null
+      pausedTime: current?.elapsedTime || 0,
+      startTime: null,
+      isStopped: current?.isStopped || false
     }))
     
     // Keep timer registered but paused
@@ -118,10 +133,13 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
     }
 
     setTimerState(current => ({
-      ...current,
+      ...(current || defaultTimerState),
       isRunning: true,
       isPaused: false,
-      startTime: Date.now()
+      startTime: Date.now(),
+      isStopped: current?.isStopped || false,
+      elapsedTime: current?.elapsedTime || 0,
+      pausedTime: current?.pausedTime || 0
     }))
     
     // Re-register as active timer
@@ -132,11 +150,13 @@ export function RideTimer({ attractionId, attractionName, parkId, onTimeRecorded
 
   const stopTimer = () => {
     setTimerState(current => ({
-      ...current,
+      ...(current || defaultTimerState),
       isRunning: false,
       isPaused: false,
       isStopped: true,
-      startTime: null
+      startTime: null,
+      elapsedTime: current?.elapsedTime || 0,
+      pausedTime: current?.pausedTime || 0
     }))
     
     // Keep timer registered to prevent multiple timers
