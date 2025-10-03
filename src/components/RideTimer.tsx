@@ -87,6 +87,12 @@ export function RideTimer({ attractionId, attractionName, onTimeRecorded }: Ride
     })
     
     if (finalTime > 0 && onTimeRecorded) {
+      // Enforce minimum 1 minute for realistic wait time reporting
+      if (finalTime < 60) {
+        toast.error('Timer must run for at least 1 minute to record accurate wait times')
+        return
+      }
+      
       const minutes = Math.ceil(finalTime / 60)
       onTimeRecorded(minutes)
       toast.success(`Timer stopped: ${minutes} minutes`)
