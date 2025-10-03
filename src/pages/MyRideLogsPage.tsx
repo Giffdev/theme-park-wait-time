@@ -75,6 +75,17 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
       
       console.log(`✅ Loaded ${validTrips.length} valid trips out of ${tripIds.length} trip IDs`)
       
+      // Debug: Log detailed trip information
+      validTrips.forEach(trip => {
+        console.log(`🔍 Trip ${trip.id}:`, {
+          visitDate: trip.visitDate,
+          totalRides: trip.totalRides,
+          rideLogsCount: trip.rideLogs.length,
+          parks: trip.parks.map(p => ({ name: p.parkName, rideCount: p.rideCount })),
+          rideLogsDetails: trip.rideLogs.map(log => ({ name: log.attractionName, count: log.rideCount }))
+        })
+      })
+      
       // Sort by visit date descending
       validTrips.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime())
       setTrips(validTrips)
