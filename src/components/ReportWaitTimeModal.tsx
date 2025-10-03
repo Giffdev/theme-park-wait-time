@@ -196,22 +196,9 @@ export function ReportWaitTimeModal({
     }
   }
 
-
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'verified':
-        return <CheckCircle size={16} className="text-success" />
-      case 'disputed':
-        return <XCircle size={16} className="text-destructive" />
-      default:
-        return <Warning size={16} className="text-muted-foreground" />
-    }
-  }
-
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg w-[95vw] max-h-[85vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Clock size={20} />
@@ -225,7 +212,7 @@ export function ReportWaitTimeModal({
             variant={inputMode === 'manual' ? 'default' : 'ghost'}
             onClick={() => setInputMode('manual')}
             size="sm"
-            className="flex-1 h-8"
+            className="flex-1 h-8 text-xs sm:text-sm"
           >
             Manual Entry
           </Button>
@@ -233,7 +220,7 @@ export function ReportWaitTimeModal({
             variant={inputMode === 'timer' ? 'default' : 'ghost'}
             onClick={() => setInputMode('timer')}
             size="sm"
-            className="flex-1 h-8"
+            className="flex-1 h-8 text-xs sm:text-sm"
           >
             Use Timer
           </Button>
@@ -242,25 +229,25 @@ export function ReportWaitTimeModal({
         {inputMode === 'timer' && (
           <div className="space-y-4 mb-6">
             {/* Timer Display */}
-            <div className="bg-card border rounded-lg p-6 text-center">
-              <div className="text-3xl font-mono font-bold text-primary mb-2">
+            <div className="bg-card border rounded-lg p-4 sm:p-6 text-center">
+              <div className="text-2xl sm:text-3xl font-mono font-bold text-primary mb-2">
                 {formatTimerDisplay(timerState.elapsedTime)}
               </div>
-              <p className="text-sm text-muted-foreground mb-4">
+              <p className="text-xs sm:text-sm text-muted-foreground mb-4">
                 Time your actual wait in line
               </p>
               
               {/* Timer Controls */}
-              <div className="flex justify-center gap-2">
+              <div className="flex justify-center gap-2 flex-wrap">
                 {!timerState.isRunning && timerState.elapsedTime === 0 && (
-                  <Button onClick={startTimer} className="gap-2">
+                  <Button onClick={startTimer} className="gap-2 text-sm">
                     <Play size={16} />
                     Start Timer
                   </Button>
                 )}
                 
                 {timerState.isRunning && (
-                  <Button onClick={pauseTimer} variant="outline" className="gap-2">
+                  <Button onClick={pauseTimer} variant="outline" className="gap-2 text-sm">
                     <Pause size={16} />
                     Pause
                   </Button>
@@ -268,11 +255,11 @@ export function ReportWaitTimeModal({
                 
                 {!timerState.isRunning && timerState.elapsedTime > 0 && (
                   <>
-                    <Button onClick={resumeTimer} className="gap-2">
+                    <Button onClick={resumeTimer} className="gap-2 text-sm">
                       <Play size={16} />
                       Resume
                     </Button>
-                    <Button onClick={stopTimer} variant="outline" className="gap-2">
+                    <Button onClick={stopTimer} variant="outline" className="gap-2 text-sm">
                       <Stop size={16} />
                       Reset
                     </Button>
@@ -283,7 +270,7 @@ export function ReportWaitTimeModal({
               {timerState.elapsedTime > 0 && (
                 <Button 
                   onClick={useTimerForReport} 
-                  className="mt-3 w-full bg-accent hover:bg-accent/90"
+                  className="mt-3 w-full bg-accent hover:bg-accent/90 text-sm"
                   size="sm"
                 >
                   Use This Time ({Math.ceil(timerState.elapsedTime / 60)} min)
@@ -334,13 +321,13 @@ export function ReportWaitTimeModal({
                   onChange={(e) => setWaitTime(e.target.value)}
                   placeholder="e.g. 45"
                   required
-                  className="text-lg h-12"
+                  className="text-center text-lg h-12 max-w-32 mx-auto block"
                 />
               </div>
             )}
             
             {/* Help Text */}
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground text-center">
               {isClosed 
                 ? "Your closure report helps other guests plan their visit"
                 : "Your report helps other guests avoid long waits"
@@ -370,14 +357,14 @@ export function ReportWaitTimeModal({
             <div className="space-y-2">
               {recentReports.map((report) => (
                 <div key={report.id} className="flex items-center justify-between text-sm py-2 px-3 bg-muted/50 rounded-md">
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground font-medium">{report.username}</span>
-                    <span className="text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="text-muted-foreground font-medium truncate">{report.username}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">
                       {formatTime12Hour(new Date(report.reportedAt).getHours(), new Date(report.reportedAt).getMinutes())}
                     </span>
-                    {getStatusIcon(report.status)}
+                    <span className="shrink-0">{getStatusIcon(report.status)}</span>
                   </div>
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant="secondary" className="text-xs ml-2 shrink-0">
                     {report.waitTime === -1 ? 'Closed' : `${report.waitTime} min`}
                   </Badge>
                 </div>
