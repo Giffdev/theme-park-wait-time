@@ -520,44 +520,59 @@ function TripCard({ trip, onDelete, getTypeIcon, getTypeColor }: TripCardProps) 
           )}
           
           <div className="space-y-4">
-            {trip.parks.map(park => (
-              <div key={park.parkId}>
-                <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                  <MapPin size={14} />
-                  {park.parkName} ({park.rideCount} rides)
-                </h4>
-                <div className="grid gap-2 pl-4">
-                  {trip.rideLogs
-                    .filter(log => log.parkId === park.parkId)
-                    .sort((a, b) => b.rideCount - a.rideCount)
-                    .map(log => (
-                    <div key={log.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
-                      <div className="flex items-center gap-3">
-                        <Badge className={getTypeColor(log.attractionType)} variant="secondary">
-                          {getTypeIcon(log.attractionType)}
-                        </Badge>
-                        <div>
-                          <span className="font-medium">{log.attractionName}</span>
-                          {log.trackVariant && (
-                            <span className="text-sm text-muted-foreground ml-2">
-                              ({log.trackVariant})
-                            </span>
-                          )}
-                          {log.notes && (
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {log.notes}
-                            </p>
-                          )}
-                        </div>
+            {trip.parks.map(park => {
+              const parkLogs = trip.rideLogs.filter(log => log.parkId === park.parkId)
+              const actualRideCount = parkLogs.reduce((sum, log) => sum + log.rideCount, 0)
+              
+              return (
+                <div key={park.parkId}>
+                  <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                    <MapPin size={14} />
+                    {park.parkName} ({actualRideCount} rides)
+                    {process.env.NODE_ENV === 'development' && (
+                      <span className="text-xs text-muted-foreground ml-2">
+                        [Debug: stored={park.rideCount}, logs={parkLogs.length}]
+                      </span>
+                    )}
+                  </h4>
+                  <div className="grid gap-2 pl-4">
+                    {parkLogs.length === 0 ? (
+                      <div className="text-sm text-muted-foreground italic py-2">
+                        No rides logged for this park
                       </div>
-                      <Badge variant="outline">
-                        {log.rideCount}x
-                      </Badge>
-                    </div>
-                  ))}
+                    ) : (
+                      parkLogs
+                        .sort((a, b) => b.rideCount - a.rideCount)
+                        .map(log => (
+                          <div key={log.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50">
+                            <div className="flex items-center gap-3">
+                              <Badge className={getTypeColor(log.attractionType)} variant="secondary">
+                                {getTypeIcon(log.attractionType)}
+                              </Badge>
+                              <div>
+                                <span className="font-medium">{log.attractionName}</span>
+                                {log.trackVariant && (
+                                  <span className="text-sm text-muted-foreground ml-2">
+                                    ({log.trackVariant})
+                                  </span>
+                                )}
+                                {log.notes && (
+                                  <p className="text-sm text-muted-foreground mt-1">
+                                    {log.notes}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <Badge variant="outline">
+                              {log.rideCount}x
+                            </Badge>
+                          </div>
+                        ))
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </CardContent>
       )}
