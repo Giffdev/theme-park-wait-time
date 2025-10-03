@@ -31,7 +31,7 @@ import {
   Funnel,
   PencilSimple
 } from '@phosphor-icons/react'
-import { DatePicker } from '@/components/ui/date-picker'
+
 import { ParkDataService } from '@/services/parkDataService'
 import { parkFamilies } from '@/data/sampleData'
 import { isAttractionNotDining } from '@/lib/utils'
@@ -725,13 +725,22 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
             
             <div>
               <Label htmlFor="visit-date">Visit Date</Label>
-              <DatePicker
-                date={visitDate}
-                onDateChange={(date) => setVisitDate(date || new Date())}
-                placeholder="Choose your visit date"
-                className="mt-1"
-                maxDate={new Date()}
-              />
+              <div className="mt-1 p-3 bg-muted rounded-md border">
+                <div className="flex items-center gap-2 text-sm">
+                  <Calendar size={16} className="text-muted-foreground" />
+                  <span className="font-medium">
+                    {new Date().toLocaleDateString('en-US', { 
+                      weekday: 'long',
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Currently only today's date is supported for new trip logs
+                </p>
+              </div>
             </div>
 
             <div>

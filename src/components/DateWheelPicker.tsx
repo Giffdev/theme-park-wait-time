@@ -1,0 +1,2 @@
+// This date picker component has been removed
+// Currently only today's date is supported for trip logging
