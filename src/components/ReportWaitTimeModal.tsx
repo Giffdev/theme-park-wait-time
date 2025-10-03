@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Clock, Play, Pause, Stop, CheckCircle, XCircle, Warning, X } from '@phosphor-icons/react'
 import { useReporting } from '@/hooks/useReporting'
 import { useKV } from '@github/spark/hooks'
-import { useGlobalTimer } from '@/hooks/useGlobalTimer'
+import { useGlobalTimer, type TimerState } from '@/hooks/useGlobalTimer'
 import { formatTime12Hour } from '@/utils/timeFormat'
 import { toast } from 'sonner'
 import type { User } from '@/App'
@@ -21,15 +21,6 @@ interface ReportWaitTimeModalProps {
   user: User
   onClose: () => void
   onSubmit: (waitTime: number) => void
-}
-
-interface TimerState {
-  isRunning: boolean
-  isPaused: boolean
-  isStopped: boolean
-  startTime: number | null
-  elapsedTime: number
-  pausedTime: number
 }
 
 export function ReportWaitTimeModal({
@@ -59,6 +50,19 @@ export function ReportWaitTimeModal({
     pausedTime: 0
   })
 
+  // Default timer state for fallback
+  const defaultTimerState: TimerState = {
+    isRunning: false,
+    isPaused: false,
+    isStopped: false,
+    startTime: null,
+    elapsedTime: 0,
+    pausedTime: 0
+  }
+
+  // Safe timer state that's never undefined
+  const safeTimerState = timerState || defaultTimerState
+
   const { 
     getRecentReports, 
     submitReport, 
@@ -75,12 +79,19 @@ export function ReportWaitTimeModal({
 
   // Timer effect
   useEffect(() => {
-    if (timerState.isRunning && timerState.startTime) {
+    if (safeTimerState.isRunning && safeTimerState.startTime) {
       timerRef.current = setInterval(() => {
-        setTimerState(current => ({
-          ...current,
-          elapsedTime: Math.floor((Date.now() - current.startTime!) / 1000) + current.pausedTime
-        }))
+        setTimerState(current => {
+          if (!current?.startTime) return current || defaultTimerState
+          return {
+            isRunning: current.isRunning,
+            isPaused: current.isPaused,
+            isStopped: current.isStopped,
+            startTime: current.startTime,
+            pausedTime: current.pausedTime,
+            elapsedTime: Math.floor((Date.now() - current.startTime) / 1000) + current.pausedTime
+          }
+        })
       }, 1000)
     } else if (timerRef.current) {
       clearInterval(timerRef.current)
@@ -93,22 +104,22 @@ export function ReportWaitTimeModal({
         timerRef.current = null
       }
     }
-  }, [timerState.isRunning, timerState.startTime, setTimerState])
+  }, [safeTimerState.isRunning, safeTimerState.startTime, setTimerState])
 
   // Sync with global timer state when component mounts
   useEffect(() => {
-    if ((timerState.isRunning || timerState.isPaused) && globalState.activeTimerId !== timerId) {
+    if ((safeTimerState.isRunning || safeTimerState.isPaused) && globalState.activeTimerId !== timerId) {
       // This timer is active but not registered globally - register it
       setActiveTimer(timerId, attractionName, parkId)
-    } else if (!timerState.isRunning && !timerState.isPaused && globalState.activeTimerId === timerId) {
+    } else if (!safeTimerState.isRunning && !safeTimerState.isPaused && globalState.activeTimerId === timerId) {
       // This timer is not active but is registered globally - clear it (unless stopped with time)
-      if (!timerState.isStopped || timerState.elapsedTime === 0) {
+      if (!safeTimerState.isStopped || safeTimerState.elapsedTime === 0) {
         clearActiveTimer()
       }
     }
     
     isFirstMount.current = false
-  }, [timerState.isRunning, timerState.isPaused, timerState.isStopped, timerState.elapsedTime, globalState.activeTimerId, timerId, attractionName, parkId, setActiveTimer, clearActiveTimer])
+  }, [safeTimerState.isRunning, safeTimerState.isPaused, safeTimerState.isStopped, safeTimerState.elapsedTime, globalState.activeTimerId, timerId, attractionName, parkId, setActiveTimer, clearActiveTimer])
 
   const startTimer = async () => {
     if (!canStartTimer(timerId)) {
@@ -119,26 +130,34 @@ export function ReportWaitTimeModal({
     // Stop any other running timers
     await stopOtherTimers(timerId)
     
-    setTimerState(current => ({
-      ...current,
-      isRunning: true,
-      isPaused: false,
-      isStopped: false,
-      startTime: Date.now()
-    }))
+    setTimerState(current => {
+      const base = current || defaultTimerState
+      return {
+        isRunning: true,
+        isPaused: false,
+        isStopped: false,
+        startTime: Date.now(),
+        elapsedTime: base.elapsedTime,
+        pausedTime: base.pausedTime
+      }
+    })
     
     // Register as active timer
     setActiveTimer(timerId, attractionName, parkId)
   }
 
   const pauseTimer = () => {
-    setTimerState(current => ({
-      ...current,
-      isRunning: false,
-      isPaused: true,
-      pausedTime: current.elapsedTime,
-      startTime: null
-    }))
+    setTimerState(current => {
+      const base = current || defaultTimerState
+      return {
+        isRunning: false,
+        isPaused: true,
+        isStopped: base.isStopped,
+        pausedTime: base.elapsedTime,
+        startTime: null,
+        elapsedTime: base.elapsedTime
+      }
+    })
   }
 
   const resumeTimer = async () => {
@@ -147,25 +166,34 @@ export function ReportWaitTimeModal({
       return
     }
     
-    setTimerState(current => ({
-      ...current,
-      isRunning: true,
-      isPaused: false,
-      startTime: Date.now()
-    }))
+    setTimerState(current => {
+      const base = current || defaultTimerState
+      return {
+        isRunning: true,
+        isPaused: false,
+        isStopped: base.isStopped,
+        startTime: Date.now(),
+        elapsedTime: base.elapsedTime,
+        pausedTime: base.pausedTime
+      }
+    })
     
     // Re-register as active timer
     setActiveTimer(timerId, attractionName, parkId)
   }
 
   const stopTimer = () => {
-    setTimerState(current => ({
-      ...current,
-      isRunning: false,
-      isPaused: false,
-      isStopped: true,
-      startTime: null
-    }))
+    setTimerState(current => {
+      const base = current || defaultTimerState
+      return {
+        isRunning: false,
+        isPaused: false,
+        isStopped: true,
+        startTime: null,
+        elapsedTime: base.elapsedTime,
+        pausedTime: base.pausedTime
+      }
+    })
   }
 
   const resetTimer = () => {
@@ -184,7 +212,7 @@ export function ReportWaitTimeModal({
 
   const handleModalClose = () => {
     // If timer is running, pause it and continue in background
-    if (timerState.isRunning) {
+    if (safeTimerState.isRunning) {
       pauseTimer()
     }
     onClose()
@@ -192,7 +220,7 @@ export function ReportWaitTimeModal({
 
   const handleExplicitClose = () => {
     // If timer is running or paused, cancel it completely
-    if (timerState.isRunning || timerState.isPaused) {
+    if (safeTimerState.isRunning || safeTimerState.isPaused) {
       resetTimer()
     }
     onClose()
@@ -200,20 +228,20 @@ export function ReportWaitTimeModal({
 
   const handleOpenChange = (open: boolean) => {
     // Only allow closing via overlay click if no active timer
-    if (!open && !timerState.isRunning && !timerState.isPaused) {
+    if (!open && !safeTimerState.isRunning && !safeTimerState.isPaused) {
       onClose()
     }
     // If timer is active, prevent closing via overlay (but X button will still work)
   }
 
   const useTimerForReport = () => {
-    if (!timerState.isStopped) {
+    if (!safeTimerState.isStopped) {
       toast.error('Stop the timer first before using this time')
       return
     }
 
     // Round down to nearest minute, treating 0 minutes as walk-on
-    const minutes = Math.floor(timerState.elapsedTime / 60)
+    const minutes = Math.floor(safeTimerState.elapsedTime / 60)
     setWaitTime(minutes.toString())
     resetTimer()
     
@@ -314,7 +342,7 @@ export function ReportWaitTimeModal({
           <div className="bg-card border rounded-lg p-4 sm:p-6">
             <div className="text-center mb-4">
               <div className="text-2xl sm:text-3xl font-mono font-bold text-primary mb-1">
-                {formatTimerDisplay(timerState.elapsedTime)}
+                {formatTimerDisplay(safeTimerState.elapsedTime)}
               </div>
               <p className="text-xs sm:text-sm text-muted-foreground">
                 Time your actual wait in line
@@ -323,14 +351,14 @@ export function ReportWaitTimeModal({
             
             {/* Timer Controls */}
             <div className="flex justify-center gap-2 flex-wrap mb-4">
-              {!timerState.isRunning && !timerState.isPaused && !timerState.isStopped && (
+              {!safeTimerState.isRunning && !safeTimerState.isPaused && !safeTimerState.isStopped && (
                 <Button type="button" onClick={startTimer} className="gap-2 text-sm">
                   <Play size={16} />
                   Start Timer
                 </Button>
               )}
               
-              {timerState.isRunning && (
+              {safeTimerState.isRunning && (
                 <>
                   <Button type="button" onClick={pauseTimer} variant="outline" className="gap-2 text-sm">
                     <Pause size={16} />
@@ -343,7 +371,7 @@ export function ReportWaitTimeModal({
                 </>
               )}
               
-              {timerState.isPaused && (
+              {safeTimerState.isPaused && (
                 <>
                   <Button type="button" onClick={resumeTimer} className="gap-2 text-sm">
                     <Play size={16} />
@@ -356,7 +384,7 @@ export function ReportWaitTimeModal({
                 </>
               )}
 
-              {timerState.isStopped && (
+              {safeTimerState.isStopped && (
                 <Button type="button" onClick={resetTimer} variant="outline" className="gap-2 text-sm">
                   Reset
                 </Button>
@@ -364,7 +392,7 @@ export function ReportWaitTimeModal({
             </div>
             
             {/* Use Timer Button */}
-            {timerState.isStopped && timerState.elapsedTime > 0 && (
+            {safeTimerState.isStopped && safeTimerState.elapsedTime > 0 && (
               <Button 
                 type="button"
                 onClick={useTimerForReport} 
@@ -372,18 +400,18 @@ export function ReportWaitTimeModal({
                 size="sm"
               >
                 <CheckCircle size={16} className="mr-2" />
-                Use This Time ({Math.floor(timerState.elapsedTime / 60) === 0 ? 'Walk-on' : `${Math.floor(timerState.elapsedTime / 60)} min`})
+                Use This Time ({Math.floor(safeTimerState.elapsedTime / 60) === 0 ? 'Walk-on' : `${Math.floor(safeTimerState.elapsedTime / 60)} min`})
               </Button>
             )}
 
             {/* Timer Status Messages */}
-            {timerState.elapsedTime > 0 && !timerState.isStopped && (
+            {safeTimerState.elapsedTime > 0 && !safeTimerState.isStopped && (
               <p className="text-xs text-muted-foreground text-center">
                 Stop the timer to use this time for your report
               </p>
             )}
             
-            {timerState.elapsedTime === 0 && (
+            {safeTimerState.elapsedTime === 0 && (
               <p className="text-xs text-muted-foreground text-center">
                 💡 Start the timer when you join the line
               </p>

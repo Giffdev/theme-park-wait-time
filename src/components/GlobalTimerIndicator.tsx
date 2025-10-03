@@ -2,17 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Clock } from '@phosphor-icons/react'
 import { useKV } from '@github/spark/hooks'
-import { useGlobalTimer } from '@/hooks/useGlobalTimer'
+import { useGlobalTimer, type TimerState } from '@/hooks/useGlobalTimer'
 import { useNavigate, useLocation } from 'react-router-dom'
-
-interface TimerState {
-  isRunning: boolean
-  isPaused: boolean
-  isStopped: boolean
-  startTime: number | null
-  elapsedTime: number
-  pausedTime: number
-}
 
 export function GlobalTimerIndicator() {
   const { globalState } = useGlobalTimer()
@@ -33,22 +24,32 @@ export function GlobalTimerIndicator() {
     }
   )
 
+  // Safe timer state that's never undefined
+  const safeActiveTimerState = activeTimerState || {
+    isRunning: false,
+    isPaused: false,
+    isStopped: false,
+    startTime: null,
+    elapsedTime: 0,
+    pausedTime: 0
+  }
+
   // Update current elapsed time for running timers
   useEffect(() => {
-    if (activeTimerState.isRunning && activeTimerState.startTime) {
+    if (safeActiveTimerState.isRunning && safeActiveTimerState.startTime) {
       const interval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - activeTimerState.startTime!) / 1000) + activeTimerState.pausedTime
+        const elapsed = Math.floor((Date.now() - safeActiveTimerState.startTime!) / 1000) + safeActiveTimerState.pausedTime
         setCurrentElapsedTime(elapsed)
       }, 1000)
       
       return () => clearInterval(interval)
     } else {
-      setCurrentElapsedTime(activeTimerState.elapsedTime)
+      setCurrentElapsedTime(safeActiveTimerState.elapsedTime)
     }
-  }, [activeTimerState.isRunning, activeTimerState.startTime, activeTimerState.elapsedTime, activeTimerState.pausedTime])
+  }, [safeActiveTimerState.isRunning, safeActiveTimerState.startTime, safeActiveTimerState.elapsedTime, safeActiveTimerState.pausedTime])
 
   // Don't show if no active timer or if timer has no elapsed time and isn't running/paused
-  if (!globalState.activeTimerId || (!activeTimerState.isRunning && !activeTimerState.isPaused && activeTimerState.elapsedTime === 0)) {
+  if (!globalState.activeTimerId || (!safeActiveTimerState.isRunning && !safeActiveTimerState.isPaused && safeActiveTimerState.elapsedTime === 0)) {
     return null
   }
 
@@ -79,13 +80,13 @@ export function GlobalTimerIndicator() {
     >
       <Clock size={14} className="mr-1" />
       {formatTimerDisplay(currentElapsedTime)}
-      {activeTimerState.isRunning && (
+      {safeActiveTimerState.isRunning && (
         <span className="ml-2 h-2 w-2 bg-green-500 rounded-full animate-pulse" />
       )}
-      {activeTimerState.isPaused && (
+      {safeActiveTimerState.isPaused && (
         <span className="ml-2 h-2 w-2 bg-yellow-500 rounded-full" />
       )}
-      {activeTimerState.isStopped && (
+      {safeActiveTimerState.isStopped && (
         <span className="ml-2 h-2 w-2 bg-red-500 rounded-full" />
       )}
       <div className="ml-2 text-xs opacity-75 max-w-24 truncate">

@@ -2,28 +2,34 @@ import React from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Clock } from '@phosphor-icons/react'
 import { useKV } from '@github/spark/hooks'
+import { type TimerState } from '@/hooks/useGlobalTimer'
 
 interface FloatingTimerIndicatorProps {
   attractionId: string
   onClick?: () => void
 }
 
-interface TimerState {
-  isRunning: boolean
-  startTime: number | null
-  elapsedTime: number
-  pausedTime: number
-}
-
 export function FloatingTimerIndicator({ attractionId, onClick }: FloatingTimerIndicatorProps) {
   const [timerState] = useKV<TimerState>(`timer-${attractionId}`, {
     isRunning: false,
+    isPaused: false,
+    isStopped: false,
     startTime: null,
     elapsedTime: 0,
     pausedTime: 0
   })
 
-  if (timerState.elapsedTime === 0 && !timerState.isRunning) {
+  // Safe timer state that's never undefined
+  const safeTimerState = timerState || {
+    isRunning: false,
+    isPaused: false,
+    isStopped: false,
+    startTime: null,
+    elapsedTime: 0,
+    pausedTime: 0
+  }
+
+  if (safeTimerState.elapsedTime === 0 && !safeTimerState.isRunning) {
     return null
   }
 
@@ -40,8 +46,8 @@ export function FloatingTimerIndicator({ attractionId, onClick }: FloatingTimerI
       onClick={onClick}
     >
       <Clock size={14} className="mr-1" />
-      {formatTimerDisplay(timerState.elapsedTime)}
-      {timerState.isRunning && (
+      {formatTimerDisplay(safeTimerState.elapsedTime)}
+      {safeTimerState.isRunning && (
         <span className="ml-2 h-2 w-2 bg-green-500 rounded-full animate-pulse" />
       )}
     </Badge>

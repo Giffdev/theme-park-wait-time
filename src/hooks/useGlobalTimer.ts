@@ -8,7 +8,7 @@ interface GlobalTimerState {
   activeParkId: string | null // Add park ID for navigation
 }
 
-interface TimerState {
+export interface TimerState {
   isRunning: boolean
   isPaused: boolean
   isStopped: boolean

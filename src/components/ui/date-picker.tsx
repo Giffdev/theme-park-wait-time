@@ -1,6 +1,6 @@
 import * as React from "react"
-import { format } from "date-fns"
 import { Calendar as CalendarIcon } from "@phosphor-icons/react"
+import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -14,30 +14,23 @@ interface DatePickerProps {
   date?: Date
   onDateChange?: (date: Date | undefined) => void
   placeholder?: string
-  className?: string
   disabled?: boolean
-  maxDate?: Date
+  className?: string
   minDate?: Date
+  maxDate?: Date
 }
 
 export function DatePicker({
   date,
   onDateChange,
   placeholder = "Pick a date",
-  className,
   disabled = false,
-  maxDate,
+  className,
   minDate,
+  maxDate
 }: DatePickerProps) {
-  const [open, setOpen] = React.useState(false)
-
-  const handleSelect = (selectedDate: Date | undefined) => {
-    onDateChange?.(selectedDate)
-    setOpen(false)
-  }
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -47,20 +40,19 @@ export function DatePicker({
             className
           )}
           disabled={disabled}
-          type="button"
         >
-          <CalendarIcon size={16} className="mr-2 h-4 w-4" />
-          {date ? format(date, "PPP") : <span>{placeholder}</span>}
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {date ? format(date, "PPP") : placeholder}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent className="w-auto p-0">
         <Calendar
           mode="single"
           selected={date}
-          onSelect={handleSelect}
+          onSelect={onDateChange}
           disabled={(date) => {
-            if (maxDate && date > maxDate) return true
             if (minDate && date < minDate) return true
+            if (maxDate && date > maxDate) return true
             return false
           }}
           initialFocus
