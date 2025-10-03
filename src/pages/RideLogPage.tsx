@@ -436,7 +436,28 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
             logsToSave.push(rideLog)
             console.log(`✅ Added ride log for ${attraction.name}: ${count} rides`)
           } else {
-            console.warn(`⚠️ Attraction not found for key: ${key}`)
+            console.warn(`⚠️ Attraction not found for key: ${key}, trying fallback`)
+            // Try to find existing log data as fallback
+            const existingLog = currentTrip.rideLogs.find(log => log.parkId === parkId && log.attractionId === attractionId)
+            if (existingLog) {
+              const rideLog: RideLog = {
+                id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                userId: user.id,
+                tripId: currentTrip.id,
+                parkId,
+                attractionId,
+                attractionName: existingLog.attractionName,
+                attractionType: existingLog.attractionType,
+                rideCount: count,
+                trackVariant: selectedVariants[key] || undefined,
+                loggedAt: new Date().toISOString(),
+                notes: notes[key] || undefined
+              }
+              logsToSave.push(rideLog)
+              console.log(`✅ Added fallback ride log for ${existingLog.attractionName}: ${count} rides`)
+            } else {
+              console.error(`❌ No fallback data available for ${key}`)
+            }
           }
         } else {
           console.log(`⏭️ Skipping ${key} with count ${count}`)
@@ -752,6 +773,9 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                           Object.entries(rideCounts).forEach(([key, count]) => {
                             if (count > 0) {
                               const [parkId, attractionId] = key.split('-', 2)
+                              console.log(`🔍 Processing ride log for key: ${key}, parkId: ${parkId}, attractionId: ${attractionId}, count: ${count}`)
+                              console.log(`🏗️ Available attractions for park ${parkId}:`, attractions[parkId]?.map(a => ({ id: a.id, name: a.name })) || 'No attractions loaded')
+                              
                               const attraction = attractions[parkId]?.find(a => a.id === attractionId)
                               
                               if (attraction) {
@@ -769,12 +793,48 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                                   notes: notes[key] || undefined
                                 }
                                 finalLogsToSave.push(rideLog)
+                                console.log(`✅ Created ride log for ${attraction.name}`)
+                              } else {
+                                console.warn(`⚠️ Could not find attraction with ID ${attractionId} in park ${parkId}`)
+                                console.warn(`Available attraction IDs:`, attractions[parkId]?.map(a => a.id) || 'None')
+                                
+                                // Try to create the log anyway using data from the existing trip if possible
+                                const existingLog = currentTrip.rideLogs.find(log => log.parkId === parkId && log.attractionId === attractionId)
+                                if (existingLog) {
+                                  console.log('📝 Using existing log data as fallback')
+                                  const rideLog: RideLog = {
+                                    id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                    userId: user.id,
+                                    tripId: currentTrip.id,
+                                    parkId,
+                                    attractionId,
+                                    attractionName: existingLog.attractionName,
+                                    attractionType: existingLog.attractionType,
+                                    rideCount: count,
+                                    trackVariant: selectedVariants[key] || undefined,
+                                    loggedAt: new Date().toISOString(),
+                                    notes: notes[key] || undefined
+                                  }
+                                  finalLogsToSave.push(rideLog)
+                                  console.log(`✅ Created fallback ride log for ${existingLog.attractionName}`)
+                                } else {
+                                  console.error(`❌ No fallback data available for ${key}`)
+                                }
                               }
                             }
                           })
                           
+                          console.log(`📋 Final logs to save: ${finalLogsToSave.length}`)
+                          console.log('🎢 Final ride logs:', finalLogsToSave.map(log => ({ name: log.attractionName, count: log.rideCount })))
+                          
                           if (finalLogsToSave.length === 0) {
-                            toast.error('Unable to complete trip - no rides were properly logged')
+                            console.error('❌ Trip completion failed: No valid ride logs could be created')
+                            console.error('Debug info:', {
+                              rideCountsEntries: Object.entries(rideCounts).length,
+                              attractionsLoaded: Object.keys(attractions),
+                              rideCounts: rideCounts
+                            })
+                            toast.error('Unable to complete trip - could not process the logged rides. Please try refreshing the page and trying again.')
                             return
                           }
                           
