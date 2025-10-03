@@ -475,7 +475,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         rideLogsDetails: updatedTrip.rideLogs.map(log => ({ name: log.attractionName, count: log.rideCount }))
       })
 
-      // Update current trip state first
+      // Update current trip state first - this ensures the completion handler gets the right data
       setCurrentTrip(updatedTrip)
       
       // Save to KV storage
@@ -721,68 +721,96 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                       variant="outline" 
                       size="sm"
                       onClick={async () => {
-                        if (!user || !currentTrip) return
+                        if (!user || !currentTrip) {
+                          toast.error('No active trip to complete')
+                          return
+                        }
 
                         try {
                           console.log('🔄 Completing trip session...')
                           console.log('📊 Current ride counts before completion:', rideCounts)
-                          
-                          // First perform a final auto-save to ensure current state is persisted
-                          await autoSaveTrip(rideCounts)
-                          console.log('✅ Performed final auto-save before completion')
-                          
-                          // Wait a moment to ensure the save completes
-                          await new Promise(resolve => setTimeout(resolve, 500))
-                          
-                          // Get the most current version of the trip from storage
-                          const latestTrip = await window.spark.kv.get<Trip>(`current-trip-${user.id}`)
-                          if (!latestTrip) {
-                            throw new Error('Could not retrieve the latest trip data')
-                          }
-                          
-                          console.log('📋 Latest trip retrieved:', {
-                            id: latestTrip.id,
-                            totalRides: latestTrip.totalRides,
-                            logCount: latestTrip.rideLogs.length,
-                            parks: latestTrip.parks.map(p => ({ name: p.parkName, rideCount: p.rideCount }))
+                          console.log('🎯 Current trip state:', {
+                            id: currentTrip.id,
+                            totalRides: currentTrip.totalRides,
+                            rideLogs: currentTrip.rideLogs.length
                           })
                           
-                          // Only proceed if there are actually rides logged
-                          if (latestTrip.totalRides === 0) {
+                          // Check that we actually have rides to save
+                          const totalRideCount = Object.values(rideCounts).reduce((sum, count) => sum + count, 0)
+                          if (totalRideCount === 0) {
                             toast.warning('No rides logged in this trip session')
                             return
                           }
                           
-                          // Save to permanent storage using the latest trip data
-                          await window.spark.kv.set(`trip-${latestTrip.id}`, latestTrip)
-                          console.log('✅ Saved trip to permanent storage:', `trip-${latestTrip.id}`)
+                          console.log(`🎢 Total rides to complete: ${totalRideCount}`)
                           
-                          // Ensure user trip history is updated - this is critical!
+                          // Perform final auto-save with current state to build the complete trip
+                          console.log('💾 Performing final save with current ride counts...')
+                          
+                          // Get the fresh trip from KV after the auto-save
+                          await autoSaveTrip(rideCounts)
+                          
+                          // Wait for save to complete and get the updated trip
+                          await new Promise(resolve => setTimeout(resolve, 1000))
+                          const latestTrip = await window.spark.kv.get<Trip>(`current-trip-${user.id}`)
+                          
+                          if (!latestTrip) {
+                            throw new Error('Could not retrieve the latest trip data after save')
+                          }
+                          
+                          console.log('📋 Latest trip after auto-save:', {
+                            id: latestTrip.id,
+                            totalRides: latestTrip.totalRides,
+                            rideLogs: latestTrip.rideLogs.length,
+                            parks: latestTrip.parks.map(p => ({ name: p.parkName, rideCount: p.rideCount }))
+                          })
+                          
+                          // Verify we have a valid trip to save
+                          if (latestTrip.totalRides === 0) {
+                            console.warn('⚠️ Latest trip has 0 total rides - this should not happen')
+                            toast.error('Unable to complete trip - no rides were properly logged')
+                            return
+                          }
+                          
+                          // Save to permanent storage
+                          console.log(`💾 Saving completed trip to permanent storage: trip-${latestTrip.id}`)
+                          await window.spark.kv.set(`trip-${latestTrip.id}`, latestTrip)
+                          
+                          // Update user trip history - this is critical for My Trips display
+                          console.log('📋 Updating user trip history...')
                           const userTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
-                          console.log('📋 Current user trip history:', userTrips)
+                          console.log('📋 Current user trip history before update:', userTrips)
                           
                           if (!userTrips.includes(latestTrip.id)) {
-                            userTrips.push(latestTrip.id)
-                            await window.spark.kv.set(`user-trips-${user.id}`, userTrips)
-                            console.log('✅ Added trip to user history:', userTrips)
+                            const updatedUserTrips = [...userTrips, latestTrip.id]
+                            await window.spark.kv.set(`user-trips-${user.id}`, updatedUserTrips)
+                            console.log('✅ Updated user trip history:', updatedUserTrips)
                           } else {
                             console.log('ℹ️ Trip already exists in user history')
                           }
                           
-                          // Verify the save worked by re-reading the data
+                          // Verify the save worked
+                          console.log('🔍 Verifying trip save...')
                           const savedTrip = await window.spark.kv.get<Trip>(`trip-${latestTrip.id}`)
-                          const updatedUserTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`)
-                          
-                          console.log('🔍 Verification - Saved trip:', savedTrip ? 'EXISTS' : 'MISSING')
-                          console.log('🔍 Verification - Updated user trips:', updatedUserTrips)
+                          const verifyUserTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`)
                           
                           if (!savedTrip) {
-                            throw new Error('Trip save verification failed')
+                            throw new Error('Failed to save trip to permanent storage')
                           }
                           
-                          // Clear current trip session only after successful save
+                          if (!verifyUserTrips || !verifyUserTrips.includes(latestTrip.id)) {
+                            throw new Error('Failed to update user trip history')
+                          }
+                          
+                          console.log('✅ Verification passed:', {
+                            savedTrip: savedTrip ? `YES (${savedTrip.totalRides} rides)` : 'NO',
+                            inUserHistory: verifyUserTrips?.includes(latestTrip.id) ? 'YES' : 'NO',
+                            userTripCount: verifyUserTrips?.length || 0
+                          })
+                          
+                          // Clear current trip session only after successful verification
+                          console.log('🗑️ Clearing current trip session...')
                           await window.spark.kv.delete(`current-trip-${user.id}`)
-                          console.log('🗑️ Cleared current trip session')
                           
                           // Clear local state
                           setCurrentTrip(null)
@@ -792,11 +820,14 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                           setTripNotes('')
                           
                           toast.success(`Trip completed! Saved ${latestTrip.totalRides} rides across ${latestTrip.parks.length} parks.`)
+                          
+                          // Navigate to My Trips page
                           navigate('/my-logs')
+                          
                         } catch (error) {
                           console.error('❌ Error completing trip:', error)
                           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-                          toast.error(`Failed to complete trip: ${errorMessage}`)
+                          toast.error(`Failed to complete trip: ${errorMessage}. Your trip data has been saved and you can try again.`)
                         }
                       }}
                     >

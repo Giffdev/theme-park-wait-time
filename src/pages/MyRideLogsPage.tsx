@@ -54,6 +54,11 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
     try {
       console.log('🔄 Loading trips for user:', user.id)
       
+      // First, let's see what keys exist in storage for debugging
+      const allKeys = await window.spark.kv.keys()
+      const userKeys = allKeys.filter(key => key.includes(user.id))
+      console.log('🔍 All user-related keys in storage:', userKeys)
+      
       // Check if there's also a current trip that should be included
       const currentTrip = await window.spark.kv.get<Trip>(`current-trip-${user.id}`)
       if (currentTrip && currentTrip.totalRides > 0) {
