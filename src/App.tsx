@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useKV } from '@github/spark/hooks'
 import { Header } from '@/components/Header'
 import { AuthModal } from '@/components/AuthModal'
-import { GlobalTimerIndicator } from '@/components/GlobalTimerIndicator'
+
 import { HomePage, AboutPage, ParkDetailsPage, AttractionDetailsPage, CrowdCalendarPage, ParkSelectorPage } from '@/pages'
 import { Toaster } from 'sonner'
 import { ParkDataService } from '@/services/parkDataService'
@@ -158,9 +158,6 @@ function App() {
 
         {/* Toast notifications container */}
         <Toaster position="top-right" richColors />
-        
-        {/* Global timer indicator */}
-        <GlobalTimerIndicator />
       </div>
     </BrowserRouter>
   )
