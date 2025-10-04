@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Timer, Clock, TrendUp, Users, Brain, MapPin } from '@phosphor-icons/react'
+import { Timer, Clock, TrendUp, Users, Brain, MapPin, NotePencil, ChartBar } from '@phosphor-icons/react'
 
 export function AboutPage() {
   return (
@@ -9,7 +9,7 @@ export function AboutPage() {
           About ParkFlow
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-          Your intelligent companion for theme park planning, combining real-time data with smart insights to optimize your park experience.
+          Your intelligent companion for theme park planning, combining real-time data with personal trip tracking to optimize your park experience and preserve your magical memories.
         </p>
       </div>
 
@@ -17,18 +17,17 @@ export function AboutPage() {
       <div className="mb-8 space-y-6">
         <h2 className="text-2xl font-semibold text-foreground mb-4">Core Features</h2>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
-                <Timer size={28} className="text-primary" />
-                <CardTitle className="text-primary">Smart Timer</CardTitle>
+                <NotePencil size={28} className="text-primary" />
+                <CardTitle className="text-primary">Trip Logging</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Time your actual wait experiences and contribute to our crowd-sourced data. 
-                Help improve predictions for everyone while tracking your own park efficiency.
+                Log your park visits and track every ride you experience. Build a personal history of your theme park adventures across multiple parks and dates.
               </p>
             </CardContent>
           </Card>
@@ -36,14 +35,13 @@ export function AboutPage() {
           <Card className="border-accent/20 bg-accent/5">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
-                <Clock size={28} className="text-accent" />
-                <CardTitle className="text-accent">Live Wait Times</CardTitle>
+                <ChartBar size={28} className="text-accent" />
+                <CardTitle className="text-accent">Ride Statistics</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Access real-time wait information updated continuously throughout the day. 
-                Make informed decisions about which attractions to visit and when.
+                Track how many times you've ridden each attraction. View your personal ride counts and discover your favorite attractions across different parks.
               </p>
             </CardContent>
           </Card>
@@ -51,14 +49,27 @@ export function AboutPage() {
           <Card className="border-secondary/20 bg-secondary/5">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
-                <TrendUp size={28} className="text-secondary" />
-                <CardTitle className="text-secondary">Crowd Insights</CardTitle>
+                <Clock size={28} className="text-secondary" />
+                <CardTitle className="text-secondary">Live Wait Times</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Analyze historical patterns and seasonal trends to plan your perfect park day. 
-                Discover the best times to visit popular attractions.
+                Access real-time wait information updated continuously throughout the day. Make informed decisions about which attractions to visit and when.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-muted-foreground/20 bg-muted">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <TrendUp size={28} className="text-muted-foreground" />
+                <CardTitle className="text-muted-foreground">Crowd Insights</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Analyze historical patterns and seasonal trends to plan your perfect park day. Discover the best times to visit popular attractions.
               </p>
             </CardContent>
           </Card>
@@ -73,15 +84,31 @@ export function AboutPage() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
-                <Users size={24} className="text-primary" />
+                <NotePencil size={24} className="text-primary" />
+                <CardTitle className="text-lg">Personal Trip Tracking</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground leading-relaxed">
+                Create an account to log your park visits and track every attraction you experience. 
+                Build a comprehensive record of your theme park adventures, including which rides you've been on 
+                and how many times you've experienced each attraction.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <Users size={24} className="text-accent" />
                 <CardTitle className="text-lg">Community-Powered Data</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground leading-relaxed">
-                Our platform combines official park data with real-time reports from visitors like you. 
-                When you log wait times and attraction experiences, you're helping create the most accurate 
-                ParkFlow prediction system available.
+                Our platform combines official park data with real-time insights from visitors like you. 
+                Your trip logs and attraction experiences help create a comprehensive database of theme park information 
+                while building your personal park history.
               </p>
             </CardContent>
           </Card>
@@ -89,14 +116,15 @@ export function AboutPage() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
-                <Brain size={24} className="text-accent" />
-                <CardTitle className="text-lg">Smart Predictions</CardTitle>
+                <Brain size={24} className="text-secondary" />
+                <CardTitle className="text-lg">Smart Analytics</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground leading-relaxed">
-                Advanced algorithms analyze patterns in crowd behavior, seasonal trends, and real-time data 
-                to provide accurate predictions. The more data we collect, the smarter our recommendations become.
+                View detailed statistics about your park visits, including total rides experienced, 
+                favorite attractions, and parks visited. Discover patterns in your theme park adventures 
+                and track your progress toward experiencing every attraction.
               </p>
             </CardContent>
           </Card>
@@ -104,7 +132,7 @@ export function AboutPage() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
-                <MapPin size={24} className="text-secondary" />
+                <MapPin size={24} className="text-muted-foreground" />
                 <CardTitle className="text-lg">Comprehensive Coverage</CardTitle>
               </div>
             </CardHeader>
@@ -126,8 +154,8 @@ export function AboutPage() {
           </h3>
           <p className="text-muted-foreground leading-relaxed max-w-2xl mx-auto">
             We believe that great theme park experiences shouldn't be left to chance. By combining 
-            technology with community insights, we help families and friends make the most of their 
-            precious vacation time, creating magical memories instead of waiting in long lines.
+            technology with personal trip tracking and community insights, we help families and friends make the most of their 
+            precious vacation time while preserving memories of every magical moment and thrilling ride.
           </p>
         </div>
       </div>
