@@ -66,7 +66,7 @@ export function ParkFamilySelector({ selectedFamily, selectedParks, onFamilyChan
                 <div>
                   <div className="font-medium">{family.name}</div>
                   <div className="text-sm text-muted-foreground">
-                    {family.location} • {family.parks.length} park{family.parks.length !== 1 ? 's' : ''}
+                    {family.location} • {family.parks.length} park{family.parks.length === 1 ? '' : 's'}
                   </div>
                 </div>
               </SelectItem>
