@@ -1423,7 +1423,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
               const familyParksWithData = family.parks.filter(park => availableParks.includes(park.id))
               return (
                 <SelectItem key={family.id} value={family.id}>
-                  {family.name} ({familyParksWithData.length} parks)
+                  {`${family.name} (${familyParksWithData.length} parks)`}
                 </SelectItem>
               )
             })}
