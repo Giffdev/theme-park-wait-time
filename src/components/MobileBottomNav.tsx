@@ -1,6 +1,6 @@
 import React from 'react'
-import { Link, useLocation } from 'react-router-dom'
 import { House, Calendar, Suitcase, Info, User as UserIcon } from '@phosphor-icons/react'
+import { Link, useLocation } from 'react-router-dom'
 import type { User } from '@/App'
 
 interface MobileBottomNavProps {
