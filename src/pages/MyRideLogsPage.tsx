@@ -788,14 +788,14 @@ function TripCard({ trip, onDelete, onEdit, getTypeIcon, getTypeColor }: TripCar
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex-1 min-w-0">
             <CardTitle className="flex items-center gap-2">
               <Calendar size={20} />
               {new Date(trip.visitDate).toLocaleDateString()}
             </CardTitle>
             <CardDescription className="mt-1">
-              <div className="flex items-center gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
                 <span className="flex items-center gap-1">
                   <MapPin size={14} />
                   {trip.parks.length} park{trip.parks.length !== 1 ? 's' : ''}: {trip.parks.map(p => p.parkName).join(', ')}
@@ -805,44 +805,51 @@ function TripCard({ trip, onDelete, onEdit, getTypeIcon, getTypeColor }: TripCar
               </div>
             </CardDescription>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2 sm:shrink-0">
             <Button
               variant="outline"
               size="sm"
               onClick={() => onEdit(trip)}
+              className="w-full sm:w-auto"
             >
               <PencilSimple size={16} className="mr-2" />
-              Edit Trip
+              <span className="sm:hidden">Edit</span>
+              <span className="hidden sm:inline">Edit Trip</span>
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setExpanded(!expanded)}
-            >
-              <Eye size={16} className="mr-2" />
-              {expanded ? 'Hide' : 'View'} Details
-            </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Trash size={16} />
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Trip</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to delete this trip? This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => onDelete(trip.id)}>
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExpanded(!expanded)}
+                className="flex-1 sm:flex-none"
+              >
+                <Eye size={16} className="mr-2" />
+                <span className="sm:hidden">{expanded ? 'Hide' : 'View'}</span>
+                <span className="hidden sm:inline">{expanded ? 'Hide' : 'View'} Details</span>
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="px-3">
+                    <Trash size={16} />
+                    <span className="sr-only">Delete trip</span>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Trip</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete this trip? This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => onDelete(trip.id)}>
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
         </div>
       </CardHeader>
