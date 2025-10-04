@@ -8,9 +8,8 @@ function ParkFlowIcon({ size = 24, className }: { size?: number; className?: str
   return (
     <svg 
       width={size} 
-      height={size} 
+      height={size}
       viewBox="0 0 24 24" 
-      fill="none" 
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
@@ -18,19 +17,18 @@ function ParkFlowIcon({ size = 24, className }: { size?: number; className?: str
       <circle 
         cx="12" 
         cy="12" 
-        r="8" 
-        stroke="currentColor" 
-        strokeWidth="1.5" 
+        r="9" 
         fill="none"
+        stroke="currentColor" 
+        strokeWidth="1.2" 
       />
       
-      {/* Inner reflection highlight */}
+      {/* Miniature castle inside the crystal ball */}
       <circle 
-        cx="10" 
+        cx="12" 
         cy="8" 
         r="2" 
         fill="currentColor" 
-        opacity="0.3"
       />
       
       {/* Miniature roller coaster inside the crystal ball */}
@@ -39,16 +37,6 @@ function ParkFlowIcon({ size = 24, className }: { size?: number; className?: str
         stroke="currentColor" 
         strokeWidth="1.2" 
         fill="none"
-        strokeLinecap="round"
-      />
-      
-      {/* Support pillars for mini coaster */}
-      <path 
-        d="M9 12v2M12 10v4M15 12v2" 
-        stroke="currentColor" 
-        strokeWidth="1" 
-        strokeLinecap="round"
-        opacity="0.7"
       />
     </svg>
   )
@@ -68,8 +56,8 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
   }
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border backdrop-blur-sm z-50">
-      <div className="flex items-center justify-around px-2 py-2 safe-area-inset-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t border-border z-50 md:hidden safe-area-inset-bottom">
+      <div className="flex items-center justify-around py-2 px-4 max-w-sm mx-auto">
         {/* Home */}
         <Link 
           to="/" 
