@@ -57,9 +57,9 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const [visitDate, setVisitDate] = useState<Date>(new Date())
   const [selectedParks, setSelectedParks] = useState<string[]>(parkId ? [parkId] : [])
   const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
   const [tripNotes, setTripNotes] = useState('')
   const [activePark, setActivePark] = useState<string>(parkId || '')
-  const [isSaving, setIsSaving] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
 
   // Get attraction ID from URL search params
@@ -820,12 +820,16 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                     <Button 
                       variant="outline" 
                       size="sm"
+                      disabled={isSaving}
                       onClick={async () => {
-                        if (!user || !currentTrip) {
-                          toast.error('No active trip to complete')
+                        if (!user || !currentTrip || isSaving) {
+                          if (!user || !currentTrip) {
+                            toast.error('No active trip to complete')
+                          }
                           return
                         }
 
+                        setIsSaving(true)
                         try {
                           console.log('🔄 Completing trip session...')
                           console.log('📊 Current ride counts before completion:', rideCounts)
@@ -1040,10 +1044,12 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                           console.error('❌ Error completing trip:', error)
                           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
                           toast.error(`Failed to complete trip: ${errorMessage}. Your trip data has been saved and you can try again.`)
+                        } finally {
+                          setIsSaving(false)
                         }
                       }}
                     >
-                      End Trip Session
+                      {isSaving ? 'Saving Trip...' : 'End Trip Session'}
                     </Button>
                   )}
                 </div>
