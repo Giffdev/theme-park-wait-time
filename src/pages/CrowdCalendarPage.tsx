@@ -1,14 +1,23 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FamilyCrowdCalendar } from '@/components/FamilyCrowdCalendar'
 import { ParkFamilySelector } from '@/components/ParkFamilySelector'
 import { Button } from '@/components/ui/button'
 import { CaretLeft } from '@phosphor-icons/react'
+import { parkFamilies } from '@/data/sampleData'
 
 export function CrowdCalendarPage() {
   const navigate = useNavigate()
   const [selectedFamily, setSelectedFamily] = useState<string>('disney-world-orlando')
   const [selectedParks, setSelectedParks] = useState<string[]>([])
+
+  // Initialize with all parks selected when family changes
+  useEffect(() => {
+    const family = parkFamilies.find(f => f.id === selectedFamily)
+    if (family?.parks) {
+      setSelectedParks(family.parks.map(park => park.id))
+    }
+  }, [selectedFamily])
 
   return (
     <main className="container mx-auto px-4 py-8 max-w-[1600px]">

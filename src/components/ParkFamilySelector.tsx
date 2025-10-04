@@ -43,11 +43,7 @@ export function ParkFamilySelector({ selectedFamily, selectedParks, onFamilyChan
           <MapPin size={16} />
           Select Park Family
         </label>
-        <Select value={selectedFamily} onValueChange={(newFamily) => {
-          onFamilyChange(newFamily)
-          // Reset park selection when family changes
-          onParksChange([])
-        }}>
+        <Select value={selectedFamily} onValueChange={onFamilyChange}>
           <SelectTrigger className="w-full max-w-sm">
             <SelectValue placeholder="Choose a park family">
               {currentFamily && (
@@ -119,7 +115,7 @@ export function ParkFamilySelector({ selectedFamily, selectedParks, onFamilyChan
                   <div key={park.id} className="flex items-center space-x-2">
                     <Checkbox
                       id={park.id}
-                      checked={selectedParks.length === 0 || selectedParks.includes(park.id)}
+                      checked={selectedParks.includes(park.id)}
                       onCheckedChange={(checked) => handleParkToggle(park.id, checked as boolean)}
                     />
                     <label
