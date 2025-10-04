@@ -133,14 +133,6 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
             >
               Calendar
             </Link>
-            <Link 
-              to="/log" 
-              className={`text-sm font-medium transition-colors hover:text-foreground ${
-                isActive('/log') ? 'text-foreground' : 'text-muted-foreground'
-              }`}
-            >
-              Log Trip
-            </Link>
             {user && (
               <Link 
                 to="/my-logs" 
@@ -220,15 +212,6 @@ export function Header({ user, onLoginClick, onLogout }: HeaderProps) {
                 }`}
               >
                 Calendar
-              </Link>
-              <Link 
-                to="/log" 
-                onClick={closeMobileMenu}
-                className={`text-sm font-medium transition-colors hover:text-foreground px-2 py-1 ${
-                  isActive('/log') ? 'text-foreground' : 'text-muted-foreground'
-                }`}
-              >
-                Log Trip
               </Link>
               {user && (
                 <Link 
