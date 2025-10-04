@@ -110,6 +110,16 @@ export const parkFamilies: ParkFamily[] = [
       { id: 'worlds-of-fun', name: 'Worlds of Fun', shortName: 'Worlds of Fun', type: 'theme-park' },
       { id: 'oceans-of-fun', name: 'Oceans of Fun', shortName: 'Oceans of Fun', type: 'water-park' }
     ]
+  },
+  {
+    id: 'silverwood',
+    name: 'Silverwood Theme Park',
+    location: 'Athol, ID',
+    description: 'Pacific Northwest\'s largest theme park featuring thrilling coasters and a vintage atmosphere',
+    parks: [
+      { id: 'silverwood', name: 'Silverwood Theme Park', shortName: 'Silverwood', type: 'theme-park' },
+      { id: 'boulder-beach', name: 'Boulder Beach Water Park', shortName: 'Boulder Beach', type: 'water-park' }
+    ]
   }
 ]
 
@@ -2937,6 +2947,235 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
     {
       id: 'monsoon-lagoon',
       name: 'Monsoon Lagoon',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    }
+  ],
+  'silverwood': [
+    // Major Roller Coasters
+    {
+      id: 'stunt-pilot',
+      name: 'Stunt Pilot',
+      type: 'thrill',
+      currentWaitTime: 65,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'aftershock',
+      name: 'Aftershock',
+      type: 'thrill',
+      currentWaitTime: 45,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'tremors',
+      name: 'Tremors',
+      type: 'thrill',
+      currentWaitTime: 40,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'timber-terror',
+      name: 'Timber Terror',
+      type: 'thrill',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'corkscrew',
+      name: 'Corkscrew',
+      type: 'thrill',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'gravity-defying-corkscrew',
+      name: 'Gravity Defying Corkscrew',
+      type: 'thrill',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Family Coasters
+    {
+      id: 'spinning-out',
+      name: 'Spinning Out',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'tiny-tot-coaster',
+      name: 'Tiny Tot Coaster',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Thrill Rides
+    {
+      id: 'panic-plunge',
+      name: 'Panic Plunge',
+      type: 'thrill',
+      currentWaitTime: 50,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'ripcord',
+      name: 'Ripcord',
+      type: 'thrill',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'thunder-canyon',
+      name: 'Thunder Canyon',
+      type: 'family',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'barnstormer',
+      name: 'Barnstormer',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Vintage Attractions
+    {
+      id: 'narrow-gauge-railroad',
+      name: 'Narrow Gauge Railroad',
+      type: 'experience',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'antique-carousel',
+      name: 'Antique Carousel',
+      type: 'family',
+      currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'vintage-cars',
+      name: 'Vintage Cars',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Games and Experiences
+    {
+      id: 'garfield-summer-fair',
+      name: 'Garfield\'s Summer Fair',
+      type: 'experience',
+      currentWaitTime: 5,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'boulder-beach-entrance',
+      name: 'Boulder Beach Water Park',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    }
+  ],
+  'boulder-beach': [
+    // Major Water Slides
+    {
+      id: 'velocity-peak',
+      name: 'Velocity Peak',
+      type: 'thrill',
+      currentWaitTime: 60,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'avalanche-mountain',
+      name: 'Avalanche Mountain',
+      type: 'thrill',
+      currentWaitTime: 45,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'magic-carpet-ride',
+      name: 'Magic Carpet Ride',
+      type: 'family',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'big-moose-lodge-slides',
+      name: 'Big Moose Lodge Slides',
+      type: 'family',
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Pool Areas
+    {
+      id: 'wave-pool',
+      name: 'Wave Pool',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'activity-pool',
+      name: 'Activity Pool',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'toddler-lagoon',
+      name: 'Toddler Lagoon',
+      type: 'family',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Lazy River
+    {
+      id: 'lazy-river',
+      name: 'Lazy River',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Multi-Slide Complex
+    {
+      id: 'boulder-beach-racers',
+      name: 'Boulder Beach Racers',
+      type: 'family',
+      currentWaitTime: 25,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'family-fun-slides',
+      name: 'Family Fun Slides',
       type: 'family',
       currentWaitTime: 20,
       status: 'operating',
