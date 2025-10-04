@@ -1,13 +1,17 @@
 import React from 'react'
-import { Link, useLocation } from 'react-router-dom'
 import { House, Calendar, Suitcase, Info } from '@phosphor-icons/react'
+import { Link, useLocation } from 'react-router-dom'
 import type { User } from '@/App'
 
-// ParkFlow Icon - Crystal ball with theme park elements (simplified for small size)
-function ParkFlowIcon({ size = 24, className }: { size?: number; className?: string }) {
+interface ParkFlowIconProps {
+  size?: number
+  className?: string
+}
+
+function ParkFlowIcon({ size = 24, className }: ParkFlowIconProps) {
   return (
     <svg 
-      width={size} 
+      width={size}
       height={size}
       viewBox="0 0 24 24"
       fill="none"
@@ -18,8 +22,8 @@ function ParkFlowIcon({ size = 24, className }: { size?: number; className?: str
       className={className}
     >
       <circle cx="12" cy="12" r="10" />
-      <path d="M8 12l2 2 4-4" />
-      <circle cx="12" cy="8" r="2" fill="currentColor" />
+      <path d="M8 12h8" />
+      <path d="M12 8v8" />
     </svg>
   )
 }
@@ -32,9 +36,7 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
   const location = useLocation()
   
   const isActive = (path: string) => {
-    if (path === '/' && location.pathname === '/') return true
-    if (path !== '/' && location.pathname.startsWith(path)) return true
-    return false
+    return location.pathname === path
   }
 
   return (
