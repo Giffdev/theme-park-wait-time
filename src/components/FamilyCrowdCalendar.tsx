@@ -201,7 +201,7 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
       return (
         <div
           key={day}
-          className={`flex-1 ${isExpanded ? 'min-h-[300px]' : 'min-h-[200px]'} border rounded-lg p-3 ${dayCardColor} ${hasMore ? 'cursor-pointer' : ''} transition-all duration-300`}
+          className={`${isExpanded ? 'min-h-[300px]' : 'min-h-[200px]'} border rounded-lg p-2 ${dayCardColor} ${hasMore ? 'cursor-pointer' : ''} transition-all duration-300`}
           onClick={hasMore ? () => toggleDayExpansion(day) : undefined}
         >
           <div className="flex flex-col h-full">
@@ -209,22 +209,22 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
               <span className="text-sm font-medium">{day}</span>
               {hasMore && (
                 <span className="text-xs text-muted-foreground">
-                  {isExpanded ? 'Click to collapse' : 'Click to expand'}
+                  {isExpanded ? '▼' : '▶'}
                 </span>
               )}
             </div>
-            <div className="flex-1 space-y-1.5">
+            <div className="flex-1 space-y-1">
               {(isExpanded ? displayParks : displayParks.slice(0, 3)).map((park) => {
                 const crowdLevel = getCrowdLevel(day, park.id)
                 return (
-                  <div key={park.id} className="flex flex-col text-xs gap-1">
-                    <span className="text-muted-foreground truncate" title={park.shortName}>
+                  <div key={park.id} className="flex flex-col text-xs gap-0.5">
+                    <span className="text-muted-foreground truncate text-xs" title={park.shortName}>
                       {park.shortName} {park.type === 'water-park' && '💧'}
                     </span>
                     <div className="flex items-center gap-1">
                       <span className="font-medium text-foreground text-xs">({crowdLevel})</span>
                       <Badge 
-                        className={`text-xs px-1.5 py-0.5 ${getCrowdColor(crowdLevel)} text-center`}
+                        className={`text-xs px-1 py-0.5 ${getCrowdColor(crowdLevel)} text-center`}
                         variant="secondary"
                       >
                         {getCrowdLabel(crowdLevel)}
@@ -394,7 +394,7 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Calendar size={24} />
@@ -407,7 +407,7 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                 }
               </p>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center justify-center space-x-1 md:space-x-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -416,7 +416,7 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
               >
                 <ArrowLeft size={16} />
               </Button>
-              <h3 className="text-lg font-semibold min-w-[180px] text-center">
+              <h3 className="text-base md:text-lg font-semibold min-w-[140px] md:min-w-[180px] text-center">
                 {isMobile 
                   ? `${monthNames[currentMonth]} ${currentDate}, ${currentYear}`
                   : `${monthNames[currentMonth]} ${currentYear}`
@@ -436,9 +436,11 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
         <CardContent>
           <div className="space-y-4">
             {isMobile ? (
-              // Mobile view: 3 days side by side
-              <div className="flex gap-2">
-                {renderMobileDays()}
+              // Mobile view: 3 days side by side with proper overflow handling
+              <div className="w-full">
+                <div className="grid grid-cols-3 gap-2">
+                  {renderMobileDays()}
+                </div>
               </div>
             ) : (
               // Desktop view: Full month calendar
