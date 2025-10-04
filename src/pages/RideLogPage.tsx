@@ -141,16 +141,16 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     }
   }, [currentTrip])
 
-  // Auto-save when notes change
-  useEffect(() => {
-    if (currentTrip && user && Object.values(rideCounts).some(count => count > 0)) {
-      const timeoutId = setTimeout(() => {
-        autoSaveTrip(rideCounts)
-      }, 500) // Debounce notes changes
+  // Auto-save when notes change - remove since now using onBlur
+  // useEffect(() => {
+  //   if (currentTrip && user && Object.values(rideCounts).some(count => count > 0)) {
+  //     const timeoutId = setTimeout(() => {
+  //       autoSaveTrip(rideCounts)
+  //     }, 500) // Debounce notes changes
       
-      return () => clearTimeout(timeoutId)
-    }
-  }, [notes, currentTrip, user, rideCounts])
+  //     return () => clearTimeout(timeoutId)
+  //   }
+  // }, [notes, currentTrip, user, rideCounts])
 
   // Pre-select attraction if specified in URL
   useEffect(() => {
@@ -256,6 +256,18 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       [key]: note
     }))
   }, [])
+
+  const handleNotesBlur = useCallback((key: string) => {
+    // Auto-save when notes field loses focus
+    if (currentTrip && user && Object.values(rideCounts).some(count => count > 0)) {
+      setTimeout(() => {
+        setRideCounts(currentCounts => {
+          autoSaveTrip(currentCounts)
+          return currentCounts
+        })
+      }, 100)
+    }
+  }, [currentTrip, user, rideCounts])
 
   const updateRideCount = (parkId: string, attractionId: string, change: number) => {
     const key = `${parkId}-${attractionId}`
@@ -1088,6 +1100,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
               onUpdateRideCount={updateRideCount}
               onVariantChange={handleVariantChange}
               onNotesChange={handleNotesChange}
+              onNotesBlur={handleNotesBlur}
               user={user}
             />
           )}
@@ -1106,6 +1119,7 @@ interface AttractionsForParkProps {
   onUpdateRideCount: (parkId: string, attractionId: string, change: number) => void
   onVariantChange: (key: string, variant: string) => void
   onNotesChange: (key: string, notes: string) => void
+  onNotesBlur: (key: string) => void
   user: User | null
 }
 
@@ -1118,6 +1132,7 @@ function AttractionsForPark({
   onUpdateRideCount,
   onVariantChange,
   onNotesChange,
+  onNotesBlur,
   user
 }: AttractionsForParkProps) {
   // Filter out dining establishments - only show actual attractions
@@ -1152,6 +1167,7 @@ function AttractionsForPark({
             onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
             onVariantChange={(variant) => onVariantChange(`${parkId}-${attraction.id}`, variant)}
             onNotesChange={(note) => onNotesChange(`${parkId}-${attraction.id}`, note)}
+            onNotesBlur={() => onNotesBlur(`${parkId}-${attraction.id}`)}
             user={user}
           />
         ))}
@@ -1170,6 +1186,7 @@ function AttractionsForPark({
               onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
               onVariantChange={(variant) => onVariantChange(`${parkId}-${attraction.id}`, variant)}
               onNotesChange={(note) => onNotesChange(`${parkId}-${attraction.id}`, note)}
+              onNotesBlur={() => onNotesBlur(`${parkId}-${attraction.id}`)}
               user={user}
             />
           ))}
@@ -1192,6 +1209,7 @@ function AttractionsForPark({
               onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
               onVariantChange={(variant) => onVariantChange(`${parkId}-${attraction.id}`, variant)}
               onNotesChange={(note) => onNotesChange(`${parkId}-${attraction.id}`, note)}
+              onNotesBlur={() => onNotesBlur(`${parkId}-${attraction.id}`)}
               isDefunct
               user={user}
             />
@@ -1211,6 +1229,7 @@ interface RideLogCardProps {
   onCountChange: (change: number) => void
   onVariantChange: (variant: string) => void
   onNotesChange: (notes: string) => void
+  onNotesBlur: () => void
   isDefunct?: boolean
   user: User | null
 }
@@ -1224,6 +1243,7 @@ function RideLogCard({
   onCountChange, 
   onVariantChange, 
   onNotesChange,
+  onNotesBlur,
   isDefunct = false,
   user
 }: RideLogCardProps) {
@@ -1323,6 +1343,7 @@ function RideLogCard({
               placeholder="Add any notes about your experience..."
               value={notes}
               onChange={(e) => onNotesChange(e.target.value)}
+              onBlur={onNotesBlur}
               className="mt-1"
               rows={2}
             />
