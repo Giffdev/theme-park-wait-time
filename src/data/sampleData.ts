@@ -731,6 +731,14 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
+    {
+      id: 'its-tough-bug',
+      name: 'It\'s Tough To Be A Bug!',
+      type: 'show',
+      currentWaitTime: 5,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
     // Family Rides
     {
       id: 'tricera-top-spin',
@@ -854,14 +862,6 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       name: 'Mad Tea Party',
       type: 'family',
       currentWaitTime: 10,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'its-tough-bug',
-      name: 'It\'s Tough To Be A Bug!',
-      type: 'show',
-      currentWaitTime: 5,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
@@ -1061,14 +1061,6 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
     {
       id: 'awesome-planet',
       name: 'Awesome Planet',
-      type: 'show',
-      currentWaitTime: 0,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'circle-of-life',
-      name: 'The Circle of Life',
       type: 'show',
       currentWaitTime: 0,
       status: 'operating',
@@ -1789,14 +1781,6 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       name: 'Bizarro',
       type: 'thrill',
       currentWaitTime: 40,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'nitro-ga',
-      name: 'Nitro',
-      type: 'thrill',
-      currentWaitTime: 55,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
@@ -2643,14 +2627,6 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
   ],
   'worlds-of-fun': [
     // Major Roller Coasters
-    {
-      id: 'fury-of-the-nile',
-      name: 'Fury of the Nile',
-      type: 'thrill',
-      currentWaitTime: 65,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
     {
       id: 'mamba',
       name: 'Mamba',
