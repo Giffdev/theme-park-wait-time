@@ -59,7 +59,7 @@ async function cleanupUserRideLogData(userId: string): Promise<number> {
   let fixedCount = 0
   
   try {
-    const tripIds = await window.spark.kv.get<string[]>(`user-trips-${userId}`) || []
+    const tripIds = (await window.spark.kv.get<string[]>(`user-trips-${userId}`)) || []
     
     for (const tripId of tripIds) {
       const trip = await window.spark.kv.get<Trip>(`trip-${tripId}`)
@@ -325,7 +325,7 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
         })
       }
       
-      const tripIds = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
+      const tripIds = (await window.spark.kv.get<string[]>(`user-trips-${user.id}`)) || []
       console.log('📋 Found trip IDs in user history:', tripIds)
       
       if (tripIds.length === 0) {
@@ -372,7 +372,7 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
 
     try {
       // Remove from user's trip list
-      const userTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
+      const userTrips = (await window.spark.kv.get<string[]>(`user-trips-${user.id}`)) || []
       const updatedTrips = userTrips.filter(id => id !== tripId)
       await window.spark.kv.set(`user-trips-${user.id}`, updatedTrips)
       
@@ -846,7 +846,6 @@ function TripCard({ trip, onDelete, onEdit, getTypeIcon, getTypeColor }: TripCar
           </div>
         </div>
       </CardHeader>
-      
       {expanded && (
         <CardContent>
           {trip.notes && (
@@ -872,9 +871,7 @@ function TripCard({ trip, onDelete, onEdit, getTypeIcon, getTypeColor }: TripCar
                   </h4>
                   <div className="grid gap-2 pl-4">
                     {parkLogs.length === 0 ? (
-                      <div className="text-sm text-muted-foreground italic py-2">
-                        No rides logged for this park
-                      </div>
+                      <div className="text-sm text-muted-foreground italic py-2">No rides logged for this park</div>
                     ) : (
                       parkLogs
                         .sort((a, b) => b.rideCount - a.rideCount)
@@ -909,11 +906,11 @@ function TripCard({ trip, onDelete, onEdit, getTypeIcon, getTypeColor }: TripCar
                     )}
                   </div>
                 </div>
-              )
+              );
             })}
           </div>
         </CardContent>
       )}
     </Card>
-  )
+  );
 }

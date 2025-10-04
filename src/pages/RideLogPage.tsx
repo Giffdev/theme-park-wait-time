@@ -856,9 +856,15 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                           // Process current ride counts - either update existing logs or create new ones
                           Object.entries(rideCounts).forEach(([key, count]) => {
                             if (count > 0) {
-                              const parts = key.split('-')
-                              const parkId = parts[0]
-                              const attractionId = parts.slice(1).join('-')
+                              // Find the correct parkId by checking which selected park the key starts with
+                              const parkId = selectedParks.find(p => key.startsWith(`${p}-`))
+                              if (!parkId) {
+                                console.warn(`⚠️ Could not determine parkId for key: ${key}`)
+                                return
+                              }
+                              
+                              // Extract attractionId by removing the parkId prefix and the connecting dash
+                              const attractionId = key.substring(parkId.length + 1)
                               
                               console.log(`🔍 Processing ride log for key: ${key}, parkId: ${parkId}, attractionId: ${attractionId}, count: ${count}`)
                               
