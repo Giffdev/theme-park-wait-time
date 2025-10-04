@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useKV } from '@github/spark/hooks'
 import { Header } from '@/components/Header'
+import { MobileBottomNav } from '@/components/MobileBottomNav'
 import { AuthModal } from '@/components/AuthModal'
 
 import { HomePage, AboutPage, ParkDetailsPage, AttractionDetailsPage, CrowdCalendarPage, ParkSelectorPage, RideLogPage, MyRideLogsPage } from '@/pages'
@@ -122,59 +123,64 @@ function App() {
             </div>
           </div>
         ) : (
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/parks" element={<ParkSelectorPage />} />
-            <Route path="/calendar" element={<CrowdCalendarPage />} />
-            <Route 
-              path="/log" 
-              element={
-                <RideLogPage 
-                  user={currentUser ?? null}
-                  onLoginRequired={handleLoginModalOpen}
-                />
-              } 
-            />
-            <Route 
-              path="/log/:parkId" 
-              element={
-                <RideLogPage 
-                  user={currentUser ?? null}
-                  onLoginRequired={handleLoginModalOpen}
-                />
-              } 
-            />
-            <Route 
-              path="/my-logs" 
-              element={
-                <MyRideLogsPage 
-                  user={currentUser ?? null}
-                  onLoginRequired={handleLoginModalOpen}
-                />
-              } 
-            />
-            <Route 
-              path="/park/:parkId" 
-              element={
-                <ParkDetailsPage 
-                  user={currentUser ?? null}
-                  onLoginRequired={handleLoginModalOpen}
-                />
-              } 
-            />
-            <Route 
-              path="/park/:parkId/attraction/:attractionId" 
-              element={
-                <AttractionDetailsPage 
-                  user={currentUser ?? null}
-                  onLoginRequired={handleLoginModalOpen}
-                />
-              } 
-            />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <div className="pb-20 md:pb-0">
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/about" element={<AboutPage />} />
+              <Route path="/parks" element={<ParkSelectorPage />} />
+              <Route path="/calendar" element={<CrowdCalendarPage />} />
+              <Route 
+                path="/log" 
+                element={
+                  <RideLogPage 
+                    user={currentUser ?? null}
+                    onLoginRequired={handleLoginModalOpen}
+                  />
+                } 
+              />
+              <Route 
+                path="/log/:parkId" 
+                element={
+                  <RideLogPage 
+                    user={currentUser ?? null}
+                    onLoginRequired={handleLoginModalOpen}
+                  />
+                } 
+              />
+              <Route 
+                path="/my-logs" 
+                element={
+                  <MyRideLogsPage 
+                    user={currentUser ?? null}
+                    onLoginRequired={handleLoginModalOpen}
+                  />
+                } 
+              />
+              <Route 
+                path="/park/:parkId" 
+                element={
+                  <ParkDetailsPage 
+                    user={currentUser ?? null}
+                    onLoginRequired={handleLoginModalOpen}
+                  />
+                } 
+              />
+              <Route 
+                path="/park/:parkId/attraction/:attractionId" 
+                element={
+                  <AttractionDetailsPage 
+                    user={currentUser ?? null}
+                    onLoginRequired={handleLoginModalOpen}
+                  />
+                } 
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </div>
         )}
+
+        {/* Mobile Bottom Navigation */}
+        <MobileBottomNav user={currentUser ?? null} />
 
         {showAuthModal && (
           <AuthModal
