@@ -9,35 +9,17 @@ function ParkFlowIcon({ size = 24, className }: { size?: number; className?: str
     <svg 
       width={size} 
       height={size}
-      viewBox="0 0 24 24" 
-      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
       className={className}
     >
-      {/* Crystal ball */}
-      <circle 
-        cx="12" 
-        cy="12" 
-        r="9" 
-        fill="none"
-        stroke="currentColor" 
-        strokeWidth="1.2" 
-      />
-      
-      {/* Miniature castle inside the crystal ball */}
-      <circle 
-        cx="12" 
-        cy="8" 
-        r="2" 
-        fill="currentColor" 
-      />
-      
-      {/* Miniature roller coaster inside the crystal ball */}
-      <path 
-        d="M8 14c1-2 2-2 3 0s2 2 3 0" 
-        stroke="currentColor" 
-        strokeWidth="1.2" 
-        fill="none"
-      />
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 12l2 2 4-4" />
+      <circle cx="12" cy="8" r="2" fill="currentColor" />
     </svg>
   )
 }
