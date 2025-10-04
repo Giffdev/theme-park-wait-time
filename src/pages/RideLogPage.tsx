@@ -141,6 +141,17 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     }
   }, [currentTrip])
 
+  // Auto-save when notes change
+  useEffect(() => {
+    if (currentTrip && user && Object.values(rideCounts).some(count => count > 0)) {
+      const timeoutId = setTimeout(() => {
+        autoSaveTrip(rideCounts)
+      }, 500) // Debounce notes changes
+      
+      return () => clearTimeout(timeoutId)
+    }
+  }, [notes, currentTrip, user, rideCounts])
+
   // Pre-select attraction if specified in URL
   useEffect(() => {
     if (preselectedAttractionId && parkId && attractions[parkId]) {
@@ -240,21 +251,11 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   }, [currentTrip, user, rideCounts])
 
   const handleNotesChange = useCallback((key: string, note: string) => {
-    setNotes(prev => {
-      const newNotes = { ...prev, [key]: note }
-      return newNotes
-    })
-    // Auto-save when notes change - use setTimeout to avoid stale closure
-    if (currentTrip && user && Object.values(rideCounts).some(count => count > 0)) {
-      setTimeout(() => {
-        // Get fresh state from callback
-        setRideCounts(currentCounts => {
-          autoSaveTrip(currentCounts)
-          return currentCounts
-        })
-      }, 100)
-    }
-  }, [currentTrip, user, rideCounts])
+    setNotes(prev => ({
+      ...prev,
+      [key]: note
+    }))
+  }, [])
 
   const updateRideCount = (parkId: string, attractionId: string, change: number) => {
     const key = `${parkId}-${attractionId}`
