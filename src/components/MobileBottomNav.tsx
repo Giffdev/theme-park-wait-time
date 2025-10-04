@@ -64,7 +64,7 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
           <Link
             to="/my-logs"
             className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
-              isActive('/my-logs') || isActive('/log')
+              isActive('/my-logs')
                 ? 'text-primary bg-primary/10'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
