@@ -1439,11 +1439,11 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
             <Label className="text-sm font-medium">Step 2: Choose Parks from Selected Resort</Label>
           </div>
           
-          {/* Helpful info about data availability */}
+          {/* Helpful info about multiple parks */}
           <div className="bg-muted/50 border border-muted rounded-lg p-3">
             <p className="text-sm text-muted-foreground">
-              <strong>Note:</strong> Only parks with attraction data available can be selected. 
-              Parks marked "No Data" are coming soon!
+              <strong>Tip:</strong> Select multiple parks if you're visiting more than one park on the same day. 
+              This helps you track all your rides in one trip log!
             </p>
           </div>
           
