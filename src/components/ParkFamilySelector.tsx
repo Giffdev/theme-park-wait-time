@@ -57,7 +57,7 @@ export function ParkFamilySelector({ selectedFamily, selectedParks, onFamilyChan
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {parkFamilies.map((family) => (
+            {[...parkFamilies].sort((a, b) => a.name.localeCompare(b.name)).map((family) => (
               <SelectItem key={family.id} value={family.id}>
                 <div>
                   <div className="font-medium">{family.name}</div>
