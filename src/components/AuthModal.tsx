@@ -103,13 +103,6 @@ export function AuthModal({ onLogin, onClose }: AuthModalProps) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="mb-4 p-3 bg-muted rounded-lg">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Shield size={16} />
-            <span>Your data is protected with industry-standard encryption</span>
-          </div>
-        </div>
-
         <Tabs defaultValue="signin" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="signin">Sign In</TabsTrigger>
