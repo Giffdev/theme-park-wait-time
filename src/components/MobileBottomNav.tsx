@@ -1,6 +1,6 @@
 import React from 'react'
-import { House, Calendar, Suitcase, Info } from '@phosphor-icons/react'
 import { Link, useLocation } from 'react-router-dom'
+import { House, Calendar, Suitcase, Info } from '@phosphor-icons/react'
 import type { User } from '@/App'
 
 interface MobileBottomNavProps {
@@ -11,23 +11,26 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
   const location = useLocation()
   
   const isActive = (path: string) => {
-    return location.pathname === path || location.pathname.startsWith(path + '/')
+    if (path === '/') {
+      return location.pathname === '/'
+    }
+    return location.pathname.startsWith(path)
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden safe-area-inset-bottom z-50">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-background border-t border-border safe-area-inset-bottom z-50">
       <div className="flex items-center justify-around px-2 py-1">
         {/* Home */}
         <Link
           to="/"
           className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
-            isActive('/') && location.pathname === '/'
+            isActive('/')
               ? 'text-primary bg-primary/10'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           <House size={20} />
-          <span className="text-xs mt-1 font-medium">Home</span>
+          <span className="text-xs mt-1">Home</span>
         </Link>
 
         {/* Parks */}
@@ -40,7 +43,7 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
           }`}
         >
           <Suitcase size={20} />
-          <span className="text-xs mt-1 font-medium">Parks</span>
+          <span className="text-xs mt-1">Parks</span>
         </Link>
 
         {/* Calendar */}
@@ -53,7 +56,7 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
           }`}
         >
           <Calendar size={20} />
-          <span className="text-xs mt-1 font-medium">Calendar</span>
+          <span className="text-xs mt-1">Calendar</span>
         </Link>
 
         {/* My Logs - only show if user is logged in */}
@@ -66,8 +69,8 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <Calendar size={20} />
-            <span className="text-xs mt-1 font-medium">My Logs</span>
+            <Suitcase size={20} />
+            <span className="text-xs mt-1">My Logs</span>
           </Link>
         )}
 
@@ -81,7 +84,7 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
           }`}
         >
           <Info size={20} />
-          <span className="text-xs mt-1 font-medium">About</span>
+          <span className="text-xs mt-1">About</span>
         </Link>
       </div>
     </div>
