@@ -138,9 +138,9 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
     const newDate = new Date(currentDateObj)
     
     if (direction === 'prev') {
-      newDate.setDate(currentDateObj.getDate() - 3) // Go back 3 days
+      newDate.setDate(currentDateObj.getDate() - 2) // Go back 2 days
     } else {
-      newDate.setDate(currentDateObj.getDate() + 3) // Go forward 3 days
+      newDate.setDate(currentDateObj.getDate() + 2) // Go forward 2 days
     }
     
     setCurrentYear(newDate.getFullYear())
@@ -173,12 +173,12 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
     setExpandedDays(new Set())
   }, [currentMonth, currentYear, currentDate])
 
-  // Get 3 consecutive days starting from current date for mobile
+  // Get 2 consecutive days starting from current date for mobile
   const getMobileDays = (): number[] => {
     const daysInMonth = getDaysInMonth(currentMonth, currentYear)
     const days: number[] = []
     
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       let day = currentDate + i
       if (day > daysInMonth) {
         day = day - daysInMonth
@@ -189,42 +189,42 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
     return days
   }
 
-  // Render mobile day cards (3 days side by side)
+  // Render mobile day cards (2 days side by side)
   const renderMobileDays = (): React.ReactElement[] => {
     const days = getMobileDays()
     return days.map((day) => {
       const overallCrowdLevel = getOverallCrowdLevel(day)
       const dayCardColor = getDayCardColor(overallCrowdLevel)
       const isExpanded = isDayExpanded(day)
-      const hasMore = displayParks.length > 3
+      const hasMore = displayParks.length > 4
       
       return (
         <div
           key={day}
-          className={`${isExpanded ? 'min-h-[300px]' : 'min-h-[200px]'} border rounded-lg p-2 ${dayCardColor} ${hasMore ? 'cursor-pointer' : ''} transition-all duration-300`}
+          className={`${isExpanded ? 'min-h-[350px]' : 'min-h-[220px]'} border rounded-lg p-3 ${dayCardColor} ${hasMore ? 'cursor-pointer' : ''} transition-all duration-300`}
           onClick={hasMore ? () => toggleDayExpansion(day) : undefined}
         >
           <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">{day}</span>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-base font-medium">{day}</span>
               {hasMore && (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-sm text-muted-foreground">
                   {isExpanded ? '▼' : '▶'}
                 </span>
               )}
             </div>
-            <div className="flex-1 space-y-1">
-              {(isExpanded ? displayParks : displayParks.slice(0, 3)).map((park) => {
+            <div className="flex-1 space-y-2">
+              {(isExpanded ? displayParks : displayParks.slice(0, 4)).map((park) => {
                 const crowdLevel = getCrowdLevel(day, park.id)
                 return (
-                  <div key={park.id} className="flex flex-col text-xs gap-0.5">
-                    <span className="text-muted-foreground truncate text-xs" title={park.shortName}>
+                  <div key={park.id} className="flex flex-col space-y-1">
+                    <span className="text-sm text-muted-foreground truncate" title={park.shortName}>
                       {park.shortName} {park.type === 'water-park' && '💧'}
                     </span>
-                    <div className="flex items-center gap-1">
-                      <span className="font-medium text-foreground text-xs">({crowdLevel})</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground text-sm">({crowdLevel})</span>
                       <Badge 
-                        className={`text-xs px-1 py-0.5 ${getCrowdColor(crowdLevel)} text-center`}
+                        className={`text-sm px-2 py-1 ${getCrowdColor(crowdLevel)} text-center flex-1`}
                         variant="secondary"
                       >
                         {getCrowdLabel(crowdLevel)}
@@ -234,8 +234,8 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                 )
               })}
               {hasMore && !isExpanded && (
-                <div className="text-xs text-accent font-medium text-center pt-1 cursor-pointer hover:text-accent/80">
-                  +{displayParks.length - 3} more
+                <div className="text-sm text-accent font-medium text-center pt-2 cursor-pointer hover:text-accent/80">
+                  +{displayParks.length - 4} more
                 </div>
               )}
             </div>
@@ -402,7 +402,7 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
                 {isMobile 
-                  ? "Compare busy levels across parks. Swipe to view different days. Click days with 'more' to expand."
+                  ? "Compare busy levels across parks. Navigate to view different days. Click days with 'more' to expand."
                   : "Compare busy levels across all parks to plan your visit. Day colors reflect overall business. Click days with 'more' to expand."
                 }
               </p>
@@ -436,9 +436,9 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
         <CardContent>
           <div className="space-y-4">
             {isMobile ? (
-              // Mobile view: 3 days side by side with proper overflow handling
+              // Mobile view: 2 days side by side with proper overflow handling
               <div className="w-full">
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   {renderMobileDays()}
                 </div>
               </div>
