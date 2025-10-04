@@ -255,11 +255,12 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       ...prev,
       [key]: note
     }))
+    // Don't auto-save on every character - only on blur
   }, [])
 
   const handleNotesBlur = useCallback((key: string) => {
-    // Auto-save when notes field loses focus
-    if (currentTrip && user && Object.values(rideCounts).some(count => count > 0)) {
+    // Auto-save when notes field loses focus - use current notes state
+    if (currentTrip && user && window.spark?.kv) {
       setTimeout(() => {
         setRideCounts(currentCounts => {
           autoSaveTrip(currentCounts)
@@ -267,7 +268,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         })
       }, 100)
     }
-  }, [currentTrip, user, rideCounts])
+  }, [currentTrip, user])
 
   const updateRideCount = (parkId: string, attractionId: string, change: number) => {
     const key = `${parkId}-${attractionId}`
@@ -843,73 +844,71 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                           
                           console.log(`🎢 Total rides to complete: ${totalRideCount}`)
                           
-                          // Build the trip data directly from current state instead of relying on auto-save
-                          console.log('🔨 Building final trip directly from current state...')
+                          // Build the trip data from current state and combine with existing logs
+                          console.log('🔨 Building final trip from current state and existing logs...')
                           
-                          const finalLogsToSave: RideLog[] = []
+                          // Start with existing logs from the trip (for editing scenarios)
+                          const finalLogsToSave: RideLog[] = [...(currentTrip.rideLogs || [])]
+                          const existingLogKeys = new Set(
+                            finalLogsToSave.map(log => `${log.parkId}-${log.attractionId}`)
+                          )
 
+                          // Process current ride counts - either update existing logs or create new ones
                           Object.entries(rideCounts).forEach(([key, count]) => {
                             if (count > 0) {
                               const parts = key.split('-')
-                              // Handle attraction IDs that might contain dashes - take first part as parkId, rest as attractionId
                               const parkId = parts[0]
                               const attractionId = parts.slice(1).join('-')
                               
                               console.log(`🔍 Processing ride log for key: ${key}, parkId: ${parkId}, attractionId: ${attractionId}, count: ${count}`)
-                              console.log(`🏗️ Available attractions for park ${parkId}:`, attractions[parkId]?.map(a => ({ id: a.id, name: a.name })) || 'No attractions loaded')
                               
-                              const attraction = attractions[parkId]?.find(a => a.id === attractionId)
+                              // Check if we already have a log for this attraction
+                              const existingLogIndex = finalLogsToSave.findIndex(
+                                log => log.parkId === parkId && log.attractionId === attractionId
+                              )
                               
-                              if (attraction) {
-                                const rideLog: RideLog = {
-                                  id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                                  userId: user.id,
-                                  tripId: currentTrip.id,
-                                  parkId,
-                                  attractionId,
-                                  attractionName: attraction.name,
-                                  attractionType: attraction.type,
+                              if (existingLogIndex >= 0) {
+                                // Update existing log
+                                console.log(`🔄 Updating existing log for ${finalLogsToSave[existingLogIndex].attractionName}`)
+                                finalLogsToSave[existingLogIndex] = {
+                                  ...finalLogsToSave[existingLogIndex],
                                   rideCount: count,
-                                  trackVariant: selectedVariants[key] || undefined,
-                                  loggedAt: new Date().toISOString(),
-                                  notes: notes[key] || undefined
+                                  trackVariant: selectedVariants[key] || finalLogsToSave[existingLogIndex].trackVariant,
+                                  notes: notes[key] || finalLogsToSave[existingLogIndex].notes,
+                                  loggedAt: new Date().toISOString()
                                 }
-                                finalLogsToSave.push(rideLog)
-                                console.log(`✅ Created ride log for ${attraction.name}`)
                               } else {
-                                console.warn(`⚠️ Could not find attraction with ID ${attractionId} in park ${parkId}`)
-                                console.warn(`Available attraction IDs:`, attractions[parkId]?.map(a => a.id) || 'None')
+                                // Create new log
+                                const attraction = attractions[parkId]?.find(a => a.id === attractionId)
                                 
-                                // Try to create the log anyway using data from the existing trip if possible
-                                const existingLog = currentTrip.rideLogs.find(log => log.parkId === parkId && log.attractionId === attractionId)
-                                if (existingLog) {
-                                  console.log('📝 Using existing log data as fallback')
+                                if (attraction) {
                                   const rideLog: RideLog = {
                                     id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                                     userId: user.id,
                                     tripId: currentTrip.id,
                                     parkId,
                                     attractionId,
-                                    attractionName: existingLog.attractionName,
-                                    attractionType: existingLog.attractionType,
+                                    attractionName: attraction.name,
+                                    attractionType: attraction.type,
                                     rideCount: count,
                                     trackVariant: selectedVariants[key] || undefined,
                                     loggedAt: new Date().toISOString(),
                                     notes: notes[key] || undefined
                                   }
                                   finalLogsToSave.push(rideLog)
-                                  console.log(`✅ Created fallback ride log for ${existingLog.attractionName}`)
+                                  console.log(`✅ Created new ride log for ${attraction.name}`)
                                 } else {
-                                  console.error(`❌ No fallback data available for ${key}`)
-                                  // As a last resort, create a basic log entry to prevent total failure
-                                  console.log(`🆘 Creating emergency fallback log for ${key}`)
+                                  console.warn(`⚠️ Could not find attraction with ID ${attractionId} in park ${parkId}`)
+                                  // Try to create log with basic info
                                   const rideLog: RideLog = {
                                     id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                                     userId: user.id,
                                     tripId: currentTrip.id,
                                     parkId,
                                     attractionId,
-                                    attractionName: `Unknown Attraction (${attractionId})`,
+                                    attractionName: attractionId.split('-').map(word => 
+                                      word.charAt(0).toUpperCase() + word.slice(1)
+                                    ).join(' '),
                                     attractionType: 'experience' as any,
                                     rideCount: count,
                                     trackVariant: selectedVariants[key] || undefined,
@@ -917,30 +916,46 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                                     notes: notes[key] || undefined
                                   }
                                   finalLogsToSave.push(rideLog)
-                                  console.log(`⚠️ Created emergency fallback log`)
+                                  console.log(`⚠️ Created fallback ride log for ${rideLog.attractionName}`)
                                 }
                               }
                             }
                           })
                           
-                          console.log(`📋 Final logs to save: ${finalLogsToSave.length}`)
-                          console.log('🎢 Final ride logs:', finalLogsToSave.map(log => ({ name: log.attractionName, count: log.rideCount })))
+                          // Remove logs with 0 rides (if user set them to 0)
+                          const nonZeroLogs = finalLogsToSave.filter(log => {
+                            const key = `${log.parkId}-${log.attractionId}`
+                            const currentCount = rideCounts[key]
+                            return currentCount === undefined || currentCount > 0
+                          })
                           
-                          if (finalLogsToSave.length === 0) {
+                          console.log(`📋 Final logs to save: ${nonZeroLogs.length}`)
+                          console.log('🎢 Final ride logs:', nonZeroLogs.map(log => ({ name: log.attractionName, count: log.rideCount })))
+                          
+                          if (nonZeroLogs.length === 0) {
                             console.error('❌ Trip completion failed: No valid ride logs could be created')
-                            console.error('Debug info:', {
-                              rideCountsEntries: Object.entries(rideCounts).length,
-                              attractionsLoaded: Object.keys(attractions),
-                              rideCounts: rideCounts
-                            })
-                            toast.error('Unable to complete trip - could not process the logged rides. Please try refreshing the page and trying again.')
+                            toast.error('Unable to complete trip - no rides were logged. Please add some rides first.')
                             return
                           }
                           
-                          // Update park ride counts
-                          const finalUpdatedParks = currentTrip.parks.map(park => ({
-                            ...park,
-                            rideCount: finalLogsToSave.filter(log => log.parkId === park.parkId).reduce((sum, log) => sum + log.rideCount, 0)
+                          // Recalculate park summaries based on final logs
+                          const parkSummaryMap = new Map<string, { parkName: string, rideCount: number }>()
+                          
+                          for (const log of nonZeroLogs) {
+                            const parkInfo = currentTrip.parks.find(p => p.parkId === log.parkId)
+                            const parkName = parkInfo?.parkName || log.parkId.split('-').map(word => 
+                              word.charAt(0).toUpperCase() + word.slice(1)
+                            ).join(' ')
+                            
+                            const existing = parkSummaryMap.get(log.parkId) || { parkName, rideCount: 0 }
+                            existing.rideCount += log.rideCount
+                            parkSummaryMap.set(log.parkId, existing)
+                          }
+                          
+                          const finalUpdatedParks = Array.from(parkSummaryMap.entries()).map(([parkId, info]) => ({
+                            parkId,
+                            parkName: info.parkName,
+                            rideCount: info.rideCount
                           }))
 
                           // Create the final trip object
@@ -949,8 +964,8 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                             userId: user.id,
                             visitDate: currentTrip.visitDate,
                             parks: finalUpdatedParks,
-                            rideLogs: finalLogsToSave,
-                            totalRides: finalLogsToSave.reduce((sum, log) => sum + log.rideCount, 0),
+                            rideLogs: nonZeroLogs,
+                            totalRides: nonZeroLogs.reduce((sum, log) => sum + log.rideCount, 0),
                             createdAt: currentTrip.createdAt,
                             updatedAt: new Date().toISOString(),
                             notes: tripNotes.trim() || undefined
@@ -1036,16 +1051,16 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                 <Label>Trip Notes (auto-saved)</Label>
                 <Textarea
                   value={tripNotes}
-                  onChange={(e) => {
-                    setTripNotes(e.target.value)
-                    // Auto-save when trip notes change - debounced
-                    if (currentTrip && user) {
+                  onChange={(e) => setTripNotes(e.target.value)}
+                  onBlur={() => {
+                    // Auto-save when trip notes field loses focus
+                    if (currentTrip && user && window.spark?.kv) {
                       setTimeout(() => {
                         setRideCounts(currentCounts => {
                           autoSaveTrip(currentCounts)
                           return currentCounts
                         })
-                      }, 500)
+                      }, 100)
                     }
                   }}
                   placeholder="Add notes about your trip experience..."
