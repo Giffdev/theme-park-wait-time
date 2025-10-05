@@ -1162,28 +1162,40 @@ function AttractionsForPark({
   onNotesBlur,
   user
 }: AttractionsForParkProps) {
-  // Filter out dining establishments - only show actual attractions
+  // Filter attractions by availability status, including all types (rides, shows, parades, etc.)
   const attractionOnlyFilter = isAttractionNotDining
 
-  const activeAttractions = attractions.filter(a => !a.isDefunct && attractionOnlyFilter(a))
-  const defunctAttractions = attractions.filter(a => a.isDefunct && attractionOnlyFilter(a)).sort((a, b) => a.name.localeCompare(b.name))
-  const seasonalAttractions = activeAttractions.filter(a => a.isSeasonal).sort((a, b) => a.name.localeCompare(b.name))
-  const regularAttractions = activeAttractions.filter(a => !a.isSeasonal).sort((a, b) => a.name.localeCompare(b.name))
+  // Categorize attractions by availability status
+  const activeAttractions = attractions.filter(a => 
+    (a.availability === 'active' || (!a.availability && !a.isDefunct)) && attractionOnlyFilter(a)
+  ).sort((a, b) => a.name.localeCompare(b.name))
+  
+  const limitedAttractions = attractions.filter(a => 
+    a.availability === 'limited' && attractionOnlyFilter(a)
+  ).sort((a, b) => a.name.localeCompare(b.name))
+  
+  const retiredAttractions = attractions.filter(a => 
+    (a.availability === 'retired' || a.isDefunct) && attractionOnlyFilter(a)
+  ).sort((a, b) => a.name.localeCompare(b.name))
+
+  // Also separate by seasonal for legacy compatibility
+  const seasonalAttractions = activeAttractions.filter(a => a.isSeasonal)
+  const regularAttractions = activeAttractions.filter(a => !a.isSeasonal)
 
   return (
-    <Tabs defaultValue="regular" className="space-y-4">
+    <Tabs defaultValue="active" className="space-y-4">
       <TabsList>
-        <TabsTrigger value="regular">Active Attractions</TabsTrigger>
-        {seasonalAttractions.length > 0 && (
-          <TabsTrigger value="seasonal">Seasonal</TabsTrigger>
+        <TabsTrigger value="active">Active ({activeAttractions.length})</TabsTrigger>
+        {limitedAttractions.length > 0 && (
+          <TabsTrigger value="limited">Limited/Seasonal ({limitedAttractions.length})</TabsTrigger>
         )}
-        {defunctAttractions.length > 0 && (
-          <TabsTrigger value="defunct">Defunct/Historical</TabsTrigger>
+        {retiredAttractions.length > 0 && (
+          <TabsTrigger value="retired">Retired/Historical ({retiredAttractions.length})</TabsTrigger>
         )}
       </TabsList>
 
-      <TabsContent value="regular" className="space-y-4">
-        {regularAttractions.map(attraction => (
+      <TabsContent value="active" className="space-y-4">
+        {activeAttractions.map(attraction => (
           <RideLogCard
             key={`${parkId}-${attraction.id}`}
             parkId={parkId}
@@ -1200,9 +1212,12 @@ function AttractionsForPark({
         ))}
       </TabsContent>
 
-      {seasonalAttractions.length > 0 && (
-        <TabsContent value="seasonal" className="space-y-4">
-          {seasonalAttractions.map(attraction => (
+      {limitedAttractions.length > 0 && (
+        <TabsContent value="limited" className="space-y-4">
+          <div className="text-sm text-muted-foreground mb-4">
+            These attractions operate seasonally or for limited periods
+          </div>
+          {limitedAttractions.map(attraction => (
             <RideLogCard
               key={`${parkId}-${attraction.id}`}
               parkId={parkId}
@@ -1220,12 +1235,12 @@ function AttractionsForPark({
         </TabsContent>
       )}
 
-      {defunctAttractions.length > 0 && (
-        <TabsContent value="defunct" className="space-y-4">
+      {retiredAttractions.length > 0 && (
+        <TabsContent value="retired" className="space-y-4">
           <div className="text-sm text-muted-foreground mb-4">
             These attractions are no longer operating but can still be logged for historical visits
           </div>
-          {defunctAttractions.map(attraction => (
+          {retiredAttractions.map(attraction => (
             <RideLogCard
               key={`${parkId}-${attraction.id}`}
               parkId={parkId}
@@ -1279,6 +1294,10 @@ function RideLogCard({
       case 'thrill': return <Star size={16} />
       case 'family': return <Users size={16} />
       case 'show': return <Clock size={16} />
+      case 'experience': return <MapPin size={16} />
+      case 'parade': return <Ticket size={16} />
+      case 'character-meet': return <Users size={16} />
+      case 'dining-experience': return <Clock size={16} />
       default: return <Ticket size={16} />
     }
   }
@@ -1288,7 +1307,19 @@ function RideLogCard({
       case 'thrill': return 'bg-destructive text-destructive-foreground'
       case 'family': return 'bg-success text-success-foreground'
       case 'show': return 'bg-accent text-accent-foreground'
+      case 'experience': return 'bg-secondary text-secondary-foreground'
+      case 'parade': return 'bg-primary text-primary-foreground'
+      case 'character-meet': return 'bg-success text-success-foreground'
+      case 'dining-experience': return 'bg-muted text-muted-foreground'
       default: return 'bg-secondary text-secondary-foreground'
+    }
+  }
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'character-meet': return 'Character Meet'
+      case 'dining-experience': return 'Dining'
+      default: return type.charAt(0).toUpperCase() + type.slice(1)
     }
   }
 
@@ -1299,17 +1330,27 @@ function RideLogCard({
           <div className="flex items-center gap-3">
             <Badge className={getTypeColor(attraction.type)} variant="secondary">
               {getTypeIcon(attraction.type)}
-              <span className="ml-1 capitalize">{attraction.type}</span>
+              <span className="ml-1">{getTypeLabel(attraction.type)}</span>
             </Badge>
             <div>
               <h3 className="font-semibold flex items-center gap-2">
                 {attraction.name}
-                {attraction.isSeasonal && (
+                {attraction.availability === 'limited' && (
+                  <Badge variant="outline" className="text-xs text-amber-600">
+                    Limited/Seasonal
+                  </Badge>
+                )}
+                {attraction.availability === 'retired' && (
+                  <Badge variant="outline" className="text-xs text-muted-foreground">
+                    Retired
+                  </Badge>
+                )}
+                {attraction.isSeasonal && attraction.availability === 'active' && (
                   <Badge variant="outline" className="text-xs">
                     {attraction.seasonalPeriod || 'Seasonal'}
                   </Badge>
                 )}
-                {isDefunct && (
+                {isDefunct && !attraction.availability && (
                   <Badge variant="outline" className="text-xs text-muted-foreground">
                     Defunct
                   </Badge>
@@ -1331,7 +1372,7 @@ function RideLogCard({
             <div className="text-center min-w-[60px]">
               <div className="text-2xl font-bold">{count}</div>
               <div className="text-xs text-muted-foreground">
-                {count === 1 ? 'ride' : 'rides'}
+                {count === 1 ? 'time' : 'times'}
               </div>
             </div>
             <Button

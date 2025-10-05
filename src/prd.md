@@ -83,6 +83,21 @@
 - **Why**: Encourages accurate reporting and builds community trust
 - **Success Criteria**: Active user base contributing regular updates
 
+### Comprehensive Attraction Coverage & Categorization
+- **What**: Support for all types of theme park experiences including rides, shows, parades, character meet-and-greets, and dining experiences, organized by availability status (Active, Limited/Seasonal, Retired/Historical)
+- **Why**: Allows users to log and track complete park experiences beyond just rides, including entertainment that may only be available during certain seasons or special events
+- **Success Criteria**: Users can find and log all types of park experiences they encounter during their visit
+
+### Trip Logging System
+- **What**: Comprehensive system for logging complete park visits including rides, shows, parades, character meetings, and dining experiences across multiple parks
+- **Why**: Enables users to track their complete theme park experiences and share memories
+- **Success Criteria**: Users can log diverse attraction types with proper categorization and historical tracking
+
+### Availability Status Management  
+- **What**: Three-tier categorization system: Active (currently operating), Limited (seasonal/special events), and Retired (historical/no longer operating)
+- **Why**: Helps users understand what's currently available and allows logging of historical visits or seasonal experiences
+- **Success Criteria**: Clear distinction between current attractions and those available only during certain periods or no longer operating
+
 ### Seasonal and Historical Attraction Management
 - **What**: Separate organization of active rides, seasonal events (Halloween, Christmas), and defunct/historical attractions
 - **Why**: Allows users to find relevant attractions for their visit timing and understand park history

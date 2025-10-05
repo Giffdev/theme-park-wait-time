@@ -2,7 +2,7 @@ import { sampleAttractions } from '@/data/sampleData'
 import type { ExtendedAttraction } from '@/types'
 
 // Version identifier for data updates - increment when data structure changes
-const DATA_VERSION = '2024-12-19-v5-add-silverwood'
+const DATA_VERSION = '2024-12-19-v6-expanded-attractions'
 
 /**
  * Service for reliably loading park attraction data with fallback mechanisms

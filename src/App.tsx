@@ -19,10 +19,11 @@ export type Park = {
 export type Attraction = {
   id: string
   name: string
-  type: 'thrill' | 'family' | 'show' | 'experience'
+  type: 'thrill' | 'family' | 'show' | 'experience' | 'parade' | 'character-meet' | 'dining-experience'
   currentWaitTime: number
   status: 'operating' | 'closed' | 'delayed'
   lastUpdated: string
+  availability?: 'active' | 'limited' | 'retired'
 }
 
 export type User = {
