@@ -50,3 +50,43 @@ export function isAttractionNotDining(attraction: ExtendedAttraction): boolean {
   
   return false
 }
+
+/**
+ * Filter function specifically for park overview - only shows attractions
+ * with meaningful wait times (thrill, family, and non-dining experiences).
+ * Excludes shows, parades, and character meets which are better suited for scheduling.
+ */
+export function isAttractionForOverview(attraction: ExtendedAttraction): boolean {
+  // Include thrill and family rides - these are the core wait-time attractions
+  if (attraction.type === 'thrill' || attraction.type === 'family') {
+    return true
+  }
+  
+  // Include experiences that aren't dining and have meaningful wait times
+  if (attraction.type === 'experience') {
+    const name = attraction.name.toLowerCase()
+    const isDining = name.includes('restaurant') || 
+                    name.includes('dining') || 
+                    name.includes('steakhaus') ||
+                    name.includes('stakehaus') ||
+                    name.includes('tavern') ||
+                    name.includes('café') ||
+                    name.includes('cafe') ||
+                    name.includes('bar') ||
+                    name.includes('grill') ||
+                    name.includes('kitchen') ||
+                    name.includes('eatery') ||
+                    name.includes('cantina') ||
+                    name.includes('bistro') ||
+                    name.includes('lounge') ||
+                    name.includes('food') ||
+                    name.includes('snack')
+    
+    // Only include non-dining experiences that typically have wait times
+    return !isDining
+  }
+  
+  // Exclude shows, parades, character meets, and dining experiences
+  // These are better for the live times section where scheduling is more relevant
+  return false
+}

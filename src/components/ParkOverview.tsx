@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChartBar, Clock, TrendUp, SortAscending, Eye } from '@phosphor-icons/react'
-import { isAttractionNotDining } from '@/lib/utils'
+import { isAttractionForOverview } from '@/lib/utils'
 import { ParkDataService } from '@/services/parkDataService'
 import type { ExtendedAttraction } from '@/types'
 
@@ -82,8 +82,8 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
         return false
       }
       
-      // Filter out dining establishments - only show actual attractions
-      return isValid && isAttractionNotDining(attraction)
+      // Filter for overview - only show attractions with meaningful wait times
+      return isValid && isAttractionForOverview(attraction)
     })
     
     console.log(`✅ ParkOverview filtered to ${validAttractions.length} valid attractions`)
@@ -241,10 +241,10 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             {viewMode === 'bars' ? <ChartBar size={20} /> : <Clock size={20} />}
-            All Attractions Overview
+            Wait Time Attractions
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Click on any attraction to view detailed live wait times
+            Rides and experiences with wait times. Click any attraction to view detailed trends.
           </p>
         </CardHeader>
         <CardContent>
