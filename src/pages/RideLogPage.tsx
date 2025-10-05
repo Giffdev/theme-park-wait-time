@@ -129,15 +129,21 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   useEffect(() => {
     // Auto-start trip if coming from park page with parkId and park is now selected
     if (parkId && !currentTrip && selectedParks.includes(parkId) && user && !isLoading) {
-      console.log(`🚀 Auto-starting trip for park: ${parkId} (parks selected: ${selectedParks.join(', ')})`)
-      // Small delay to prevent race conditions
-      const timeoutId = setTimeout(() => {
-        if (!currentTrip) { // Double-check to prevent duplicate trips
-          startNewTrip()
-        }
-      }, 100)
-      
-      return () => clearTimeout(timeoutId)
+      // Also check that the park has data available
+      const availableParks = ParkDataService.getAvailableParks()
+      if (availableParks.includes(parkId)) {
+        console.log(`🚀 Auto-starting trip for park: ${parkId} (parks selected: ${selectedParks.join(', ')})`)
+        // Small delay to prevent race conditions
+        const timeoutId = setTimeout(() => {
+          if (!currentTrip) { // Double-check to prevent duplicate trips
+            startNewTrip()
+          }
+        }, 100)
+        
+        return () => clearTimeout(timeoutId)
+      } else {
+        console.warn(`⚠️ Cannot auto-start trip for ${parkId} - no data available`)
+      }
     }
   }, [parkId, currentTrip, selectedParks, user, isLoading])
 
@@ -766,11 +772,16 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     )
   }
 
+  // Debug log to help with troubleshooting
   console.log('🖥️ RideLogPage render:', {
     currentTrip: currentTrip ? `Trip ${currentTrip.id} (${currentTrip.totalRides} rides)` : 'null',
     showContinuationPrompt,
     shouldShowSetup: (!currentTrip && !showContinuationPrompt),
-    shouldShowLogging: (currentTrip || showContinuationPrompt)
+    shouldShowLogging: (currentTrip || showContinuationPrompt),
+    selectedParks: selectedParks.length,
+    availableParks: ParkDataService.getAvailableParks().length,
+    isLoading,
+    hasSparkKV: !!window.spark?.kv
   })
 
   return (
@@ -1702,7 +1713,8 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
 
   // Get available parks from the data service
   const availableParks = ParkDataService.getAvailableParks()
-  console.log('📋 Available parks with data:', availableParks)
+  console.log('📋 Available parks with data (ParkFamilyTripSelector):', availableParks)
+  console.log('📋 Total available parks count:', availableParks.length)
 
   // Auto-select family when parks are pre-selected (e.g., from URL)
   useEffect(() => {
@@ -1764,24 +1776,22 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
   }
 
   // Reset park filter when changing family selection
-  const handleFamilyChange = (familyId: string | null) => {
+  const handleFamilyChange = (familyId: string) => {
     console.log('🎯 Family changed to:', familyId)
     
-    // Handle null/empty values consistently
-    const newFamilyId = familyId || ''
-    setSelectedFamily(newFamilyId)
+    setSelectedFamily(familyId)
     
     // Auto-expand the newly selected family
-    if (newFamilyId) {
+    if (familyId) {
       setShowParkFilter(prev => ({
         ...prev,
-        [newFamilyId]: true
+        [familyId]: true
       }))
     }
     
     // If changing to a different family, clear parks that don't belong to the new family
-    if (newFamilyId !== selectedFamily && selectedParks.length > 0) {
-      const newFamily = parkFamilies.find(f => f.id === newFamilyId)
+    if (familyId !== selectedFamily && selectedParks.length > 0) {
+      const newFamily = parkFamilies.find(f => f.id === familyId)
       if (newFamily) {
         const validParks = selectedParks.filter(parkId => 
           newFamily.parks.some(p => p.id === parkId)
@@ -1790,80 +1800,75 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
         if (validParks.length !== selectedParks.length) {
           onParksChange(validParks)
         }
-      } else if (!newFamilyId) {
-        // If no family selected, clear all parks
-        onParksChange([])
       }
     }
   }
 
-  // Get families to display - filtered by selection
-  const familiesToShow = selectedFamily 
-    ? parkFamilies.filter(family => family.id === selectedFamily)
-    : []
+  // Clear family selection
+  const clearFamilySelection = () => {
+    setSelectedFamily('')
+    setShowParkFilter({})
+    onParksChange([])
+  }
+
+  // Get families to display - all families for initial selection
+  const showFamilySelector = !selectedFamily
+  const showParkSelection = !!selectedFamily
 
   return (
     <div className="space-y-6">
       {/* Resort Group Selection */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
+      {showFamilySelector && (
+        <div className="space-y-3">
           <div className="flex items-center gap-2">
             <Funnel size={16} className="text-muted-foreground" />
             <Label className="text-sm font-medium">
-              Step 1: Choose Resort Group {selectedFamily && '(can be changed)'}
+              Step 1: Choose Resort Group
             </Label>
           </div>
-          {selectedFamily && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setSelectedFamily('')
-                setShowParkFilter({})
-                onParksChange([]) // Also clear selected parks
-              }}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              Clear Selection
-            </Button>
-          )}
+          <Select value="" onValueChange={handleFamilyChange}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Choose a resort group to see available parks..." />
+            </SelectTrigger>
+            <SelectContent>
+              {[...parkFamilies]
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((family) => {
+                  const familyParksWithData = family.parks.filter(park => availableParks.includes(park.id));
+                  return (
+                    <SelectItem key={family.id} value={family.id}>
+                      {`${family.name} (${familyParksWithData.length} park${familyParksWithData.length !== 1 ? 's' : ''})`}
+                    </SelectItem>
+                  )
+                })}
+            </SelectContent>
+          </Select>
         </div>
-        <Select
-          value={selectedFamily}
-          onValueChange={(value) => {
-            console.log('🎯 Select onValueChange called with:', value)
-            handleFamilyChange(value)
-          }}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Choose a resort group to see available parks..." />
-          </SelectTrigger>
-          <SelectContent>
-            {[...parkFamilies]
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((family) => {
-                const familyParksWithData = family.parks.filter(park => availableParks.includes(park.id));
-                return (
-                  <SelectItem key={family.id} value={family.id}>
-                    {`${family.name} (${familyParksWithData.length} park${familyParksWithData.length !== 1 ? 's' : ''})`}
-                  </SelectItem>
-                )
-              })}
-          </SelectContent>
-        </Select>
-      </div>
+      )}
 
       {/* Show family selection confirmation and park selection */}
-      {selectedFamily && (
+      {showParkSelection && (
         <div className="space-y-4">
           {/* Show confirmation of family selection */}
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
-            <p className="text-sm text-primary">
-              <strong>✓ Resort Selected:</strong> {parkFamilies.find(f => f.id === selectedFamily)?.name}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Now choose which parks you'll visit on this trip
-            </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-primary">
+                  <strong>✓ Resort Selected:</strong> {parkFamilies.find(f => f.id === selectedFamily)?.name}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Now choose which parks you'll visit on this trip
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFamilySelection}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Change Resort
+              </Button>
+            </div>
           </div>
 
           {/* Show info about pre-selected parks */}
@@ -1885,7 +1890,10 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
           </div>
           
           {/* Family Park Groups */}
-          {familiesToShow.map((family) => {
+          {selectedFamily && (() => {
+            const family = parkFamilies.find(f => f.id === selectedFamily)
+            if (!family) return null
+
             const familyParks = family.parks
             const parksWithData = familyParks.filter(park => availableParks.includes(park.id))
             const selectedFamilyParks = selectedParks.filter(parkId => 
@@ -1976,7 +1984,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
                 )}
               </div>
             )
-          })}
+          })()}
         </div>
       )}
       
