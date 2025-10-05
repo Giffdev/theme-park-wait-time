@@ -1753,6 +1753,9 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
         if (validParks.length !== selectedParks.length) {
           onParksChange(validParks)
         }
+      } else if (!familyId) {
+        // If no family selected, clear all parks
+        onParksChange([])
       }
     }
   }
@@ -1773,17 +1776,16 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
           </Label>
         </div>
         <Select
-          value={selectedFamily || 'none'}
+          value={selectedFamily || ''}
           onValueChange={(value) => {
             console.log('🎯 Select onValueChange called with:', value)
-            handleFamilyChange(value === 'none' ? '' : value)
+            handleFamilyChange(value)
           }}
         >
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Choose a resort group to see available parks..." />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="none">Choose a resort group...</SelectItem>
             {[...parkFamilies]
               .sort((a, b) => a.name.localeCompare(b.name))
               .map((family) => {
