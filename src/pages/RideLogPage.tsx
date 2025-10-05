@@ -725,31 +725,35 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
 
 
-  const handleParksChange = (parks: string[]) => {
+  const handleParksChange = useCallback((parks: string[]) => {
     console.log('🏰 handleParksChange called:', { 
       newParks: parks, 
-      currentParks: selectedParks,
       change: parks.length - selectedParks.length
     })
     console.log('🏰 Selected parks before update:', JSON.stringify(selectedParks))
     console.log('🏰 New parks to set:', JSON.stringify(parks))
     
-    // Find parks that were deselected and clear their ride counts
-    const deselectedParks = selectedParks.filter(parkId => !parks.includes(parkId))
-    if (deselectedParks.length > 0) {
-      console.log('🗑️ Clearing ride counts for deselected parks:', deselectedParks)
-      const keysToRemove = Object.keys(rideCounts).filter(key => 
-        deselectedParks.some(parkId => key.startsWith(`${parkId}-`))
-      )
-      setRideCounts(prev => {
-        const updated = { ...prev }
-        keysToRemove.forEach(key => delete updated[key])
-        return updated
-      })
-    }
-    setSelectedParks(parks)
-    console.log('✅ Parks state updated to:', parks)
-  }
+    setSelectedParks(currentParks => {
+      console.log('🔍 Current parks in state update:', currentParks)
+      
+      // Find parks that were deselected and clear their ride counts
+      const deselectedParks = currentParks.filter(parkId => !parks.includes(parkId))
+      if (deselectedParks.length > 0) {
+        console.log('🗑️ Clearing ride counts for deselected parks:', deselectedParks)
+        setRideCounts(prev => {
+          const keysToRemove = Object.keys(prev).filter(key => 
+            deselectedParks.some(parkId => key.startsWith(`${parkId}-`))
+          )
+          const updated = { ...prev }
+          keysToRemove.forEach(key => delete updated[key])
+          return updated
+        })
+      }
+      
+      console.log('✅ Parks state updated to:', parks)
+      return parks
+    })
+  }, [])
 
   if (!user) {
     return (
@@ -1759,7 +1763,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
     })
   }
 
-  const handleParkToggle = (parkId: string) => {
+  const handleParkToggle = useCallback((parkId: string) => {
     console.log('🔄 Toggling park:', parkId, 'Currently selected:', selectedParks.includes(parkId))
     
     if (selectedParks.includes(parkId)) {
@@ -1773,7 +1777,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
       console.log('✅ Adding park, new selection:', newSelection)
       onParksChange(newSelection)
     }
-  }
+  }, [selectedParks, onParksChange])
 
   if (isLoadingAvailableParks) {
     return (
