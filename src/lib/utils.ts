@@ -54,9 +54,15 @@ export function isAttractionNotDining(attraction: ExtendedAttraction): boolean {
 /**
  * Filter function specifically for park overview - only shows attractions
  * with meaningful wait times (thrill, family, and non-dining experiences).
- * Excludes shows, parades, and character meets which are better suited for scheduling.
+ * Excludes shows, parades, character meets, and retired attractions.
  */
 export function isAttractionForOverview(attraction: ExtendedAttraction): boolean {
+  // First check if the attraction is active (not retired)
+  // If availability is not specified, assume it's active
+  if (attraction.availability === 'retired') {
+    return false
+  }
+  
   // Include thrill and family rides - these are the core wait-time attractions
   if (attraction.type === 'thrill' || attraction.type === 'family') {
     return true
