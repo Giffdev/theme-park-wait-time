@@ -1720,18 +1720,31 @@ interface ParkFamilyTripSelectorProps {
 function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }: ParkFamilyTripSelectorProps) {
   const [selectedFamily, setSelectedFamily] = useState<string>('')
   const [showParkFilter, setShowParkFilter] = useState<Record<string, boolean>>({})
+  const [availableParks, setAvailableParks] = useState<string[]>([])
+  const [isLoadingAvailableParks, setIsLoadingAvailableParks] = useState(true)
 
-  // Get available parks from the data service
-  const availableParks = ParkDataService.getAvailableParks()
-  console.log('📋 Available parks with data (ParkFamilyTripSelector):', availableParks)
-  console.log('📋 Total available parks count:', availableParks.length)
-  console.log('📋 Are Disney parks available?', {
-    'magic-kingdom': availableParks.includes('magic-kingdom'),
-    'epcot': availableParks.includes('epcot'),
-    'hollywood-studios': availableParks.includes('hollywood-studios'),
-    'animal-kingdom': availableParks.includes('animal-kingdom')
-  })
-  console.log('📋 Full available parks list:', JSON.stringify(availableParks, null, 2))
+  // Load available parks data synchronously
+  useEffect(() => {
+    try {
+      const parks = ParkDataService.getAvailableParks()
+      console.log('📋 Available parks with data (ParkFamilyTripSelector):', parks)
+      console.log('📋 Total available parks count:', parks.length)
+      console.log('📋 Are Disney parks available?', {
+        'magic-kingdom': parks.includes('magic-kingdom'),
+        'epcot': parks.includes('epcot'),
+        'hollywood-studios': parks.includes('hollywood-studios'),
+        'animal-kingdom': parks.includes('animal-kingdom')
+      })
+      console.log('📋 Full available parks list:', JSON.stringify(parks, null, 2))
+      
+      setAvailableParks(parks)
+      setIsLoadingAvailableParks(false)
+    } catch (error) {
+      console.error('❌ Failed to load available parks:', error)
+      setAvailableParks([])
+      setIsLoadingAvailableParks(false)
+    }
+  }, [])
 
   // Auto-select family when parks are pre-selected (e.g., from URL)
   useEffect(() => {
@@ -1764,7 +1777,9 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
       }
       const newSelection = [...selectedParks, parkId]
       console.log('✅ Adding park:', parkId, 'New selection:', newSelection)
+      console.log('🔄 Calling onParksChange with:', newSelection)
       onParksChange(newSelection)
+      console.log('✅ onParksChange called successfully')
     } else {
       if (!selectedParks.includes(parkId)) {
         console.log('ℹ️ Park already unselected, no change needed')
@@ -1772,7 +1787,9 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
       }
       const newSelection = selectedParks.filter(id => id !== parkId)
       console.log('❌ Removing park:', parkId, 'New selection:', newSelection)
+      console.log('🔄 Calling onParksChange with:', newSelection)
       onParksChange(newSelection)
+      console.log('✅ onParksChange called successfully')
     }
   }
 
@@ -1846,6 +1863,19 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
   // Get families to display - all families for initial selection
   const showFamilySelector = !selectedFamily
   const showParkSelection = !!selectedFamily
+
+  if (isLoadingAvailableParks) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full"></div>
+          <Label className="text-sm text-muted-foreground">
+            Loading available parks...
+          </Label>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -1972,10 +2002,10 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
                     {familyParks.map(park => {
                       const hasData = availableParks.includes(park.id)
                       const isSelected = selectedParks.includes(park.id)
-                      console.log(`🔍 Park ${park.id} (${park.name}): hasData = ${hasData}, isSelected = ${isSelected}, disabled = ${!hasData}`)
+                      const actuallyDisabled = !hasData
+                      
+                      console.log(`🔍 Park ${park.id} (${park.name}): hasData = ${hasData}, isSelected = ${isSelected}, disabled = ${actuallyDisabled}`)
                       console.log(`   Available parks check:`, availableParks.slice(0, 5), '...')
-                      const forceEnabled = ['magic-kingdom', 'epcot', 'hollywood-studios', 'animal-kingdom'].includes(park.id)
-                      const actuallyDisabled = !hasData && !forceEnabled
                       
                       return (
                         <div key={park.id} className="flex items-center space-x-2 p-2 rounded-md border">
@@ -1986,10 +2016,15 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
                             onCheckedChange={(checked) => {
                               console.log(`🔄 Checkbox clicked for ${park.id}: checked=${checked}, disabled=${actuallyDisabled}`)
                               console.log(`🔄 Current state - selectedParks:`, selectedParks)
+                              console.log(`🔄 Available parks:`, availableParks)
+                              console.log(`🔄 Has data check: park ${park.id} in available parks = ${hasData}`)
+                              
                               if (!actuallyDisabled) {
+                                console.log(`✅ Processing toggle for ${park.id}`)
                                 handleParkToggle(park.id, checked)
                               } else {
                                 console.log(`❌ Ignoring click on ${park.id} - no data available`)
+                                console.log(`   Available parks:`, availableParks.slice(0, 10))
                               }
                             }}
                           />
