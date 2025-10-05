@@ -1527,7 +1527,7 @@ function AttractionsForPark({
           ))}
         </TabsContent>
       )}
-
+      
       {retiredAttractions.length > 0 && (
         <TabsContent value="retired" className="space-y-4">
           <div className="text-sm text-muted-foreground mb-4">
