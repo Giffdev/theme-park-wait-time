@@ -117,15 +117,6 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setSelectedParks([parkId])
     }
 
-    // Auto-start trip if coming from park page with parkId
-    if (parkId && !currentTrip && selectedParks.includes(parkId)) {
-      console.log(`🚀 Auto-starting trip for park: ${parkId}`)
-      // Small delay to ensure state is set properly
-      setTimeout(() => {
-        startNewTrip()
-      }, 100)
-    }
-
     if (parkId) {
       loadAttractionsForPark(parkId)
     } else {
@@ -133,6 +124,20 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setIsLoading(false)
     }
   }, [user, parkId, currentTrip, setCurrentTrip, selectedParks])
+
+  // Separate effect to auto-start trip when park is pre-selected
+  useEffect(() => {
+    // Auto-start trip if coming from park page with parkId and park is now selected
+    if (parkId && !currentTrip && selectedParks.includes(parkId) && user) {
+      console.log(`🚀 Auto-starting trip for park: ${parkId} (parks selected: ${selectedParks.join(', ')})`)
+      // Small delay to ensure attractions are loaded
+      const timeoutId = setTimeout(() => {
+        startNewTrip()
+      }, 200)
+      
+      return () => clearTimeout(timeoutId)
+    }
+  }, [parkId, currentTrip, selectedParks, user])
 
   // Separate effect to handle clean slate initialization when accessing /log directly
   useEffect(() => {
@@ -264,7 +269,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     setIsLoading(false)
   }
 
-  const loadAllSelectedParksAttractions = async (parks: string[]) => {
+  const loadAllSelectedParksAttractions = useCallback(async (parks: string[]) => {
     const newAttractions: Record<string, ExtendedAttraction[]> = {}
     const failedParks: string[] = []
     
@@ -302,7 +307,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     } else if (failedParks.length === parks.length) {
       throw new Error('No attractions could be loaded for any selected parks')
     }
-  }
+  }, [])
 
   const handleVariantChange = useCallback((key: string, variant: string) => {
     setSelectedVariants(prev => {
@@ -372,7 +377,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     })
   }
 
-  const startNewTrip = async () => {
+  const startNewTrip = useCallback(async () => {
     if (!user || selectedParks.length === 0) {
       toast.error('Please select at least one park to start your trip log.')
       return
@@ -489,7 +494,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [user, selectedParks, visitDate, tripNotes, setCurrentTrip, loadAllSelectedParksAttractions])
 
   const autoSaveTrip = async (updatedRideCounts: Record<string, number>) => {
     if (!user || !currentTrip) {
