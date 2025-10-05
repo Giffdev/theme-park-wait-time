@@ -15,9 +15,14 @@ export function CrowdCalendarPage() {
   useEffect(() => {
     const family = parkFamilies.find(f => f.id === selectedFamily)
     if (family?.parks) {
-      setSelectedParks(family.parks.map(park => park.id))
+      const allParkIds = family.parks.map(park => park.id)
+      setSelectedParks(allParkIds)
     }
   }, [selectedFamily])
+
+  const handleParksChange = (parkIds: string[]) => {
+    setSelectedParks(parkIds)
+  }
 
   return (
     <main className="container mx-auto px-4 py-8 max-w-[1600px]">
@@ -49,7 +54,7 @@ export function CrowdCalendarPage() {
               selectedFamily={selectedFamily}
               selectedParks={selectedParks}
               onFamilyChange={setSelectedFamily}
-              onParksChange={setSelectedParks}
+              onParksChange={handleParksChange}
             />
           </div>
         </div>
