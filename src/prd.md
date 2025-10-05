@@ -73,6 +73,16 @@
 - **Why**: Reduces friction for contributing wait time data 
 - **Success Criteria**: Increased wait time reports with minimal user effort
 
+### Trip Logging System
+- **What**: Comprehensive trip logging where users can record all experiences including rides, shows, parades, and other attractions with different category levels (Active, Limited, Retired)
+- **Why**: Allows users to track their complete park experience beyond just rides with wait times, including entertainment and seasonal events
+- **Success Criteria**: Users can log rides, shows, parades, and experiences; different categories help users find relevant attractions for their visit
+
+### Differentiated Attraction Categories
+- **What**: Attractions are categorized as Active (currently operating), Limited (seasonal/special events), and Retired (historical/defunct) with appropriate filtering for different use cases
+- **Why**: Wait time reporting should only show attractions with actual queues, while trip logging should include all experiences users might want to track
+- **Success Criteria**: Wait time reporting filters out shows/parades; trip logging includes all attraction types with proper categorization
+
 ### Historical Analytics & Trends
 - **What**: Visual graphs showing wait time patterns throughout days, weeks, and seasons
 - **Why**: Helps users plan optimal visit times
@@ -82,6 +92,21 @@
 - **What**: User accounts with contribution tracking and reputation system
 - **Why**: Encourages accurate reporting and builds community trust
 - **Success Criteria**: Active user base contributing regular updates
+
+### Comprehensive Attraction Coverage & Categorization
+- **What**: Support for all types of theme park experiences including rides, shows, parades, character meet-and-greets, and dining experiences, organized by availability status (Active, Limited/Seasonal, Retired/Historical)
+- **Why**: Allows users to log and track complete park experiences beyond just rides, including entertainment that may only be available during certain seasons or special events
+- **Success Criteria**: Users can find and log all types of park experiences they encounter during their visit
+
+### Trip Logging System
+- **What**: Comprehensive system for logging complete park visits including rides, shows, parades, character meetings, and dining experiences across multiple parks
+- **Why**: Enables users to track their complete theme park experiences and share memories
+- **Success Criteria**: Users can log diverse attraction types with proper categorization and historical tracking
+
+### Availability Status Management  
+- **What**: Three-tier categorization system: Active (currently operating), Limited (seasonal/special events), and Retired (historical/no longer operating)
+- **Why**: Helps users understand what's currently available and allows logging of historical visits or seasonal experiences
+- **Success Criteria**: Clear distinction between current attractions and those available only during certain periods or no longer operating
 
 ### Seasonal and Historical Attraction Management
 - **What**: Separate organization of active rides, seasonal events (Halloween, Christmas), and defunct/historical attractions

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ChartBar, Clock, TrendUp, SortAscending, Eye } from '@phosphor-icons/react'
-import { isAttractionNotDining } from '@/lib/utils'
+import { isAttractionForOverview } from '@/lib/utils'
 import { ParkDataService } from '@/services/parkDataService'
 import type { ExtendedAttraction } from '@/types'
 
@@ -24,6 +24,8 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    let isCancelled = false
+    
     const loadData = async () => {
       setIsLoading(true)
       try {
@@ -32,26 +34,30 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
         // Use the ParkDataService for reliable loading
         const loadedAttractions = await ParkDataService.loadAttractions(parkId)
         
-        if (loadedAttractions && Array.isArray(loadedAttractions) && loadedAttractions.length > 0) {
-          console.log(`✅ ParkOverview loaded ${loadedAttractions.length} attractions for ${parkId}`)
-          setAttractions(loadedAttractions)
-        } else {
-          console.warn(`⚠️ ParkOverview no data returned from ParkDataService for ${parkId}`)
-          
-          // Check if useKV has data
-          if (attractions && Array.isArray(attractions) && attractions.length > 0) {
-            console.log(`✅ ParkOverview using existing useKV data: ${attractions.length} attractions`)
+        if (!isCancelled) {
+          if (loadedAttractions && Array.isArray(loadedAttractions) && loadedAttractions.length > 0) {
+            console.log(`✅ ParkOverview loaded ${loadedAttractions.length} attractions for ${parkId}`)
+            setAttractions(loadedAttractions)
           } else {
-            console.error(`❌ ParkOverview no data available for ${parkId}`)
+            console.warn(`⚠️ ParkOverview no data returned from ParkDataService for ${parkId}`)
           }
         }
       } catch (error) {
-        console.error('❌ ParkOverview error loading attractions:', error)
+        if (!isCancelled) {
+          console.error('❌ ParkOverview error loading attractions:', error)
+        }
       }
-      setIsLoading(false)
+      
+      if (!isCancelled) {
+        setIsLoading(false)
+      }
     }
     
     loadData()
+    
+    return () => {
+      isCancelled = true
+    }
   }, [parkId, setAttractions])
 
   // Also listen for changes from the useKV hook
@@ -82,8 +88,9 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
         return false
       }
       
-      // Filter out dining establishments - only show actual attractions
-      return isValid && isAttractionNotDining(attraction)
+      // Filter for overview - only show attractions with meaningful wait times
+      // This should match the filtering logic used in LiveWaitTimes
+      return isValid && isAttractionForOverview(attraction)
     })
     
     console.log(`✅ ParkOverview filtered to ${validAttractions.length} valid attractions`)
@@ -241,10 +248,10 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             {viewMode === 'bars' ? <ChartBar size={20} /> : <Clock size={20} />}
-            All Attractions Overview
+            Wait Time Attractions
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Click on any attraction to view detailed live wait times
+            Rides and experiences with wait times. Click any attraction to view detailed trends.
           </p>
         </CardHeader>
         <CardContent>

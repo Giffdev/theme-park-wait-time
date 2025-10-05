@@ -111,26 +111,31 @@ export function ParkFamilySelector({ selectedFamily, selectedParks, onFamilyChan
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {allParks.map((park) => (
-                  <div key={park.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={park.id}
-                      checked={selectedParks.includes(park.id)}
-                      onCheckedChange={(checked) => handleParkToggle(park.id, checked as boolean)}
-                    />
-                    <label
-                      htmlFor={park.id}
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-2"
-                    >
-                      {park.name}
-                      {park.type === 'water-park' && (
-                        <Badge variant="secondary" className="text-xs">
-                          Water Park
-                        </Badge>
-                      )}
-                    </label>
-                  </div>
-                ))}
+                {allParks.map((park) => {
+                  const isSelected = selectedParks.includes(park.id)
+                  return (
+                    <div key={park.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={park.id}
+                        checked={isSelected}
+                        onCheckedChange={(checked) => {
+                          handleParkToggle(park.id, checked === true)
+                        }}
+                      />
+                      <label
+                        htmlFor={park.id}
+                        className="text-sm font-medium leading-none cursor-pointer flex items-center gap-2"
+                      >
+                        {park.name}
+                        {park.type === 'water-park' && (
+                          <Badge variant="secondary" className="text-xs">
+                            Water Park
+                          </Badge>
+                        )}
+                      </label>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}

@@ -92,7 +92,7 @@ export const parkFamilies: ParkFamily[] = [
     ]
   },
   {
-    id: 'knott-berry-farm',
+    id: 'knotts-berry-farm',
     name: 'Knott\'s Berry Farm',
     location: 'Buena Park, CA',
     description: 'America\'s first theme park with classic attractions and seasonal events',
@@ -131,7 +131,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'thrill',
       currentWaitTime: 45,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2014
     },
     {
       id: 'transformers-3d',
@@ -139,7 +141,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'thrill',
       currentWaitTime: 25,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2013
     },
     {
       id: 'simpsons-ride',
@@ -147,7 +151,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 20,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2008
     },
     {
       id: 'mummy-revenge',
@@ -768,22 +774,30 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
     }
   ],
   'magic-kingdom': [
-    // Major Thrill Rides
+    // Major Thrill Rides - Active with Wait Times
     {
       id: 'space-mountain',
       name: 'Space Mountain',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 65,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1975
     },
     {
       id: 'seven-dwarfs-mine-train',
       name: 'Seven Dwarfs Mine Train',
       type: 'family',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 80,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2014
     },
     {
       id: 'big-thunder-mountain',
@@ -791,7 +805,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'thrill',
       currentWaitTime: 45,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1980
     },
     {
       id: 'tianas-bayou-adventure',
@@ -799,8 +815,11 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'thrill',
       currentWaitTime: 70,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2024
     },
+    
     // Classic Dark Rides
     {
       id: 'pirates-caribbean',
@@ -808,7 +827,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 35,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1973
     },
     {
       id: 'haunted-mansion',
@@ -816,7 +837,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 40,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1971
     },
     {
       id: 'its-a-small-world',
@@ -824,7 +847,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 15,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1971
     },
     {
       id: 'jungle-cruise',
@@ -832,7 +857,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 30,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1971
     },
     {
       id: 'peter-pans-flight',
@@ -840,8 +867,11 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 55,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1971
     },
+    
     // Fantasyland Attractions
     {
       id: 'winnie-the-pooh',
@@ -849,7 +879,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 25,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1999
     },
     {
       id: 'under-the-sea',
@@ -857,7 +889,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 20,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2012
     },
     {
       id: 'dumbo-flying-elephant',
@@ -865,7 +899,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 15,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1971
     },
     {
       id: 'mad-tea-party',
@@ -873,8 +909,11 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 10,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1971
     },
+    
     // Tomorrowland Attractions
     {
       id: 'buzz-lightyear',
@@ -882,15 +921,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 30,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'monsters-inc-laugh-floor',
-      name: 'Monsters, Inc. Laugh Floor',
-      type: 'show',
-      currentWaitTime: 10,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1998
     },
     {
       id: 'carousel-of-progress',
@@ -898,7 +931,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'experience',
       currentWaitTime: 5,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1975
     },
     {
       id: 'peoplemover',
@@ -906,7 +941,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'experience',
       currentWaitTime: 5,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1975
     },
     {
       id: 'astro-orbitor',
@@ -914,16 +951,47 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 15,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1994
     },
+    
     // Adventureland
     {
       id: 'tiki-room',
       name: 'Walt Disney\'s Enchanted Tiki Room',
       type: 'show',
-      currentWaitTime: 5,
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1971
+    },
+    // Shows and Entertainment - Examples
+    {
+      id: 'mickey-royal-friendship-faire',
+      name: 'Mickey\'s Royal Friendship Faire',
+      type: 'show',
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    // Limited/Seasonal Show Example  
+    {
+      id: 'mickeys-very-merry-christmas-party',
+      name: 'Mickey\'s Very Merry Christmas Party',
+      type: 'show',
+      category: 'limited',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      isSeasonal: true,
+      seasonalPeriod: 'Christmas'
     },
     {
       id: 'swiss-family-treehouse',
@@ -931,8 +999,11 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'experience',
       currentWaitTime: 0,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1973
     },
+    
     // Liberty Square
     {
       id: 'liberty-square-riverboat',
@@ -940,7 +1011,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'experience',
       currentWaitTime: 10,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1973
     },
     {
       id: 'hall-of-presidents',
@@ -948,16 +1021,167 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'show',
       currentWaitTime: 5,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1971
     },
-    // Main Street USA
+    
+    // Active Shows & Entertainment
+    {
+      id: 'monsters-inc-laugh-floor',
+      name: 'Monsters, Inc. Laugh Floor',
+      type: 'show',
+      currentWaitTime: 10,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2007
+    },
+    {
+      id: 'happily-ever-after',
+      name: 'Happily Ever After',
+      type: 'show',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      description: 'Nighttime fireworks spectacular',
+      openingYear: 2017
+    },
     {
       id: 'walt-disney-railroad',
       name: 'Walt Disney World Railroad',
       type: 'experience',
       currentWaitTime: 10,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1971
+    },
+    
+    // Active Parades
+    {
+      id: 'festival-of-fantasy',
+      name: 'Festival of Fantasy Parade',
+      type: 'parade',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      description: 'Daily afternoon parade celebrating Disney films',
+      openingYear: 2014
+    },
+    
+    // Active Character Experiences
+    {
+      id: 'mickey-toontown-meet',
+      name: 'Meet Mickey at Town Square Theater',
+      type: 'character-meet',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2012
+    },
+    {
+      id: 'princess-fairytale-hall',
+      name: 'Princess Fairytale Hall',
+      type: 'character-meet',
+      currentWaitTime: 35,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2013
+    },
+    
+    // === LIMITED/SEASONAL ATTRACTIONS ===
+    
+    {
+      id: 'mickeys-very-merry-christmas',
+      name: 'Mickey\'s Very Merry Christmas Party',
+      type: 'show',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'limited',
+      description: 'Special ticketed holiday event',
+      isSeasonal: true,
+      seasonalPeriod: 'Christmas'
+    },
+    {
+      id: 'mickeys-not-so-scary-halloween',
+      name: 'Mickey\'s Not-So-Scary Halloween Party',
+      type: 'show',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'limited',
+      description: 'Special ticketed Halloween event',
+      isSeasonal: true,
+      seasonalPeriod: 'Halloween'
+    },
+    
+    // === RETIRED ATTRACTIONS ===
+    
+    {
+      id: 'splash-mountain-mk',
+      name: 'Splash Mountain',
+      type: 'thrill',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Log flume ride through Song of the South scenes',
+      openingYear: 1992,
+      closingYear: 2023
+    },
+    {
+      id: 'mr-toads-wild-ride-mk',
+      name: 'Mr. Toad\'s Wild Ride',
+      type: 'family',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Dark ride through The Wind in the Willows',
+      openingYear: 1971,
+      closingYear: 1998
+    },
+    {
+      id: '20000-leagues-mk',
+      name: '20,000 Leagues Under the Sea',
+      type: 'family',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Submarine voyage attraction',
+      openingYear: 1971,
+      closingYear: 1994
+    },
+    {
+      id: 'spectromagic',
+      name: 'SpectroMagic',
+      type: 'parade',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Fiber optic and holographic nighttime parade',
+      openingYear: 1991,
+      closingYear: 2010
+    },
+    {
+      id: 'wishes-fireworks',
+      name: 'Wishes: A Magical Gathering of Disney Dreams',
+      type: 'show',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Former nighttime fireworks spectacular',
+      openingYear: 2003,
+      closingYear: 2017
     }
   ],
   'epcot': [
@@ -1078,129 +1302,231 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
     }
   ],
   'disneyland': [
-    // Star Wars Galaxy's Edge
+    // Star Wars Galaxy's Edge - Active Rides
     {
       id: 'rise-of-resistance-dl',
       name: 'Star Wars: Rise of the Resistance',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 110,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2019
     },
     {
       id: 'smugglers-run-dl',
       name: 'Millennium Falcon: Smugglers Run',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 75,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2019
     },
-    // Major Thrill Rides
+    // Major Thrill Rides - Active
     {
       id: 'indiana-jones-adventure',
       name: 'Indiana Jones Adventure',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 75,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1995
     },
     {
       id: 'matterhorn-bobsleds',
       name: 'Matterhorn Bobsleds',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 50,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1959
     },
     {
       id: 'space-mountain-dl',
       name: 'Space Mountain',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 65,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1977
     },
     {
       id: 'big-thunder-mountain-dl',
       name: 'Big Thunder Mountain Railroad',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 40,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1979
+    },
+    // Active Rides with Wait Times - Examples you mentioned
+    {
+      id: 'buzz-lightyear-astro-blasters',
+      name: 'Buzz Lightyear Astro Blasters',
+      type: 'family',
+      category: 'active',
+      hasWaitTime: true,
+      currentWaitTime: 30,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2011
     },
     {
-      id: 'star-tours-dl',
-      name: 'Star Tours - The Adventures Continue',
-      type: 'thrill',
-      currentWaitTime: 25,
+      id: 'chip-dale-gadgetcoaster',
+      name: 'Chip \'n\' Dale\'s GADGETcoaster',
+      type: 'family',
+      category: 'active',
+      hasWaitTime: true,
+      currentWaitTime: 20,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
-    // Classic Dark Rides
+    // Classic Dark Rides - Active
     {
       id: 'pirates-caribbean-dl',
       name: 'Pirates of the Caribbean',
       type: 'family',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 35,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1967
     },
     {
       id: 'haunted-mansion-dl',
       name: 'Haunted Mansion',
       type: 'family',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 40,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1969
     },
     {
       id: 'jungle-cruise-dl',
       name: 'Jungle Cruise',
       type: 'family',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 30,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1955
     },
     {
       id: 'its-a-small-world-dl',
       name: 'It\'s A Small World',
       type: 'family',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 15,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1966
+    },
+    // Shows and Entertainment - Active (No Wait Times)
+    {
+      id: 'dapper-dans',
+      name: 'The Dapper Dans',
+      type: 'show',
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
-    // Fantasyland
+    {
+      id: 'disneyland-band',
+      name: 'The Disneyland Band',
+      type: 'show',
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'fantasmic',
+      name: 'Fantasmic!',
+      type: 'show',
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Limited Shows/Parades (seasonal)
+    {
+      id: 'paint-the-night',
+      name: 'Paint the Night',
+      type: 'show',
+      category: 'limited',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      isSeasonal: true,
+      seasonalPeriod: 'Summer'
+    },
+    // Retired Attractions - Examples
+    {
+      id: 'peoplemover-dl',
+      name: 'PeopleMover',
+      type: 'experience',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      isDefunct: true
+    },
+    {
+      id: 'skyway-dl',
+      name: 'Skyway',
+      type: 'experience',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      isDefunct: true
+    },
+    // More Active Fantasyland Rides
     {
       id: 'peter-pans-flight-dl',
       name: 'Peter Pan\'s Flight',
       type: 'family',
-      currentWaitTime: 55,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'winnie-the-pooh-dl',
-      name: 'The Many Adventures of Winnie the Pooh',
-      type: 'family',
-      currentWaitTime: 25,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'snow-white-enchanted-wish',
-      name: 'Snow White\'s Enchanted Wish',
-      type: 'family',
-      currentWaitTime: 20,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'pinocchio-daring-journey',
-      name: 'Pinocchio\'s Daring Journey',
-      type: 'family',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 15,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1983
     },
     {
       id: 'alice-wonderland',
@@ -1208,7 +1534,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 20,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1958
     },
     {
       id: 'mr-toads-wild-ride-dl',
@@ -1216,16 +1544,31 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 15,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1955
     },
-    // Tomorrowland
+    
+    // Tomorrowland Active Rides - EXAMPLES FROM USER
     {
       id: 'buzz-lightyear-dl',
       name: 'Buzz Lightyear Astro Blasters',
       type: 'family',
       currentWaitTime: 30,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 2005
+    },
+    {
+      id: 'chip-dale-gadgetcoaster',
+      name: 'Chip \'n\' Dale\'s GADGETcoaster',
+      type: 'family',
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1993
     },
     {
       id: 'astro-orbitor-dl',
@@ -1233,40 +1576,208 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       type: 'family',
       currentWaitTime: 15,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1998
     },
-    // Other Attractions
-    {
-      id: 'splash-mountain-dl',
-      name: 'Critter Country Splash Mountain',
-      type: 'thrill',
-      currentWaitTime: 0,
-      status: 'closed',
-      lastUpdated: new Date().toISOString()
-    },
+    
+    // Active Shows & Entertainment - EXAMPLES FROM USER
     {
       id: 'enchanted-tiki-room-dl',
       name: 'Walt Disney\'s Enchanted Tiki Room',
       type: 'show',
-      currentWaitTime: 5,
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1963
     },
+    {
+      id: 'dapper-dans',
+      name: 'The Dapper Dans',
+      type: 'show',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      description: 'Barbershop quartet performing on Main Street',
+      openingYear: 1959
+    },
+    {
+      id: 'disneyland-band',
+      name: 'The Disneyland Band',
+      type: 'show',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      description: 'Marching band performances throughout the park',
+      openingYear: 1955
+    },
+    {
+      id: 'fantasmic-dl',
+      name: 'Fantasmic!',
+      type: 'show',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      description: 'Nighttime spectacular at Rivers of America',
+      openingYear: 1992
+    },
+    
+    // Active Parades - EXAMPLES FROM USER
+    {
+      id: 'paint-the-night',
+      name: 'Paint the Night',
+      type: 'parade',
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      description: 'LED-illuminated nighttime parade',
+      openingYear: 2015
+    },
+    
+    // Active Experiences
     {
       id: 'disneyland-railroad',
       name: 'Disneyland Railroad',
       type: 'experience',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 10,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1955
     },
     {
       id: 'mark-twain-riverboat-dl',
       name: 'Mark Twain Riverboat',
       type: 'experience',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 10,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1955
+    },
+    
+    // === LIMITED/SEASONAL ATTRACTIONS - EXAMPLES FROM USER ===
+    
+    {
+      id: 'haunted-mansion-holiday',
+      name: 'Haunted Mansion Holiday',
+      type: 'family',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'limited',
+      description: 'Nightmare Before Christmas overlay during Halloween/Christmas seasons',
+      isSeasonal: true,
+      seasonalPeriod: 'Halloween/Christmas'
+    },
+    {
+      id: 'hyperspace-mountain',
+      name: 'Hyperspace Mountain',
+      type: 'thrill',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'limited',
+      description: 'Star Wars overlay for Space Mountain',
+      isSeasonal: true,
+      seasonalPeriod: 'Special Events'
+    },
+    {
+      id: 'shadows-of-memory-skywalker',
+      name: 'Shadows of Memory: A Skywalker Saga',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'limited',
+      description: 'Limited-time Star Wars experience',
+      isSeasonal: true
+    },
+    
+    // === RETIRED ATTRACTIONS - EXAMPLES FROM USER ===
+    
+    {
+      id: '20000-leagues-under-sea',
+      name: '20,000 Leagues Under the Sea Exhibit',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Walk-through attraction based on the Disney film',
+      openingYear: 1955,
+      closingYear: 1966
+    },
+    {
+      id: 'aladdins-oasis-show',
+      name: 'Aladdin\'s Oasis Show',
+      type: 'show',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Live musical show based on Aladdin',
+      openingYear: 1993,
+      closingYear: 2016
+    },
+    {
+      id: 'chip-dale-treehouse',
+      name: 'Chip \'n\' Dale\'s Treehouse',
+      type: 'experience',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Climb-through treehouse attraction',
+      openingYear: 1962,
+      closingYear: 1999
+    },
+    {
+      id: 'country-bear-jamboree-dl',
+      name: 'Country Bear Jamboree',
+      type: 'show',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Audio-animatronic country music show',
+      openingYear: 1972,
+      closingYear: 2001
+    },
+    {
+      id: 'fantasyland-autopia',
+      name: 'Fantasyland Autopia',
+      type: 'family',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Original Autopia location in Fantasyland',
+      openingYear: 1955,
+      closingYear: 1999
+    },
+    {
+      id: 'splash-mountain-dl',
+      name: 'Splash Mountain',
+      type: 'thrill',
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Log flume ride through Song of the South scenes',
+      openingYear: 1989,
+      closingYear: 2023
     }
   ],
   'disney-california-adventure': [

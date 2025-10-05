@@ -1,8 +1,16 @@
 import { sampleAttractions } from '@/data/sampleData'
 import type { ExtendedAttraction } from '@/types'
 
+// Debug the import
+console.log('🔍 ParkDataService imported sampleAttractions:', {
+  keys: Object.keys(sampleAttractions).slice(0, 10),
+  totalCount: Object.keys(sampleAttractions).length,
+  hasMagicKingdom: 'magic-kingdom' in sampleAttractions,
+  hasEpcot: 'epcot' in sampleAttractions
+})
+
 // Version identifier for data updates - increment when data structure changes
-const DATA_VERSION = '2024-12-19-v5-add-silverwood'
+const DATA_VERSION = '2024-12-19-v6-attraction-categories'
 
 /**
  * Service for reliably loading park attraction data with fallback mechanisms
@@ -62,14 +70,21 @@ export class ParkDataService {
    * Get list of available park IDs
    */
   static getAvailableParks(): string[] {
-    return Object.keys(sampleAttractions)
+    const parks = Object.keys(sampleAttractions)
+    console.log('🔍 ParkDataService.getAvailableParks() called, found parks:', parks.slice(0, 10), '... (total:', parks.length, ')')
+    return parks
   }
   
   /**
    * Check if a park exists in our data
    */
   static hasPark(parkId: string): boolean {
-    return parkId in sampleAttractions
+    const exists = parkId in sampleAttractions
+    console.log(`🔍 ParkDataService.hasPark(${parkId}): ${exists}`)
+    if (!exists) {
+      console.log('Available parks:', Object.keys(sampleAttractions).slice(0, 10), '...')
+    }
+    return exists
   }
   
   /**

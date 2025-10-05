@@ -47,6 +47,8 @@ export type ExtendedAttraction = {
   id: string
   name: string
   type: 'thrill' | 'family' | 'show' | 'experience'
+  category: 'active' | 'limited' | 'retired'
+  hasWaitTime: boolean // true for rides, false for shows/parades
   currentWaitTime: number
   status: 'operating' | 'closed' | 'delayed'
   lastUpdated: string
@@ -54,6 +56,10 @@ export type ExtendedAttraction = {
   isSeasonal?: boolean
   seasonalPeriod?: string // e.g., "Halloween", "Christmas"
   variants?: AttractionVariant[] // For multi-track rides
+  availability?: 'active' | 'limited' | 'retired'
+  description?: string
+  openingYear?: number
+  closingYear?: number
 }
 
 export type TripPark = {
