@@ -1559,7 +1559,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
             {[...parkFamilies]
               .sort((a, b) => a.name.localeCompare(b.name))
               .map((family) => {
-              const familyParksWithData = family.parks.filter(park => availableParks.includes(park.id))
+              const familyParksWithData = family.parks.filter(park => availableParks.includes(park.id));
               return (
                 <SelectItem key={family.id} value={family.id}>
                   {`${family.name} (${familyParksWithData.length} parks)`}
@@ -1609,61 +1609,37 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
               <div key={family.id} className="border rounded-lg p-4 space-y-3">
                 {/* Family Header */}
                 <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-foreground">{family.name}</h3>
-                      <Badge variant="outline" className="text-xs">
-                        {family.location}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedFamilyParks.length > 0 
-                        ? `${selectedFamilyParks.length} of ${parksWithData.length} parks selected`
-                        : `${parksWithData.length} of ${familyParks.length} parks have data available`
-                      }
-                    </p>
+                  <div>
+                    <h3 className="font-semibold text-foreground">{family.name}</h3>
+                    <Badge variant="outline" className="text-xs">
+                      {family.location}
+                    </Badge>
                   </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleFamilyFilter(family.id)}
-                      className="gap-1 text-muted-foreground hover:text-foreground"
-                    >
-                      <CaretDown 
-                        size={16} 
-                        className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
-                      />
-                      {isExpanded ? 'Hide' : 'Show'}
-                    </Button>
-                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedFamilyParks.length > 0 
+                      ? `${selectedFamilyParks.length} of ${parksWithData.length} parks selected`
+                      : `${parksWithData.length} of ${familyParks.length} parks have data available`
+                    }
+                  </p>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleFamilyFilter(family.id)}
+                    className="gap-1 text-muted-foreground hover:text-foreground"
+                  >
+                    <CaretDown 
+                      size={16} 
+                      className={isExpanded ? "transition-transform rotate-180" : "transition-transform"} 
+                    />
+                    {isExpanded ? 'Hide' : 'Show'}
+                  </Button>
                 </div>
 
-                {/* Quick Actions */}
-                {isExpanded && (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleFamilySelectAll(family.id)}
-                      disabled={selectedFamilyParks.length === parksWithData.length || parksWithData.length === 0}
-                    >
-                      Select All Available
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleFamilyDeselectAll(family.id)}
-                      disabled={selectedFamilyParks.length === 0}
-                    >
-                      Deselect All
-                    </Button>
-                  </div>
-                )}
-
-                {/* Parks List */}
-                {isExpanded && (
+              {/* Parks List */}
+              {isExpanded && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
                     {familyParks.map(park => {
                       const hasData = availableParks.includes(park.id)
