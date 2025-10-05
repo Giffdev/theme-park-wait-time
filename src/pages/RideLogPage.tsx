@@ -998,7 +998,6 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                       setActivePark('')
                       setAttractions({})
                       setIsEditing(false)
-                      
                       toast.success('Ready to start a new trip!')
                     }}
                     className="text-muted-foreground hover:text-foreground"
@@ -1006,7 +1005,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                     Start New Trip
                   </Button>
                   
-                  {Object.values(rideCounts).some(count => count > 0) && (
+                  {(
                     <Button 
                       variant="outline" 
                       size="sm"
@@ -1664,6 +1663,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
 
   // Get available parks from the data service
   const availableParks = ParkDataService.getAvailableParks()
+  console.log('📋 Available parks with data:', availableParks)
 
   // Auto-select family when parks are pre-selected (e.g., from URL)
   // Also clear family when no parks are selected (clean slate)
@@ -1732,6 +1732,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
 
   // Reset park filter when changing family selection
   const handleFamilyChange = (familyId: string) => {
+    console.log('🎯 Family changed to:', familyId)
     setSelectedFamily(familyId)
     // Auto-expand the newly selected family
     if (familyId) {
@@ -1773,20 +1774,28 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
         </div>
         <Select
           value={selectedFamily || 'none'}
-          onValueChange={(value) => handleFamilyChange(value === 'none' ? '' : value)}
+          onValueChange={(value) => {
+            console.log('🎯 Select onValueChange called with:', value)
+            handleFamilyChange(value === 'none' ? '' : value)
+          }}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder={selectedFamily ? "Change resort group" : "Select a resort group to view parks"} />
+            <SelectValue placeholder="Choose a resort group to see available parks..." />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="none">Choose a resort group...</SelectItem>
+            <SelectItem value="none">-- Select a resort group --</SelectItem>
             {[...parkFamilies]
+              .filter(family => {
+                // Only show families that have at least one park with data
+                const familyParksWithData = family.parks.filter(park => availableParks.includes(park.id));
+                return familyParksWithData.length > 0;
+              })
               .sort((a, b) => a.name.localeCompare(b.name))
               .map((family) => {
               const familyParksWithData = family.parks.filter(park => availableParks.includes(park.id));
               return (
                 <SelectItem key={family.id} value={family.id}>
-                  {`${family.name} (${familyParksWithData.length} parks)`}
+                  {`${family.name} (${familyParksWithData.length} park${familyParksWithData.length !== 1 ? 's' : ''})`}
                 </SelectItem>
               )
             })}
@@ -1797,9 +1806,23 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
       {/* Parks Selection - Only show if family is selected */}
       {selectedFamily && (
         <div className="space-y-3">
+          {(() => {
+            console.log('🎯 Rendering parks section for selectedFamily:', selectedFamily)
+            return null
+          })()}
           <div className="flex items-center gap-2">
             <MapPin size={16} className="text-muted-foreground" />
             <Label className="text-sm font-medium">Step 2: Choose Parks from Selected Resort</Label>
+          </div>
+          
+          {/* Show confirmation of family selection */}
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+            <p className="text-sm text-primary">
+              <strong>✓ Resort Selected:</strong> {parkFamilies.find(f => f.id === selectedFamily)?.name}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Now choose which specific parks you plan to visit today.
+            </p>
           </div>
           
           {/* Show info about pre-selected parks */}
