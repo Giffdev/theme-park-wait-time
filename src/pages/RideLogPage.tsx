@@ -767,6 +767,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                 <ParkFamilyTripSelector 
                   selectedParks={selectedParks}
                   onParksChange={handleParksChange}
+                  initialParkId={parkId}
                 />
               </div>
             </div>
@@ -1436,14 +1437,35 @@ function RideLogCard({
 interface ParkFamilyTripSelectorProps {
   selectedParks: string[]
   onParksChange: (parkIds: string[]) => void
+  initialParkId?: string
 }
 
-function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTripSelectorProps) {
+function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }: ParkFamilyTripSelectorProps) {
   const [selectedFamily, setSelectedFamily] = useState<string>('')
   const [showParkFilter, setShowParkFilter] = useState<Record<string, boolean>>({})
 
   // Get available parks from the data service
   const availableParks = ParkDataService.getAvailableParks()
+
+  // Auto-select family when parks are pre-selected (e.g., from URL)
+  useEffect(() => {
+    if (selectedParks.length > 0 && !selectedFamily) {
+      // Find which family contains the first selected park
+      const firstParkId = selectedParks[0]
+      const familyWithPark = parkFamilies.find(family => 
+        family.parks.some(park => park.id === firstParkId)
+      )
+      
+      if (familyWithPark) {
+        console.log(`🎯 Auto-selecting family ${familyWithPark.name} for pre-selected park ${firstParkId}`)
+        setSelectedFamily(familyWithPark.id)
+        setShowParkFilter(prev => ({
+          ...prev,
+          [familyWithPark.id]: true
+        }))
+      }
+    }
+  }, [selectedParks, selectedFamily])
 
   const handleParkToggle = (parkId: string, checked: boolean) => {
     if (checked) {
@@ -1494,6 +1516,20 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
         [familyId]: true
       }))
     }
+    
+    // If changing to a different family, clear parks that don't belong to the new family
+    if (familyId !== selectedFamily && selectedParks.length > 0) {
+      const newFamily = parkFamilies.find(f => f.id === familyId)
+      if (newFamily) {
+        const validParks = selectedParks.filter(parkId => 
+          newFamily.parks.some(p => p.id === parkId)
+        )
+        // Only update if we need to remove parks
+        if (validParks.length !== selectedParks.length) {
+          onParksChange(validParks)
+        }
+      }
+    }
   }
 
   // Get families to display - filtered by selection
@@ -1507,14 +1543,16 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Funnel size={16} className="text-muted-foreground" />
-          <Label className="text-sm font-medium">Step 1: Choose Resort Group</Label>
+          <Label className="text-sm font-medium">
+            Step 1: Choose Resort Group {selectedFamily && '(can be changed)'}
+          </Label>
         </div>
         <Select
           value={selectedFamily || 'none'}
           onValueChange={(value) => handleFamilyChange(value === 'none' ? '' : value)}
         >
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select a resort group to view parks" />
+            <SelectValue placeholder={selectedFamily ? "Change resort group" : "Select a resort group to view parks"} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">Choose a resort group...</SelectItem>
@@ -1539,6 +1577,16 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTrip
             <MapPin size={16} className="text-muted-foreground" />
             <Label className="text-sm font-medium">Step 2: Choose Parks from Selected Resort</Label>
           </div>
+          
+          {/* Show info about pre-selected parks */}
+          {selectedParks.length > 0 && (
+            <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+              <p className="text-sm text-primary">
+                <strong>Note:</strong> Some parks may already be selected {initialParkId ? 'from the previous page' : ''}. 
+                You can change your selection below.
+              </p>
+            </div>
+          )}
           
           {/* Helpful info about multiple parks */}
           <div className="bg-muted/50 border border-muted rounded-lg p-3">
