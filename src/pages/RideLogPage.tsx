@@ -61,6 +61,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const [tripNotes, setTripNotes] = useState('')
   const [activePark, setActivePark] = useState<string>(parkId || '')
   const [isEditing, setIsEditing] = useState(false)
+  const [showContinuationPrompt, setShowContinuationPrompt] = useState(false)
 
   // Get attraction ID from URL search params
   const searchParams = new URLSearchParams(location.search)
@@ -85,6 +86,24 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setSelectedVariants({})
       setNotes({})
       setTripNotes('')
+    }
+
+    // If user accessed /log directly (no parkId) and there's a current trip with no rides,
+    // clear it to give them a fresh start
+    if (!parkId && currentTrip && currentTrip.totalRides === 0) {
+      console.log('🆕 Clearing empty current trip for fresh start from /log')
+      setCurrentTrip(null)
+      setRideCounts({})
+      setSelectedVariants({})
+      setNotes({})
+      setTripNotes('')
+    }
+
+    // If user accessed /log directly and there's an existing trip with rides,
+    // show them the option to continue or start fresh
+    if (!parkId && currentTrip && currentTrip.totalRides > 0 && !showContinuationPrompt) {
+      console.log('❓ Showing continuation prompt for existing trip with rides')
+      setShowContinuationPrompt(true)
     }
 
     // Pre-select park if coming from a specific park page (but allow user to change)
@@ -115,10 +134,16 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setIsEditing(isExistingTrip)
       console.log(`✏️ Trip editing mode: ${isExistingTrip ? 'EDITING' : 'NEW'}`)
       
-      // Restore selected parks from the current trip
-      const tripParkIds = currentTrip.parks.map(p => p.parkId)
-      setSelectedParks(tripParkIds)
-      console.log('🏰 Restored selected parks from trip:', tripParkIds)
+      // Only restore selected parks if we have a specific parkId in URL (user came from park page)
+      // OR if user explicitly wants to continue the existing trip
+      // If user accessed /log directly (no parkId), they should get a clean slate
+      if (parkId || isExistingTrip) {
+        const tripParkIds = currentTrip.parks.map(p => p.parkId)
+        setSelectedParks(tripParkIds)
+        console.log('🏰 Restored selected parks from trip:', tripParkIds)
+      } else {
+        console.log('🆕 Clean slate - not restoring parks since user accessed /log directly')
+      }
       
       const restoredRideCounts: Record<string, number> = {}
       const restoredVariants: Record<string, string> = {}
@@ -149,8 +174,12 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       })
     } else {
       setIsEditing(false)
+      // Hide continuation prompt if there's no current trip
+      if (!currentTrip) {
+        setShowContinuationPrompt(false)
+      }
     }
-  }, [currentTrip])
+  }, [currentTrip, parkId])
 
   // Auto-save when notes change - remove since now using onBlur
   // useEffect(() => {
@@ -727,9 +756,100 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         </Card>
       )}
 
+      {/* Show continuation prompt */}
+      {showContinuationPrompt && currentTrip && (
+        <Card className="border-primary/50 bg-primary/5">
+          <CardContent className="py-4">
+            <div className="flex flex-col gap-4">
+              <div>
+                <h3 className="font-semibold text-foreground mb-2">Continue Previous Trip?</h3>
+                <p className="text-sm text-muted-foreground">
+                  You have an existing trip from {new Date(currentTrip.visitDate).toLocaleDateString()} with {currentTrip.totalRides} rides logged 
+                  across {currentTrip.parks.map(p => p.parkName).join(', ')}.
+                </p>
+              </div>
+              
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => {
+                    setShowContinuationPrompt(false)
+                    setIsEditing(true)
+                    // Restore the trip state
+                    const tripParkIds = currentTrip.parks.map(p => p.parkId)
+                    setSelectedParks(tripParkIds)
+                    setActivePark(tripParkIds[0] || '')
+                    
+                    // Restore ride counts, variants, and notes from the trip
+                    const restoredRideCounts: Record<string, number> = {}
+                    const restoredVariants: Record<string, string> = {}
+                    const restoredNotes: Record<string, string> = {}
+                    
+                    currentTrip.rideLogs.forEach(log => {
+                      const key = `${log.parkId}-${log.attractionId}`
+                      restoredRideCounts[key] = log.rideCount
+                      
+                      if (log.trackVariant) {
+                        restoredVariants[key] = log.trackVariant
+                      }
+                      
+                      if (log.notes) {
+                        restoredNotes[key] = log.notes
+                      }
+                    })
+                    
+                    setRideCounts(restoredRideCounts)
+                    setSelectedVariants(restoredVariants)
+                    setNotes(restoredNotes)
+                    setTripNotes(currentTrip.notes || '')
+                    
+                    toast.success('Continuing existing trip')
+                  }}
+                  className="flex-1"
+                >
+                  Continue Trip
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    setShowContinuationPrompt(false)
+                    
+                    // Clear the current trip to start fresh
+                    try {
+                      if (window.spark?.kv && user) {
+                        await window.spark.kv.delete(`current-trip-${user.id}`)
+                        console.log('✅ Cleared current trip from storage')
+                      }
+                    } catch (error) {
+                      console.warn('⚠️ Could not clear current trip from storage:', error)
+                    }
+                    
+                    // Clear local state
+                    setCurrentTrip(null)
+                    setRideCounts({})
+                    setSelectedVariants({})
+                    setNotes({})
+                    setTripNotes('')
+                    setSelectedParks([])
+                    setActivePark('')
+                    setAttractions({})
+                    setIsEditing(false)
+                    
+                    toast.success('Ready to start a new trip!')
+                  }}
+                  className="flex-1"
+                >
+                  Start New Trip
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
 
-        {!currentTrip ? (
+
+        {(!currentTrip && !showContinuationPrompt) ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -808,7 +928,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2">
                   <Ticket size={20} />
-                  Trip - {new Date(currentTrip.visitDate).toLocaleDateString()}
+                  Trip - {currentTrip ? new Date(currentTrip.visitDate).toLocaleDateString() : 'Unknown Date'}
                 </span>
                 <div className="flex items-center gap-3">
                   <Badge variant="secondary" className="flex items-center gap-1">
@@ -1102,7 +1222,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                 </div>
               </CardTitle>
               <CardDescription>
-                Parks: {currentTrip.parks.map(p => p.parkName).join(', ')} • Rides auto-save as you log them
+                Parks: {currentTrip?.parks.map(p => p.parkName).join(', ') || 'Unknown'} • Rides auto-save as you log them
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1139,13 +1259,13 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                   Select Park to Log Rides
                 </span>
                 <span className="text-sm font-normal text-muted-foreground">
-                  {currentTrip.parks.length} park{currentTrip.parks.length !== 1 ? 's' : ''} in trip
+                  {currentTrip?.parks.length || 0} park{(currentTrip?.parks.length || 0) !== 1 ? 's' : ''} in trip
                 </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
-                {currentTrip.parks.map(park => (
+                {currentTrip?.parks.map(park => (
                   <Button
                     key={park.parkId}
                     variant={activePark === park.parkId ? "default" : "outline"}
@@ -1207,7 +1327,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                     <div className="text-center space-y-4">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
                       <div>
-                        <p className="text-muted-foreground">Loading attractions for {currentTrip.parks.find(p => p.parkId === activePark)?.parkName}...</p>
+                        <p className="text-muted-foreground">Loading attractions for {currentTrip?.parks.find(p => p.parkId === activePark)?.parkName}...</p>
                         <p className="text-xs text-muted-foreground mt-2">
                           If this takes too long, try clicking the park button again or refreshing the page.
                         </p>
