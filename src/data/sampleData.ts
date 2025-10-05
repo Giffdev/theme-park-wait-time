@@ -92,7 +92,7 @@ export const parkFamilies: ParkFamily[] = [
     ]
   },
   {
-    id: 'knott-berry-farm',
+    id: 'knotts-berry-farm',
     name: 'Knott\'s Berry Farm',
     location: 'Buena Park, CA',
     description: 'America\'s first theme park with classic attractions and seasonal events',

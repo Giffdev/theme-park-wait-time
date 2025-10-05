@@ -111,48 +111,53 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setShowContinuationPrompt(true)
     }
 
-    // Pre-select park when coming from a specific park page (e.g., /log/disneyland)
-    if (parkId && selectedParks.length === 0) {
+    // Pre-select park when coming from a specific park page (e.g., /log/disneyland) - only once
+    if (parkId && selectedParks.length === 0 && !currentTrip) {
       console.log(`🎯 Pre-selecting park from URL: ${parkId}`)
       setSelectedParks([parkId])
     }
 
-    if (parkId) {
+    if (parkId && !currentTrip) {
       loadAttractionsForPark(parkId)
-    } else {
+    } else if (!parkId) {
       // If no specific park, set loading to false so the trip setup can begin
       setIsLoading(false)
     }
-  }, [user, parkId, currentTrip, setCurrentTrip, selectedParks])
+  }, [user, parkId, currentTrip, setCurrentTrip])
 
   // Separate effect to auto-start trip when park is pre-selected
   useEffect(() => {
     // Auto-start trip if coming from park page with parkId and park is now selected
-    if (parkId && !currentTrip && selectedParks.includes(parkId) && user) {
+    if (parkId && !currentTrip && selectedParks.includes(parkId) && user && !isLoading) {
       console.log(`🚀 Auto-starting trip for park: ${parkId} (parks selected: ${selectedParks.join(', ')})`)
-      // Small delay to ensure attractions are loaded
+      // Small delay to prevent race conditions
       const timeoutId = setTimeout(() => {
-        startNewTrip()
-      }, 200)
+        if (!currentTrip) { // Double-check to prevent duplicate trips
+          startNewTrip()
+        }
+      }, 100)
       
       return () => clearTimeout(timeoutId)
     }
-  }, [parkId, currentTrip, selectedParks, user])
+  }, [parkId, currentTrip, selectedParks, user, isLoading])
 
   // Separate effect to handle clean slate initialization when accessing /log directly
   useEffect(() => {
     // If user accessed /log directly (no parkId) and no current trip, ensure completely clean slate
-    if (!parkId && !currentTrip && user) {
+    if (!parkId && !currentTrip && user && !showContinuationPrompt) {
       console.log('🆕 Ensuring clean slate for direct /log access')
-      setSelectedParks([])
-      setRideCounts({})
-      setSelectedVariants({})
-      setNotes({})
-      setTripNotes('')
-      setActivePark('')
-      setAttractions({})
+      // Only clear if values are actually set to avoid unnecessary re-renders
+      if (selectedParks.length > 0 || Object.keys(rideCounts).length > 0) {
+        setSelectedParks([])
+        setRideCounts({})
+        setSelectedVariants({})
+        setNotes({})
+        setTripNotes('')
+        setActivePark('')
+        setAttractions({})
+      }
     }
-  }, [parkId, currentTrip, user])
+  }, [parkId, currentTrip, user, showContinuationPrompt, selectedParks.length, Object.keys(rideCounts).length])
 
   // Restore state from existing current trip
   useEffect(() => {
@@ -398,8 +403,15 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       const availableParks = ParkDataService.getAvailableParks()
       console.log('📋 Available parks with data:', availableParks)
       
-      const validParks = selectedParks.filter(parkId => ParkDataService.hasPark(parkId))
+      const validParks = selectedParks.filter(parkId => {
+        const hasData = ParkDataService.hasPark(parkId)
+        console.log(`🔍 Park ${parkId} has data: ${hasData}`)
+        return hasData
+      })
       const invalidParks = selectedParks.filter(parkId => !ParkDataService.hasPark(parkId))
+      
+      console.log(`✅ Valid parks: ${validParks.length}/${selectedParks.length}`, validParks)
+      console.log(`❌ Invalid parks: ${invalidParks.length}/${selectedParks.length}`, invalidParks)
       
       if (invalidParks.length > 0) {
         const invalidParkNames = invalidParks.map(parkId => {
@@ -453,7 +465,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         notes: tripNotes.trim() || undefined
       }
 
-      console.log('💾 Saving new trip to storage...')
+      console.log('💾 Saving new trip to storage...', newTrip)
       
       // Save trip to storage
       try {
@@ -1136,7 +1148,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                                       word.charAt(0).toUpperCase() + word.slice(1)
                                     ).join(' '),
                                     attractionType: 'experience' as any,
-                          // Remove logs with 0 rides (if user set them to 0)
+                                    rideCount: count,
                                     trackVariant: selectedVariants[key] || undefined,
                                     loggedAt: new Date().toISOString(),
                                     notes: notes[key] || undefined
@@ -1693,7 +1705,6 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
   console.log('📋 Available parks with data:', availableParks)
 
   // Auto-select family when parks are pre-selected (e.g., from URL)
-  // But don't clear family selection when parks are cleared - user might be in the process of selecting
   useEffect(() => {
     if (selectedParks.length > 0 && !selectedFamily) {
       // Find which family contains the first selected park
@@ -1711,9 +1722,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
         }))
       }
     }
-    // Removed the logic that clears family when no parks are selected
-    // This was causing the dropdown to reset when user selected a family but hadn't selected parks yet
-  }, [selectedParks, selectedFamily])
+  }, [selectedParks, selectedFamily, parkFamilies])
 
   const handleParkToggle = (parkId: string, checked: boolean) => {
     if (checked) {
