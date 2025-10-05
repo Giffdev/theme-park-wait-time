@@ -41,3 +41,82 @@ export function isAttractionNotDining(attraction: ExtendedAttraction): boolean {
   
   return false
 }
+
+/**
+ * Filter function for wait time reporting - only shows attractions that can have wait times
+ * This excludes shows, parades, and other experiences that don't have queues
+ */
+export function canReportWaitTime(attraction: ExtendedAttraction): boolean {
+  // Check if the attraction is not a dining establishment first
+  if (!isAttractionNotDining(attraction)) {
+    return false
+  }
+  
+  // New system: use hasWaitTime property if available
+  if (typeof attraction.hasWaitTime === 'boolean') {
+    return attraction.hasWaitTime
+  }
+  
+  // Backward compatibility: exclude shows and some experiences
+  if (attraction.type === 'show') {
+    return false
+  }
+  
+  // For experiences, be more selective - only certain ones can have wait times
+  if (attraction.type === 'experience') {
+    const name = attraction.name.toLowerCase()
+    // Exclude shows, parades, and street performances
+    const isShow = name.includes('show') || 
+                   name.includes('parade') || 
+                   name.includes('performance') ||
+                   name.includes('band') ||
+                   name.includes('dans') ||
+                   name.includes('fantasmic') ||
+                   name.includes('fireworks') ||
+                   name.includes('spectacular') ||
+                   name.includes('celebration')
+    return !isShow
+  }
+  
+  // Thrill and family rides can always have wait times
+  return attraction.type === 'thrill' || attraction.type === 'family'
+}
+
+/**
+ * Filter function for trip logging - shows all experiences including rides, shows, parades
+ * This is used when users are logging what they experienced during their visit
+ */
+export function canLogInTrip(attraction: ExtendedAttraction): boolean {
+  // Must not be a dining establishment
+  if (!isAttractionNotDining(attraction)) {
+    return false
+  }
+  
+  // New system: check category if available
+  if (attraction.category) {
+    // Only show active and limited attractions for trip logging
+    // Retired attractions can be shown in a separate "Retired" section
+    return attraction.category === 'active' || attraction.category === 'limited'
+  }
+  
+  // Backward compatibility: exclude defunct attractions
+  if (attraction.isDefunct) {
+    return false
+  }
+  
+  // All non-dining attractions can be logged
+  return true
+}
+
+/**
+ * Check if an attraction is retired/defunct
+ */
+export function isRetiredAttraction(attraction: ExtendedAttraction): boolean {
+  // New system: check category
+  if (attraction.category) {
+    return attraction.category === 'retired'
+  }
+  
+  // Backward compatibility
+  return attraction.isDefunct === true
+}

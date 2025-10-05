@@ -768,11 +768,13 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
     }
   ],
   'magic-kingdom': [
-    // Major Thrill Rides
+    // Major Thrill Rides - Active with Wait Times
     {
       id: 'space-mountain',
       name: 'Space Mountain',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 65,
       status: 'operating',
       lastUpdated: new Date().toISOString()
@@ -781,6 +783,8 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       id: 'seven-dwarfs-mine-train',
       name: 'Seven Dwarfs Mine Train',
       type: 'family',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 80,
       status: 'operating',
       lastUpdated: new Date().toISOString()
@@ -921,9 +925,35 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       id: 'tiki-room',
       name: 'Walt Disney\'s Enchanted Tiki Room',
       type: 'show',
-      currentWaitTime: 5,
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    // Shows and Entertainment - Examples
+    {
+      id: 'mickey-royal-friendship-faire',
+      name: 'Mickey\'s Royal Friendship Faire',
+      type: 'show',
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Limited/Seasonal Show Example  
+    {
+      id: 'mickeys-very-merry-christmas-party',
+      name: 'Mickey\'s Very Merry Christmas Party',
+      type: 'show',
+      category: 'limited',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      isSeasonal: true,
+      seasonalPeriod: 'Christmas'
     },
     {
       id: 'swiss-family-treehouse',
@@ -1078,11 +1108,13 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
     }
   ],
   'disneyland': [
-    // Star Wars Galaxy's Edge
+    // Star Wars Galaxy's Edge - Active Rides
     {
       id: 'rise-of-resistance-dl',
       name: 'Star Wars: Rise of the Resistance',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 110,
       status: 'operating',
       lastUpdated: new Date().toISOString()
@@ -1091,15 +1123,19 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       id: 'smugglers-run-dl',
       name: 'Millennium Falcon: Smugglers Run',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 75,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
-    // Major Thrill Rides
+    // Major Thrill Rides - Active
     {
       id: 'indiana-jones-adventure',
       name: 'Indiana Jones Adventure',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 75,
       status: 'operating',
       lastUpdated: new Date().toISOString()
@@ -1108,6 +1144,8 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       id: 'matterhorn-bobsleds',
       name: 'Matterhorn Bobsleds',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 50,
       status: 'operating',
       lastUpdated: new Date().toISOString()
@@ -1116,6 +1154,8 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       id: 'space-mountain-dl',
       name: 'Space Mountain',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 65,
       status: 'operating',
       lastUpdated: new Date().toISOString()
@@ -1124,23 +1164,40 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       id: 'big-thunder-mountain-dl',
       name: 'Big Thunder Mountain Railroad',
       type: 'thrill',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 40,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
+    // Active Rides with Wait Times - Examples you mentioned
     {
-      id: 'star-tours-dl',
-      name: 'Star Tours - The Adventures Continue',
-      type: 'thrill',
-      currentWaitTime: 25,
+      id: 'buzz-lightyear-astro-blasters',
+      name: 'Buzz Lightyear Astro Blasters',
+      type: 'family',
+      category: 'active',
+      hasWaitTime: true,
+      currentWaitTime: 30,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
-    // Classic Dark Rides
+    {
+      id: 'chip-dale-gadgetcoaster',
+      name: 'Chip \'n\' Dale\'s GADGETcoaster',
+      type: 'family',
+      category: 'active',
+      hasWaitTime: true,
+      currentWaitTime: 20,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Classic Dark Rides - Active
     {
       id: 'pirates-caribbean-dl',
       name: 'Pirates of the Caribbean',
       type: 'family',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 35,
       status: 'operating',
       lastUpdated: new Date().toISOString()
@@ -1149,6 +1206,8 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       id: 'haunted-mansion-dl',
       name: 'Haunted Mansion',
       type: 'family',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 40,
       status: 'operating',
       lastUpdated: new Date().toISOString()
@@ -1157,6 +1216,8 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       id: 'jungle-cruise-dl',
       name: 'Jungle Cruise',
       type: 'family',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 30,
       status: 'operating',
       lastUpdated: new Date().toISOString()
@@ -1165,39 +1226,86 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       id: 'its-a-small-world-dl',
       name: 'It\'s A Small World',
       type: 'family',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 15,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
-    // Fantasyland
+    // Shows and Entertainment - Active (No Wait Times)
+    {
+      id: 'dapper-dans',
+      name: 'The Dapper Dans',
+      type: 'show',
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'disneyland-band',
+      name: 'The Disneyland Band',
+      type: 'show',
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: 'fantasmic',
+      name: 'Fantasmic!',
+      type: 'show',
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString()
+    },
+    // Limited Shows/Parades (seasonal)
+    {
+      id: 'paint-the-night',
+      name: 'Paint the Night',
+      type: 'show',
+      category: 'limited',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      isSeasonal: true,
+      seasonalPeriod: 'Summer'
+    },
+    // Retired Attractions - Examples
+    {
+      id: 'peoplemover-dl',
+      name: 'PeopleMover',
+      type: 'experience',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      isDefunct: true
+    },
+    {
+      id: 'skyway-dl',
+      name: 'Skyway',
+      type: 'experience',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      isDefunct: true
+    },
+    // More Active Fantasyland Rides
     {
       id: 'peter-pans-flight-dl',
       name: 'Peter Pan\'s Flight',
       type: 'family',
-      currentWaitTime: 55,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'winnie-the-pooh-dl',
-      name: 'The Many Adventures of Winnie the Pooh',
-      type: 'family',
-      currentWaitTime: 25,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'snow-white-enchanted-wish',
-      name: 'Snow White\'s Enchanted Wish',
-      type: 'family',
-      currentWaitTime: 20,
-      status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: 'pinocchio-daring-journey',
-      name: 'Pinocchio\'s Daring Journey',
-      type: 'family',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 15,
       status: 'operating',
       lastUpdated: new Date().toISOString()
@@ -1248,7 +1356,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       id: 'enchanted-tiki-room-dl',
       name: 'Walt Disney\'s Enchanted Tiki Room',
       type: 'show',
-      currentWaitTime: 5,
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
@@ -1256,6 +1366,8 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       id: 'disneyland-railroad',
       name: 'Disneyland Railroad',
       type: 'experience',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 10,
       status: 'operating',
       lastUpdated: new Date().toISOString()
@@ -1264,6 +1376,8 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       id: 'mark-twain-riverboat-dl',
       name: 'Mark Twain Riverboat',
       type: 'experience',
+      category: 'active',
+      hasWaitTime: true,
       currentWaitTime: 10,
       status: 'operating',
       lastUpdated: new Date().toISOString()

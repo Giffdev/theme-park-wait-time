@@ -12,7 +12,7 @@ import { useReporting } from '@/hooks/useReporting'
 import { parkFamilies } from '@/data/sampleData'
 import { ParkDataService } from '@/services/parkDataService'
 import { toast } from 'sonner'
-import { isAttractionNotDining } from '@/lib/utils'
+import { isAttractionNotDining, canReportWaitTime } from '@/lib/utils'
 import type { User } from '@/App'
 import type { ExtendedAttraction } from '@/types'
 
@@ -46,13 +46,13 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
       const parkData = await ParkDataService.loadAttractions(parkId)
       
       if (parkData && Array.isArray(parkData) && parkData.length > 0) {
-        // Filter out dining establishments - only show actual attractions
+        // Filter out dining establishments and attractions without wait times
         const validAttractions = parkData.filter(attraction => 
           attraction && 
           typeof attraction === 'object' && 
           attraction.name && 
           typeof attraction.currentWaitTime === 'number' &&
-          isAttractionNotDining(attraction)
+          canReportWaitTime(attraction)
         )
         
         setAttractions(validAttractions)

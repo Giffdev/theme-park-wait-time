@@ -20,6 +20,8 @@ export type Attraction = {
   id: string
   name: string
   type: 'thrill' | 'family' | 'show' | 'experience'
+  category: 'active' | 'limited' | 'retired'
+  hasWaitTime: boolean // true for rides, false for shows/parades
   currentWaitTime: number
   status: 'operating' | 'closed' | 'delayed'
   lastUpdated: string

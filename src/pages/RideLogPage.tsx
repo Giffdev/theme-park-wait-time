@@ -34,7 +34,7 @@ import {
 
 import { ParkDataService } from '@/services/parkDataService'
 import { parkFamilies } from '@/data/sampleData'
-import { isAttractionNotDining } from '@/lib/utils'
+import { isAttractionNotDining, canLogInTrip, isRetiredAttraction } from '@/lib/utils'
 import type { ExtendedAttraction, Trip, TripPark, RideLog, User } from '@/types'
 
 interface RideLogPageProps {
@@ -1162,23 +1162,23 @@ function AttractionsForPark({
   onNotesBlur,
   user
 }: AttractionsForParkProps) {
-  // Filter out dining establishments - only show actual attractions
-  const attractionOnlyFilter = isAttractionNotDining
+  // Filter for trip logging - includes rides, shows, parades, experiences
+  const attractionOnlyFilter = canLogInTrip
 
-  const activeAttractions = attractions.filter(a => !a.isDefunct && attractionOnlyFilter(a))
-  const defunctAttractions = attractions.filter(a => a.isDefunct && attractionOnlyFilter(a)).sort((a, b) => a.name.localeCompare(b.name))
+  const activeAttractions = attractions.filter(a => !isRetiredAttraction(a) && attractionOnlyFilter(a))
+  const defunctAttractions = attractions.filter(a => isRetiredAttraction(a) && attractionOnlyFilter(a)).sort((a, b) => a.name.localeCompare(b.name))
   const seasonalAttractions = activeAttractions.filter(a => a.isSeasonal).sort((a, b) => a.name.localeCompare(b.name))
   const regularAttractions = activeAttractions.filter(a => !a.isSeasonal).sort((a, b) => a.name.localeCompare(b.name))
 
   return (
     <Tabs defaultValue="regular" className="space-y-4">
       <TabsList>
-        <TabsTrigger value="regular">Active Attractions</TabsTrigger>
+        <TabsTrigger value="regular">Active</TabsTrigger>
         {seasonalAttractions.length > 0 && (
-          <TabsTrigger value="seasonal">Seasonal</TabsTrigger>
+          <TabsTrigger value="seasonal">Limited/Seasonal</TabsTrigger>
         )}
         {defunctAttractions.length > 0 && (
-          <TabsTrigger value="defunct">Defunct/Historical</TabsTrigger>
+          <TabsTrigger value="defunct">Retired</TabsTrigger>
         )}
       </TabsList>
 

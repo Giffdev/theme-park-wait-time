@@ -73,6 +73,16 @@
 - **Why**: Reduces friction for contributing wait time data 
 - **Success Criteria**: Increased wait time reports with minimal user effort
 
+### Trip Logging System
+- **What**: Comprehensive trip logging where users can record all experiences including rides, shows, parades, and other attractions with different category levels (Active, Limited, Retired)
+- **Why**: Allows users to track their complete park experience beyond just rides with wait times, including entertainment and seasonal events
+- **Success Criteria**: Users can log rides, shows, parades, and experiences; different categories help users find relevant attractions for their visit
+
+### Differentiated Attraction Categories
+- **What**: Attractions are categorized as Active (currently operating), Limited (seasonal/special events), and Retired (historical/defunct) with appropriate filtering for different use cases
+- **Why**: Wait time reporting should only show attractions with actual queues, while trip logging should include all experiences users might want to track
+- **Success Criteria**: Wait time reporting filters out shows/parades; trip logging includes all attraction types with proper categorization
+
 ### Historical Analytics & Trends
 - **What**: Visual graphs showing wait time patterns throughout days, weeks, and seasons
 - **Why**: Helps users plan optimal visit times
