@@ -828,6 +828,41 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                       )
                     )}
                   </Badge>
+                  
+                  {/* Start New Trip Button */}
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={async () => {
+                      console.log('🔄 Starting new trip (clearing current session)...')
+                      
+                      try {
+                        // Clear current trip from KV storage
+                        if (window.spark?.kv && user) {
+                          await window.spark.kv.delete(`current-trip-${user.id}`)
+                          console.log('✅ Cleared current trip from storage')
+                        }
+                      } catch (error) {
+                        console.warn('⚠️ Could not clear current trip from storage:', error)
+                      }
+                      
+                      // Clear local state
+                      setCurrentTrip(null)
+                      setRideCounts({})
+                      setSelectedVariants({})
+                      setNotes({})
+                      setTripNotes('')
+                      setSelectedParks([])
+                      setActivePark('')
+                      setAttractions({})
+                      
+                      toast.success('Ready to start a new trip!')
+                    }}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    Start New Trip
+                  </Button>
+                  
                   {Object.values(rideCounts).some(count => count > 0) && (
                     <Button 
                       variant="outline" 
@@ -1098,9 +1133,14 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
           {/* Park Selection Tabs */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin size={20} />
-                Select Park to Log Rides
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <MapPin size={20} />
+                  Select Park to Log Rides
+                </span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  {currentTrip.parks.length} park{currentTrip.parks.length !== 1 ? 's' : ''} in trip
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -1109,7 +1149,24 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                   <Button
                     key={park.parkId}
                     variant={activePark === park.parkId ? "default" : "outline"}
-                    onClick={() => setActivePark(park.parkId)}
+                    onClick={async () => {
+                      console.log(`🎯 Switching to park: ${park.parkId}`)
+                      setActivePark(park.parkId)
+                      
+                      // Load attractions for this park if not already loaded
+                      if (!attractions[park.parkId] || attractions[park.parkId].length === 0) {
+                        console.log(`🔄 Loading attractions for ${park.parkId} (not cached)`)
+                        try {
+                          await loadAttractionsForPark(park.parkId)
+                          toast.success(`Loaded attractions for ${park.parkName}`)
+                        } catch (error) {
+                          console.error(`❌ Failed to load attractions for ${park.parkId}:`, error)
+                          toast.error(`Failed to load attractions for ${park.parkName}. Click again to retry.`)
+                        }
+                      } else {
+                        console.log(`✅ Attractions already loaded for ${park.parkId} (${attractions[park.parkId].length} attractions)`)
+                      }
+                    }}
                     className="flex items-center gap-2"
                   >
                     {park.parkName}
@@ -1129,19 +1186,37 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
           </Card>
 
           {/* Attractions for Active Park */}
-          {activePark && attractions[activePark] && (
-            <AttractionsForPark
-              parkId={activePark}
-              attractions={attractions[activePark]}
-              rideCounts={rideCounts}
-              selectedVariants={selectedVariants}
-              notes={notes}
-              onUpdateRideCount={updateRideCount}
-              onVariantChange={handleVariantChange}
-              onNotesChange={handleNotesChange}
-              onNotesBlur={handleNotesBlur}
-              user={user}
-            />
+          {activePark && (
+            <>
+              {attractions[activePark] && attractions[activePark].length > 0 ? (
+                <AttractionsForPark
+                  parkId={activePark}
+                  attractions={attractions[activePark]}
+                  rideCounts={rideCounts}
+                  selectedVariants={selectedVariants}
+                  notes={notes}
+                  onUpdateRideCount={updateRideCount}
+                  onVariantChange={handleVariantChange}
+                  onNotesChange={handleNotesChange}
+                  onNotesBlur={handleNotesBlur}
+                  user={user}
+                />
+              ) : (
+                <Card>
+                  <CardContent className="py-8">
+                    <div className="text-center space-y-4">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                      <div>
+                        <p className="text-muted-foreground">Loading attractions for {currentTrip.parks.find(p => p.parkId === activePark)?.parkName}...</p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          If this takes too long, try clicking the park button again or refreshing the page.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
           )}
         </div>
       )}

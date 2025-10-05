@@ -12,8 +12,12 @@ export function cn(...inputs: ClassValue[]) {
  * from attraction lists.
  */
 export function isAttractionNotDining(attraction: ExtendedAttraction): boolean {
-  // Always include thrill rides, family rides, and shows
-  if (attraction.type === 'thrill' || attraction.type === 'family' || attraction.type === 'show') {
+  // Always include thrill rides, family rides, shows, parades, and character meets
+  if (attraction.type === 'thrill' || 
+      attraction.type === 'family' || 
+      attraction.type === 'show' ||
+      attraction.type === 'parade' ||
+      attraction.type === 'character-meet') {
     return true
   }
   
@@ -37,6 +41,11 @@ export function isAttractionNotDining(attraction: ExtendedAttraction): boolean {
                     name.includes('food') ||
                     name.includes('snack')
     return !isDining
+  }
+  
+  // Exclude dining-experience type attractions
+  if (attraction.type === 'dining-experience') {
+    return false
   }
   
   return false
