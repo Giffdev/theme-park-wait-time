@@ -1728,20 +1728,24 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
   }
 
   // Reset park filter when changing family selection
-  const handleFamilyChange = (familyId: string) => {
+  const handleFamilyChange = (familyId: string | null) => {
     console.log('🎯 Family changed to:', familyId)
-    setSelectedFamily(familyId)
+    
+    // Handle null/empty values consistently
+    const newFamilyId = familyId || ''
+    setSelectedFamily(newFamilyId)
+    
     // Auto-expand the newly selected family
-    if (familyId) {
+    if (newFamilyId) {
       setShowParkFilter(prev => ({
         ...prev,
-        [familyId]: true
+        [newFamilyId]: true
       }))
     }
     
     // If changing to a different family, clear parks that don't belong to the new family
-    if (familyId !== selectedFamily && selectedParks.length > 0) {
-      const newFamily = parkFamilies.find(f => f.id === familyId)
+    if (newFamilyId !== selectedFamily && selectedParks.length > 0) {
+      const newFamily = parkFamilies.find(f => f.id === newFamilyId)
       if (newFamily) {
         const validParks = selectedParks.filter(parkId => 
           newFamily.parks.some(p => p.id === parkId)
@@ -1750,7 +1754,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
         if (validParks.length !== selectedParks.length) {
           onParksChange(validParks)
         }
-      } else if (!familyId) {
+      } else if (!newFamilyId) {
         // If no family selected, clear all parks
         onParksChange([])
       }
@@ -1789,7 +1793,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
           )}
         </div>
         <Select
-          value={selectedFamily || ''}
+          value={selectedFamily}
           onValueChange={(value) => {
             console.log('🎯 Select onValueChange called with:', value)
             handleFamilyChange(value)
