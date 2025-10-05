@@ -726,9 +726,16 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
 
   const handleParksChange = (parks: string[]) => {
+    console.log('🏰 handleParksChange called:', { 
+      newParks: parks, 
+      currentParks: selectedParks,
+      change: parks.length - selectedParks.length
+    })
+    
     // Find parks that were deselected and clear their ride counts
     const deselectedParks = selectedParks.filter(parkId => !parks.includes(parkId))
     if (deselectedParks.length > 0) {
+      console.log('🗑️ Clearing ride counts for deselected parks:', deselectedParks)
       const keysToRemove = Object.keys(rideCounts).filter(key => 
         deselectedParks.some(parkId => key.startsWith(`${parkId}-`))
       )
@@ -739,6 +746,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       })
     }
     setSelectedParks(parks)
+    console.log('✅ Parks updated to:', parks)
   }
 
   if (!user) {
@@ -1715,6 +1723,12 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
   const availableParks = ParkDataService.getAvailableParks()
   console.log('📋 Available parks with data (ParkFamilyTripSelector):', availableParks)
   console.log('📋 Total available parks count:', availableParks.length)
+  console.log('📋 Are Disney parks available?', {
+    'magic-kingdom': availableParks.includes('magic-kingdom'),
+    'epcot': availableParks.includes('epcot'),
+    'hollywood-studios': availableParks.includes('hollywood-studios'),
+    'animal-kingdom': availableParks.includes('animal-kingdom')
+  })
 
   // Auto-select family when parks are pre-selected (e.g., from URL)
   useEffect(() => {
@@ -1736,11 +1750,24 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
     }
   }, [selectedParks, selectedFamily, parkFamilies])
 
-  const handleParkToggle = (parkId: string, checked: boolean) => {
-    if (checked) {
-      onParksChange([...selectedParks, parkId])
+  const handleParkToggle = (parkId: string, checked: boolean | 'indeterminate') => {
+    console.log('🔄 Park toggle:', { parkId, checked, currentSelection: selectedParks })
+    if (checked === true) {
+      if (selectedParks.includes(parkId)) {
+        console.log('ℹ️ Park already selected, no change needed')
+        return
+      }
+      const newSelection = [...selectedParks, parkId]
+      console.log('✅ Adding park:', parkId, 'New selection:', newSelection)
+      onParksChange(newSelection)
     } else {
-      onParksChange(selectedParks.filter(id => id !== parkId))
+      if (!selectedParks.includes(parkId)) {
+        console.log('ℹ️ Park already deselected, no change needed')
+        return
+      }
+      const newSelection = selectedParks.filter(id => id !== parkId)
+      console.log('❌ Removing park:', parkId, 'New selection:', newSelection)
+      onParksChange(newSelection)
     }
   }
 
@@ -1939,12 +1966,22 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
                     {familyParks.map(park => {
                       const hasData = availableParks.includes(park.id)
+                      console.log(`🔍 Park ${park.id} (${park.name}): hasData = ${hasData}`)
                       return (
                         <div key={park.id} className="flex items-center space-x-2">
                           <Checkbox
                             id={park.id}
                             checked={selectedParks.includes(park.id)}
-                            onCheckedChange={(checked) => handleParkToggle(park.id, checked as boolean)}
+                            onCheckedChange={(checked) => {
+                              console.log('🔄 Checkbox clicked:', { 
+                                parkId: park.id, 
+                                parkName: park.name,
+                                checked, 
+                                hasData,
+                                currentSelection: selectedParks 
+                              })
+                              handleParkToggle(park.id, checked)
+                            }}
                             disabled={!hasData}
                           />
                           <Label 
