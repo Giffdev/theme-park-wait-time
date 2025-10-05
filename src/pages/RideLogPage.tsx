@@ -55,7 +55,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [visitDate, setVisitDate] = useState<Date>(new Date())
-  const [selectedParks, setSelectedParks] = useState<string[]>(parkId ? [parkId] : [])
+  const [selectedParks, setSelectedParks] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [tripNotes, setTripNotes] = useState('')
@@ -87,13 +87,19 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setTripNotes('')
     }
 
+    // Pre-select park if coming from a specific park page (but allow user to change)
+    if (parkId && selectedParks.length === 0 && !currentTrip) {
+      console.log(`🎯 Pre-selecting park from URL: ${parkId}`)
+      setSelectedParks([parkId])
+    }
+
     if (parkId) {
       loadAttractionsForPark(parkId)
     } else {
       // If no specific park, set loading to false so the trip setup can begin
       setIsLoading(false)
     }
-  }, [user, parkId, currentTrip, setCurrentTrip])
+  }, [user, parkId, currentTrip, setCurrentTrip, selectedParks])
 
   // Restore state from existing current trip
   useEffect(() => {
@@ -108,6 +114,11 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       
       setIsEditing(isExistingTrip)
       console.log(`✏️ Trip editing mode: ${isExistingTrip ? 'EDITING' : 'NEW'}`)
+      
+      // Restore selected parks from the current trip
+      const tripParkIds = currentTrip.parks.map(p => p.parkId)
+      setSelectedParks(tripParkIds)
+      console.log('🏰 Restored selected parks from trip:', tripParkIds)
       
       const restoredRideCounts: Record<string, number> = {}
       const restoredVariants: Record<string, string> = {}
