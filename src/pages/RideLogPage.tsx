@@ -1767,7 +1767,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
       onParksChange(newSelection)
     } else {
       if (!selectedParks.includes(parkId)) {
-        console.log('ℹ️ Park already deselected, no change needed')
+        console.log('ℹ️ Park already unselected, no change needed')
         return
       }
       const newSelection = selectedParks.filter(id => id !== parkId)
@@ -1974,31 +1974,24 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
                       const isSelected = selectedParks.includes(park.id)
                       console.log(`🔍 Park ${park.id} (${park.name}): hasData = ${hasData}, isSelected = ${isSelected}, disabled = ${!hasData}`)
                       console.log(`   Available parks check:`, availableParks.slice(0, 5), '...')
-                      
-                      // Force enable Disney parks for testing - they should have data
                       const forceEnabled = ['magic-kingdom', 'epcot', 'hollywood-studios', 'animal-kingdom'].includes(park.id)
                       const actuallyDisabled = !hasData && !forceEnabled
                       
-                      if (forceEnabled && !hasData) {
-                        console.log(`⚠️ Force enabling ${park.id} despite hasData=${hasData}`)
-                      }
-                      
                       return (
-                        <div key={park.id} className="flex items-center space-x-2">
+                        <div key={park.id} className="flex items-center space-x-2 p-2 rounded-md border">
                           <Checkbox
                             id={park.id}
                             checked={isSelected}
+                            disabled={actuallyDisabled}
                             onCheckedChange={(checked) => {
                               console.log(`🔄 Checkbox clicked for ${park.id}: checked=${checked}, disabled=${actuallyDisabled}`)
                               console.log(`🔄 Current state - selectedParks:`, selectedParks)
-                              if (actuallyDisabled) {
+                              if (!actuallyDisabled) {
+                                handleParkToggle(park.id, checked)
+                              } else {
                                 console.log(`❌ Ignoring click on ${park.id} - no data available`)
-                                return
                               }
-                              console.log(`✅ Processing click for ${park.id}`)
-                              handleParkToggle(park.id, checked)
                             }}
-                            disabled={actuallyDisabled}
                           />
                           <Label 
                             htmlFor={park.id} 
@@ -2013,11 +2006,6 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
                             {actuallyDisabled && (
                               <Badge variant="outline" className="text-xs text-muted-foreground">
                                 No Data
-                              </Badge>
-                            )}
-                            {forceEnabled && !hasData && (
-                              <Badge variant="outline" className="text-xs text-amber-600">
-                                Force Enabled
                               </Badge>
                             )}
                           </Label>
