@@ -111,10 +111,19 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setShowContinuationPrompt(true)
     }
 
-    // ONLY pre-select park if coming from a specific park page AND no current trip exists
-    if (parkId && selectedParks.length === 0 && !currentTrip) {
+    // Pre-select park when coming from a specific park page (e.g., /log/disneyland)
+    if (parkId && selectedParks.length === 0) {
       console.log(`🎯 Pre-selecting park from URL: ${parkId}`)
       setSelectedParks([parkId])
+    }
+
+    // Auto-start trip if coming from park page with parkId
+    if (parkId && !currentTrip && selectedParks.includes(parkId)) {
+      console.log(`🚀 Auto-starting trip for park: ${parkId}`)
+      // Small delay to ensure state is set properly
+      setTimeout(() => {
+        startNewTrip()
+      }, 100)
     }
 
     if (parkId) {
@@ -123,7 +132,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       // If no specific park, set loading to false so the trip setup can begin
       setIsLoading(false)
     }
-  }, [user, parkId, currentTrip, setCurrentTrip])
+  }, [user, parkId, currentTrip, setCurrentTrip, selectedParks])
 
   // Separate effect to handle clean slate initialization when accessing /log directly
   useEffect(() => {
