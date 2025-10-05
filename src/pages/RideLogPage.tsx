@@ -731,6 +731,8 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       currentParks: selectedParks,
       change: parks.length - selectedParks.length
     })
+    console.log('🏰 Selected parks before update:', JSON.stringify(selectedParks))
+    console.log('🏰 New parks to set:', JSON.stringify(parks))
     
     // Find parks that were deselected and clear their ride counts
     const deselectedParks = selectedParks.filter(parkId => !parks.includes(parkId))
@@ -746,7 +748,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       })
     }
     setSelectedParks(parks)
-    console.log('✅ Parks updated to:', parks)
+    console.log('✅ Parks state updated to:', parks)
   }
 
   if (!user) {
@@ -1729,6 +1731,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
     'hollywood-studios': availableParks.includes('hollywood-studios'),
     'animal-kingdom': availableParks.includes('animal-kingdom')
   })
+  console.log('📋 Full available parks list:', JSON.stringify(availableParks, null, 2))
 
   // Auto-select family when parks are pre-selected (e.g., from URL)
   useEffect(() => {
@@ -1751,7 +1754,9 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
   }, [selectedParks, selectedFamily, parkFamilies])
 
   const handleParkToggle = (parkId: string, checked: boolean | 'indeterminate') => {
-    console.log('🔄 Park toggle:', { parkId, checked, currentSelection: selectedParks })
+    console.log('🔄 Park toggle called:', { parkId, checked, currentSelection: selectedParks })
+    console.log('🔄 Selected parks before change:', JSON.stringify(selectedParks))
+    
     if (checked === true) {
       if (selectedParks.includes(parkId)) {
         console.log('ℹ️ Park already selected, no change needed')
@@ -1966,20 +1971,38 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
                     {familyParks.map(park => {
                       const hasData = availableParks.includes(park.id)
-                      console.log(`🔍 Park ${park.id} (${park.name}): hasData = ${hasData}`)
+                      const isSelected = selectedParks.includes(park.id)
+                      console.log(`🔍 Park ${park.id} (${park.name}): hasData = ${hasData}, isSelected = ${isSelected}, disabled = ${!hasData}`)
+                      console.log(`   Available parks check:`, availableParks.slice(0, 5), '...')
+                      
+                      // Force enable Disney parks for testing - they should have data
+                      const forceEnabled = ['magic-kingdom', 'epcot', 'hollywood-studios', 'animal-kingdom'].includes(park.id)
+                      const actuallyDisabled = !hasData && !forceEnabled
+                      
+                      if (forceEnabled && !hasData) {
+                        console.log(`⚠️ Force enabling ${park.id} despite hasData=${hasData}`)
+                      }
+                      
                       return (
                         <div key={park.id} className="flex items-center space-x-2">
                           <Checkbox
                             id={park.id}
-                            checked={selectedParks.includes(park.id)}
-                            onCheckedChange={(checked) => 
+                            checked={isSelected}
+                            onCheckedChange={(checked) => {
+                              console.log(`🔄 Checkbox clicked for ${park.id}: checked=${checked}, disabled=${actuallyDisabled}`)
+                              console.log(`🔄 Current state - selectedParks:`, selectedParks)
+                              if (actuallyDisabled) {
+                                console.log(`❌ Ignoring click on ${park.id} - no data available`)
+                                return
+                              }
+                              console.log(`✅ Processing click for ${park.id}`)
                               handleParkToggle(park.id, checked)
-                            }
-                            disabled={!hasData}
+                            }}
+                            disabled={actuallyDisabled}
                           />
                           <Label 
                             htmlFor={park.id} 
-                            className={`text-sm cursor-pointer flex items-center gap-2 ${!hasData ? 'text-muted-foreground' : ''}`}
+                            className={`text-sm cursor-pointer flex items-center gap-2 ${actuallyDisabled ? 'text-muted-foreground' : ''}`}
                           >
                             {park.name}
                             {park.type === 'water-park' && (
@@ -1987,9 +2010,14 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
                                 Water Park
                               </Badge>
                             )}
-                            {!hasData && (
+                            {actuallyDisabled && (
                               <Badge variant="outline" className="text-xs text-muted-foreground">
                                 No Data
+                              </Badge>
+                            )}
+                            {forceEnabled && !hasData && (
+                              <Badge variant="outline" className="text-xs text-amber-600">
+                                Force Enabled
                               </Badge>
                             )}
                           </Label>
