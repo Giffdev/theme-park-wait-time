@@ -1785,10 +1785,9 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
         console.log('ℹ️ Park already unselected, no change needed')
         return
       }
-      const newSelection = selectedParks.filter(id => id !== parkId)
+      const newSelection = selectedParks.filter(id => id !== parkId);
       console.log('❌ Removing park:', parkId, 'New selection:', newSelection)
-      console.log('🔄 Calling onParksChange with:', newSelection)
-      onParksChange(newSelection)
+      onParksChange(newSelection);
       console.log('✅ onParksChange called successfully')
     }
   }
@@ -1796,10 +1795,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
   const handleFamilySelectAll = (familyId: string) => {
     const family = parkFamilies.find(f => f.id === familyId)
     if (family) {
-      // Only select parks that have data available
-      const familyParkIds = family.parks
-        .filter(park => availableParks.includes(park.id))
-        .map(p => p.id)
+      const familyParkIds = family.parks.map(p => p.id)
       const otherParks = selectedParks.filter(parkId => 
         !family.parks.some(p => p.id === parkId)
       )
@@ -1998,57 +1994,40 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
 
               {/* Parks List */}
               {isExpanded && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
-                    {familyParks.map(park => {
-                      const hasData = availableParks.includes(park.id)
-                      const isSelected = selectedParks.includes(park.id)
-                      const actuallyDisabled = !hasData
-                      
-                      console.log(`🔍 Park ${park.id} (${park.name}): hasData = ${hasData}, isSelected = ${isSelected}, disabled = ${actuallyDisabled}`)
-                      console.log(`   Available parks check:`, availableParks.slice(0, 5), '...')
-                      
-                      return (
-                        <div key={park.id} className="flex items-center space-x-2 p-2 rounded-md border">
-                          <Checkbox
-                            id={park.id}
-                            checked={isSelected}
-                            disabled={actuallyDisabled}
-                            onCheckedChange={(checked) => {
-                              console.log(`🔄 Checkbox clicked for ${park.id}: checked=${checked}, disabled=${actuallyDisabled}`)
-                              console.log(`🔄 Current state - selectedParks:`, selectedParks)
-                              console.log(`🔄 Available parks:`, availableParks)
-                              console.log(`🔄 Has data check: park ${park.id} in available parks = ${hasData}`)
-                              
-                              if (!actuallyDisabled) {
-                                console.log(`✅ Processing toggle for ${park.id}`)
-                                handleParkToggle(park.id, checked)
-                              } else {
-                                console.log(`❌ Ignoring click on ${park.id} - no data available`)
-                                console.log(`   Available parks:`, availableParks.slice(0, 10))
-                              }
-                            }}
-                          />
-                          <Label 
-                            htmlFor={park.id} 
-                            className={`text-sm cursor-pointer flex items-center gap-2 ${actuallyDisabled ? 'text-muted-foreground' : ''}`}
-                          >
-                            {park.name}
-                            {park.type === 'water-park' && (
-                              <Badge variant="secondary" className="text-xs">
-                                Water Park
-                              </Badge>
-                            )}
-                            {actuallyDisabled && (
-                              <Badge variant="outline" className="text-xs text-muted-foreground">
-                                No Data
-                              </Badge>
-                            )}
-                          </Label>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
+                  {familyParks.map(park => {
+                    const hasData = availableParks.includes(park.id)
+                    const isSelected = selectedParks.includes(park.id)
+                    const actuallyDisabled = !hasData
+                    
+                    return (
+                      <div key={park.id} className="flex items-center space-x-2 p-2 rounded-md border">
+                        <Checkbox
+                          id={park.id}
+                          checked={isSelected}
+                          disabled={actuallyDisabled}
+                          onCheckedChange={(checked) => {
+                            if (hasData) {
+                              handleParkToggle(park.id, checked)
+                            }
+                          }}
+                        />
+                        <Label 
+                          htmlFor={park.id}
+                          className={`text-sm cursor-pointer flex items-center gap-2 ${actuallyDisabled ? 'text-muted-foreground' : ''}`}
+                        >
+                          {park.name}
+                          {actuallyDisabled && (
+                            <Badge variant="secondary" className="text-xs">
+                              No Data
+                            </Badge>
+                          )}
+                        </Label>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
 
                 {/* Show selected parks when collapsed */}
                 {!isExpanded && selectedFamilyParks.length > 0 && (
