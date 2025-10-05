@@ -67,6 +67,9 @@ function App() {
           console.log('✅ Spark KV available')
           const successCount = await ParkDataService.initializeAllParks()
           console.log(successCount > 0 ? '✅ Data initialized successfully' : '⚠️ Data init had issues, continuing anyway')
+          
+          // Give a small delay to ensure KV operations are fully committed
+          await new Promise(resolve => setTimeout(resolve, 200))
         } else {
           console.warn('⚠️ Spark KV not ready after waiting, continuing without init')
         }

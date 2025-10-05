@@ -24,6 +24,8 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    let isCancelled = false
+    
     const loadData = async () => {
       setIsLoading(true)
       try {
@@ -32,26 +34,30 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
         // Use the ParkDataService for reliable loading
         const loadedAttractions = await ParkDataService.loadAttractions(parkId)
         
-        if (loadedAttractions && Array.isArray(loadedAttractions) && loadedAttractions.length > 0) {
-          console.log(`✅ ParkOverview loaded ${loadedAttractions.length} attractions for ${parkId}`)
-          setAttractions(loadedAttractions)
-        } else {
-          console.warn(`⚠️ ParkOverview no data returned from ParkDataService for ${parkId}`)
-          
-          // Check if useKV has data
-          if (attractions && Array.isArray(attractions) && attractions.length > 0) {
-            console.log(`✅ ParkOverview using existing useKV data: ${attractions.length} attractions`)
+        if (!isCancelled) {
+          if (loadedAttractions && Array.isArray(loadedAttractions) && loadedAttractions.length > 0) {
+            console.log(`✅ ParkOverview loaded ${loadedAttractions.length} attractions for ${parkId}`)
+            setAttractions(loadedAttractions)
           } else {
-            console.error(`❌ ParkOverview no data available for ${parkId}`)
+            console.warn(`⚠️ ParkOverview no data returned from ParkDataService for ${parkId}`)
           }
         }
       } catch (error) {
-        console.error('❌ ParkOverview error loading attractions:', error)
+        if (!isCancelled) {
+          console.error('❌ ParkOverview error loading attractions:', error)
+        }
       }
-      setIsLoading(false)
+      
+      if (!isCancelled) {
+        setIsLoading(false)
+      }
     }
     
     loadData()
+    
+    return () => {
+      isCancelled = true
+    }
   }, [parkId, setAttractions])
 
   // Also listen for changes from the useKV hook
@@ -83,6 +89,7 @@ export function ParkDetailsOverview({ parkId, onRideSelect }: ParkOverviewProps)
       }
       
       // Filter for overview - only show attractions with meaningful wait times
+      // This should match the filtering logic used in LiveWaitTimes
       return isValid && isAttractionForOverview(attraction)
     })
     

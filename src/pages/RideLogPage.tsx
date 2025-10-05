@@ -1136,7 +1136,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                                       word.charAt(0).toUpperCase() + word.slice(1)
                                     ).join(' '),
                                     attractionType: 'experience' as any,
-                                    rideCount: count,
+                          // Remove logs with 0 rides (if user set them to 0)
                                     trackVariant: selectedVariants[key] || undefined,
                                     loggedAt: new Date().toISOString(),
                                     notes: notes[key] || undefined
