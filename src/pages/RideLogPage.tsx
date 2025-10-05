@@ -473,6 +473,11 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
       // Update state only after successful save
       setCurrentTrip(newTrip)
+      console.log('✅ Trip created and state updated:', {
+        tripId: newTrip.id,
+        parks: newTrip.parks.map(p => p.parkName),
+        stateUpdateComplete: true
+      })
       setActivePark(parksToUse[0]) // Set first park as active
       
       const parkNames = tripParks.map(p => p.parkName).join(', ')
@@ -629,6 +634,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
       // Update current trip state first - this ensures the completion handler gets the right data
       setCurrentTrip(updatedTrip)
+      console.log('✅ Updated currentTrip state')
       
       // Save to KV storage
       try {
@@ -747,6 +753,13 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       </div>
     )
   }
+
+  console.log('🖥️ RideLogPage render:', {
+    currentTrip: currentTrip ? `Trip ${currentTrip.id} (${currentTrip.totalRides} rides)` : 'null',
+    showContinuationPrompt,
+    shouldShowSetup: (!currentTrip && !showContinuationPrompt),
+    shouldShowLogging: (currentTrip || showContinuationPrompt)
+  })
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
