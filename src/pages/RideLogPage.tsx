@@ -1596,7 +1596,8 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
             </p>
           </div>
           
-          {familiesToShow.map(family => {
+          {/* Family Park Groups */}
+          {familiesToShow.map((family) => {
             const familyParks = family.parks
             const parksWithData = familyParks.filter(park => availableParks.includes(park.id))
             const selectedFamilyParks = selectedParks.filter(parkId => 
