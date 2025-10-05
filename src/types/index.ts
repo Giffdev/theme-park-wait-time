@@ -56,6 +56,10 @@ export type ExtendedAttraction = {
   isSeasonal?: boolean
   seasonalPeriod?: string // e.g., "Halloween", "Christmas"
   variants?: AttractionVariant[] // For multi-track rides
+  availability?: 'active' | 'limited' | 'retired'
+  description?: string
+  openingYear?: number
+  closingYear?: number
 }
 
 export type TripPark = {

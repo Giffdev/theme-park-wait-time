@@ -55,12 +55,13 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [visitDate, setVisitDate] = useState<Date>(new Date())
-  const [selectedParks, setSelectedParks] = useState<string[]>(parkId ? [parkId] : [])
+  const [selectedParks, setSelectedParks] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [tripNotes, setTripNotes] = useState('')
   const [activePark, setActivePark] = useState<string>(parkId || '')
   const [isEditing, setIsEditing] = useState(false)
+  const [showContinuationPrompt, setShowContinuationPrompt] = useState(false)
 
   // Get attraction ID from URL search params
   const searchParams = new URLSearchParams(location.search)
@@ -77,6 +78,8 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       return
     }
 
+    console.log('🚀 Initializing RideLogPage:', { parkId, currentTrip: currentTrip?.id, selectedParks: selectedParks.length })
+
     // Clear current trip if it doesn't belong to the current user
     if (currentTrip && currentTrip.userId !== user.id) {
       console.log('🔄 Clearing trip that belongs to different user')
@@ -85,15 +88,82 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setSelectedVariants({})
       setNotes({})
       setTripNotes('')
+      setSelectedParks([])
     }
 
-    if (parkId) {
+    // If user accessed /log directly (no parkId) and there's a current trip with no rides,
+    // clear it to give them a fresh start
+    if (!parkId && currentTrip && currentTrip.totalRides === 0) {
+      console.log('🆕 Clearing empty current trip for fresh start from /log')
+      setCurrentTrip(null)
+      setRideCounts({})
+      setSelectedVariants({})
+      setNotes({})
+      setTripNotes('')
+      // Also clear selected parks for a clean slate
+      setSelectedParks([])
+    }
+
+    // If user accessed /log directly and there's an existing trip with rides,
+    // show them the option to continue or start fresh
+    if (!parkId && currentTrip && currentTrip.totalRides > 0 && !showContinuationPrompt) {
+      console.log('❓ Showing continuation prompt for existing trip with rides')
+      setShowContinuationPrompt(true)
+    }
+
+    // Pre-select park when coming from a specific park page (e.g., /log/disneyland) - only once
+    if (parkId && selectedParks.length === 0 && !currentTrip) {
+      console.log(`🎯 Pre-selecting park from URL: ${parkId}`)
+      setSelectedParks([parkId])
+    }
+
+    if (parkId && !currentTrip) {
       loadAttractionsForPark(parkId)
-    } else {
+    } else if (!parkId) {
       // If no specific park, set loading to false so the trip setup can begin
       setIsLoading(false)
     }
   }, [user, parkId, currentTrip, setCurrentTrip])
+
+  // Separate effect to auto-start trip when park is pre-selected
+  useEffect(() => {
+    // Auto-start trip if coming from park page with parkId and park is now selected
+    if (parkId && !currentTrip && selectedParks.includes(parkId) && user && !isLoading) {
+      // Also check that the park has data available
+      const availableParks = ParkDataService.getAvailableParks()
+      if (availableParks.includes(parkId)) {
+        console.log(`🚀 Auto-starting trip for park: ${parkId} (parks selected: ${selectedParks.join(', ')})`)
+        // Small delay to prevent race conditions
+        const timeoutId = setTimeout(() => {
+          if (!currentTrip) { // Double-check to prevent duplicate trips
+            startNewTrip()
+          }
+        }, 100)
+        
+        return () => clearTimeout(timeoutId)
+      } else {
+        console.warn(`⚠️ Cannot auto-start trip for ${parkId} - no data available`)
+      }
+    }
+  }, [parkId, currentTrip, selectedParks, user, isLoading])
+
+  // Separate effect to handle clean slate initialization when accessing /log directly
+  useEffect(() => {
+    // If user accessed /log directly (no parkId) and no current trip, ensure completely clean slate
+    if (!parkId && !currentTrip && user && !showContinuationPrompt) {
+      console.log('🆕 Ensuring clean slate for direct /log access')
+      // Only clear if values are actually set to avoid unnecessary re-renders
+      if (selectedParks.length > 0 || Object.keys(rideCounts).length > 0) {
+        setSelectedParks([])
+        setRideCounts({})
+        setSelectedVariants({})
+        setNotes({})
+        setTripNotes('')
+        setActivePark('')
+        setAttractions({})
+      }
+    }
+  }, [parkId, currentTrip, user, showContinuationPrompt, selectedParks.length, Object.keys(rideCounts).length])
 
   // Restore state from existing current trip
   useEffect(() => {
@@ -108,6 +178,19 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       
       setIsEditing(isExistingTrip)
       console.log(`✏️ Trip editing mode: ${isExistingTrip ? 'EDITING' : 'NEW'}`)
+      
+      // Only restore selected parks if we have a specific parkId in URL (user came from park page)
+      // OR if user explicitly wants to continue the existing trip
+      // If user accessed /log directly (no parkId), they should get a clean slate
+      if (parkId || (isExistingTrip && showContinuationPrompt)) {
+        const tripParkIds = currentTrip.parks.map(p => p.parkId)
+        setSelectedParks(tripParkIds)
+        console.log('🏰 Restored selected parks from trip:', tripParkIds)
+      } else {
+        console.log('🆕 Clean slate - not restoring parks since user accessed /log directly or is starting fresh')
+        // Explicitly clear selected parks for clean slate
+        setSelectedParks([])
+      }
       
       const restoredRideCounts: Record<string, number> = {}
       const restoredVariants: Record<string, string> = {}
@@ -138,8 +221,12 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       })
     } else {
       setIsEditing(false)
+      // Hide continuation prompt if there's no current trip
+      if (!currentTrip) {
+        setShowContinuationPrompt(false)
+      }
     }
-  }, [currentTrip])
+  }, [currentTrip, parkId])
 
   // Auto-save when notes change - remove since now using onBlur
   // useEffect(() => {
@@ -193,7 +280,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     setIsLoading(false)
   }
 
-  const loadAllSelectedParksAttractions = async (parks: string[]) => {
+  const loadAllSelectedParksAttractions = useCallback(async (parks: string[]) => {
     const newAttractions: Record<string, ExtendedAttraction[]> = {}
     const failedParks: string[] = []
     
@@ -231,7 +318,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     } else if (failedParks.length === parks.length) {
       throw new Error('No attractions could be loaded for any selected parks')
     }
-  }
+  }, [])
 
   const handleVariantChange = useCallback((key: string, variant: string) => {
     setSelectedVariants(prev => {
@@ -301,7 +388,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     })
   }
 
-  const startNewTrip = async () => {
+  const startNewTrip = useCallback(async () => {
     if (!user || selectedParks.length === 0) {
       toast.error('Please select at least one park to start your trip log.')
       return
@@ -322,8 +409,15 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       const availableParks = ParkDataService.getAvailableParks()
       console.log('📋 Available parks with data:', availableParks)
       
-      const validParks = selectedParks.filter(parkId => ParkDataService.hasPark(parkId))
+      const validParks = selectedParks.filter(parkId => {
+        const hasData = ParkDataService.hasPark(parkId)
+        console.log(`🔍 Park ${parkId} has data: ${hasData}`)
+        return hasData
+      })
       const invalidParks = selectedParks.filter(parkId => !ParkDataService.hasPark(parkId))
+      
+      console.log(`✅ Valid parks: ${validParks.length}/${selectedParks.length}`, validParks)
+      console.log(`❌ Invalid parks: ${invalidParks.length}/${selectedParks.length}`, invalidParks)
       
       if (invalidParks.length > 0) {
         const invalidParkNames = invalidParks.map(parkId => {
@@ -377,7 +471,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         notes: tripNotes.trim() || undefined
       }
 
-      console.log('💾 Saving new trip to storage...')
+      console.log('💾 Saving new trip to storage...', newTrip)
       
       // Save trip to storage
       try {
@@ -397,6 +491,11 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
       // Update state only after successful save
       setCurrentTrip(newTrip)
+      console.log('✅ Trip created and state updated:', {
+        tripId: newTrip.id,
+        parks: newTrip.parks.map(p => p.parkName),
+        stateUpdateComplete: true
+      })
       setActivePark(parksToUse[0]) // Set first park as active
       
       const parkNames = tripParks.map(p => p.parkName).join(', ')
@@ -418,7 +517,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [user, selectedParks, visitDate, tripNotes, setCurrentTrip, loadAllSelectedParksAttractions])
 
   const autoSaveTrip = async (updatedRideCounts: Record<string, number>) => {
     if (!user || !currentTrip) {
@@ -553,6 +652,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
       // Update current trip state first - this ensures the completion handler gets the right data
       setCurrentTrip(updatedTrip)
+      console.log('✅ Updated currentTrip state')
       
       // Save to KV storage
       try {
@@ -625,21 +725,35 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
 
 
-  const handleParksChange = (parks: string[]) => {
-    // Find parks that were deselected and clear their ride counts
-    const deselectedParks = selectedParks.filter(parkId => !parks.includes(parkId))
-    if (deselectedParks.length > 0) {
-      const keysToRemove = Object.keys(rideCounts).filter(key => 
-        deselectedParks.some(parkId => key.startsWith(`${parkId}-`))
-      )
-      setRideCounts(prev => {
-        const updated = { ...prev }
-        keysToRemove.forEach(key => delete updated[key])
-        return updated
-      })
-    }
-    setSelectedParks(parks)
-  }
+  const handleParksChange = useCallback((parks: string[]) => {
+    console.log('🏰 handleParksChange called:', { 
+      newParks: parks, 
+      change: parks.length - selectedParks.length
+    })
+    console.log('🏰 Selected parks before update:', JSON.stringify(selectedParks))
+    console.log('🏰 New parks to set:', JSON.stringify(parks))
+    
+    setSelectedParks(currentParks => {
+      console.log('🔍 Current parks in state update:', currentParks)
+      
+      // Find parks that were deselected and clear their ride counts
+      const deselectedParks = currentParks.filter(parkId => !parks.includes(parkId))
+      if (deselectedParks.length > 0) {
+        console.log('🗑️ Clearing ride counts for deselected parks:', deselectedParks)
+        setRideCounts(prev => {
+          const keysToRemove = Object.keys(prev).filter(key => 
+            deselectedParks.some(parkId => key.startsWith(`${parkId}-`))
+          )
+          const updated = { ...prev }
+          keysToRemove.forEach(key => delete updated[key])
+          return updated
+        })
+      }
+      
+      console.log('✅ Parks state updated to:', parks)
+      return parks
+    })
+  }, [])
 
   if (!user) {
     return (
@@ -671,6 +785,18 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       </div>
     )
   }
+
+  // Debug log to help with troubleshooting
+  console.log('🖥️ RideLogPage render:', {
+    currentTrip: currentTrip ? `Trip ${currentTrip.id} (${currentTrip.totalRides} rides)` : 'null',
+    showContinuationPrompt,
+    shouldShowSetup: (!currentTrip && !showContinuationPrompt),
+    shouldShowLogging: (currentTrip || showContinuationPrompt),
+    selectedParks: selectedParks.length,
+    availableParks: ParkDataService.getAvailableParks().length,
+    isLoading,
+    hasSparkKV: !!window.spark?.kv
+  })
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -716,9 +842,100 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         </Card>
       )}
 
+      {/* Show continuation prompt */}
+      {showContinuationPrompt && currentTrip && (
+        <Card className="border-primary/50 bg-primary/5">
+          <CardContent className="py-4">
+            <div className="flex flex-col gap-4">
+              <div>
+                <h3 className="font-semibold text-foreground mb-2">Continue Previous Trip?</h3>
+                <p className="text-sm text-muted-foreground">
+                  You have an existing trip from {new Date(currentTrip.visitDate).toLocaleDateString()} with {currentTrip.totalRides} rides logged 
+                  across {currentTrip.parks.map(p => p.parkName).join(', ')}.
+                </p>
+              </div>
+              
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => {
+                    setShowContinuationPrompt(false)
+                    setIsEditing(true)
+                    // Restore the trip state
+                    const tripParkIds = currentTrip.parks.map(p => p.parkId)
+                    setSelectedParks(tripParkIds)
+                    setActivePark(tripParkIds[0] || '')
+                    
+                    // Restore ride counts, variants, and notes from the trip
+                    const restoredRideCounts: Record<string, number> = {}
+                    const restoredVariants: Record<string, string> = {}
+                    const restoredNotes: Record<string, string> = {}
+                    
+                    currentTrip.rideLogs.forEach(log => {
+                      const key = `${log.parkId}-${log.attractionId}`
+                      restoredRideCounts[key] = log.rideCount
+                      
+                      if (log.trackVariant) {
+                        restoredVariants[key] = log.trackVariant
+                      }
+                      
+                      if (log.notes) {
+                        restoredNotes[key] = log.notes
+                      }
+                    })
+                    
+                    setRideCounts(restoredRideCounts)
+                    setSelectedVariants(restoredVariants)
+                    setNotes(restoredNotes)
+                    setTripNotes(currentTrip.notes || '')
+                    
+                    toast.success('Continuing existing trip')
+                  }}
+                  className="flex-1"
+                >
+                  Continue Trip
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    setShowContinuationPrompt(false)
+                    
+                    // Clear the current trip to start fresh
+                    try {
+                      if (window.spark?.kv && user) {
+                        await window.spark.kv.delete(`current-trip-${user.id}`)
+                        console.log('✅ Cleared current trip from storage')
+                      }
+                    } catch (error) {
+                      console.warn('⚠️ Could not clear current trip from storage:', error)
+                    }
+                    
+                    // Clear ALL local state for a completely fresh start
+                    setCurrentTrip(null)
+                    setRideCounts({})
+                    setSelectedVariants({})
+                    setNotes({})
+                    setTripNotes('')
+                    setSelectedParks([]) // Explicitly clear selected parks
+                    setActivePark('')
+                    setAttractions({})
+                    setIsEditing(false)
+                    
+                    toast.success('Ready to start a new trip!')
+                  }}
+                  className="flex-1"
+                >
+                  Start New Trip
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
 
-        {!currentTrip ? (
+
+        {(!currentTrip && !showContinuationPrompt) ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -756,6 +973,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                 <ParkFamilyTripSelector 
                   selectedParks={selectedParks}
                   onParksChange={handleParksChange}
+                  initialParkId={parkId}
                 />
               </div>
             </div>
@@ -796,7 +1014,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2">
                   <Ticket size={20} />
-                  Trip - {new Date(currentTrip.visitDate).toLocaleDateString()}
+                  Trip - {currentTrip ? new Date(currentTrip.visitDate).toLocaleDateString() : 'Unknown Date'}
                 </span>
                 <div className="flex items-center gap-3">
                   <Badge variant="secondary" className="flex items-center gap-1">
@@ -816,7 +1034,42 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                       )
                     )}
                   </Badge>
-                  {Object.values(rideCounts).some(count => count > 0) && (
+                  
+                  {/* Start New Trip Button */}
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={async () => {
+                      console.log('🔄 Starting new trip (clearing current session)...')
+                      
+                      try {
+                        // Clear current trip from KV storage
+                        if (window.spark?.kv && user) {
+                          await window.spark.kv.delete(`current-trip-${user.id}`)
+                          console.log('✅ Cleared current trip from storage')
+                        }
+                      } catch (error) {
+                        console.warn('⚠️ Could not clear current trip from storage:', error)
+                      }
+                      
+                      // Clear ALL local state for a completely fresh start
+                      setCurrentTrip(null)
+                      setRideCounts({})
+                      setSelectedVariants({})
+                      setNotes({})
+                      setTripNotes('')
+                      setSelectedParks([]) // Explicitly clear parks
+                      setActivePark('')
+                      setAttractions({})
+                      setIsEditing(false)
+                      toast.success('Ready to start a new trip!')
+                    }}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    Start New Trip
+                  </Button>
+                  
+                  {(
                     <Button 
                       variant="outline" 
                       size="sm"
@@ -1055,7 +1308,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                 </div>
               </CardTitle>
               <CardDescription>
-                Parks: {currentTrip.parks.map(p => p.parkName).join(', ')} • Rides auto-save as you log them
+                Parks: {currentTrip?.parks.map(p => p.parkName).join(', ') || 'Unknown'} • Rides auto-save as you log them
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1086,18 +1339,40 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
           {/* Park Selection Tabs */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin size={20} />
-                Select Park to Log Rides
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <MapPin size={20} />
+                  Select Park to Log Rides
+                </span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  {currentTrip?.parks.length || 0} park{(currentTrip?.parks.length || 0) !== 1 ? 's' : ''} in trip
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
-                {currentTrip.parks.map(park => (
+                {currentTrip?.parks.map(park => (
                   <Button
                     key={park.parkId}
                     variant={activePark === park.parkId ? "default" : "outline"}
-                    onClick={() => setActivePark(park.parkId)}
+                    onClick={async () => {
+                      console.log(`🎯 Switching to park: ${park.parkId}`)
+                      setActivePark(park.parkId)
+                      
+                      // Load attractions for this park if not already loaded
+                      if (!attractions[park.parkId] || attractions[park.parkId].length === 0) {
+                        console.log(`🔄 Loading attractions for ${park.parkId} (not cached)`)
+                        try {
+                          await loadAttractionsForPark(park.parkId)
+                          toast.success(`Loaded attractions for ${park.parkName}`)
+                        } catch (error) {
+                          console.error(`❌ Failed to load attractions for ${park.parkId}:`, error)
+                          toast.error(`Failed to load attractions for ${park.parkName}. Click again to retry.`)
+                        }
+                      } else {
+                        console.log(`✅ Attractions already loaded for ${park.parkId} (${attractions[park.parkId].length} attractions)`)
+                      }
+                    }}
                     className="flex items-center gap-2"
                   >
                     {park.parkName}
@@ -1117,19 +1392,37 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
           </Card>
 
           {/* Attractions for Active Park */}
-          {activePark && attractions[activePark] && (
-            <AttractionsForPark
-              parkId={activePark}
-              attractions={attractions[activePark]}
-              rideCounts={rideCounts}
-              selectedVariants={selectedVariants}
-              notes={notes}
-              onUpdateRideCount={updateRideCount}
-              onVariantChange={handleVariantChange}
-              onNotesChange={handleNotesChange}
-              onNotesBlur={handleNotesBlur}
-              user={user}
-            />
+          {activePark && (
+            <>
+              {attractions[activePark] && attractions[activePark].length > 0 ? (
+                <AttractionsForPark
+                  parkId={activePark}
+                  attractions={attractions[activePark]}
+                  rideCounts={rideCounts}
+                  selectedVariants={selectedVariants}
+                  notes={notes}
+                  onUpdateRideCount={updateRideCount}
+                  onVariantChange={handleVariantChange}
+                  onNotesChange={handleNotesChange}
+                  onNotesBlur={handleNotesBlur}
+                  user={user}
+                />
+              ) : (
+                <Card>
+                  <CardContent className="py-8">
+                    <div className="text-center space-y-4">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                      <div>
+                        <p className="text-muted-foreground">Loading attractions for {currentTrip?.parks.find(p => p.parkId === activePark)?.parkName}...</p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          If this takes too long, try clicking the park button again or refreshing the page.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1144,9 +1437,9 @@ interface AttractionsForParkProps {
   selectedVariants: Record<string, string>
   notes: Record<string, string>
   onUpdateRideCount: (parkId: string, attractionId: string, change: number) => void
-  onVariantChange: (key: string, variant: string) => void
-  onNotesChange: (key: string, notes: string) => void
-  onNotesBlur: (key: string) => void
+  onVariantChange: (attractionId: string, variant: string) => void
+  onNotesChange: (attractionId: string, notes: string) => void
+  onNotesBlur: (attractionId: string) => void
   user: User | null
 }
 
@@ -1171,7 +1464,7 @@ function AttractionsForPark({
   const regularAttractions = activeAttractions.filter(a => !a.isSeasonal).sort((a, b) => a.name.localeCompare(b.name))
 
   return (
-    <Tabs defaultValue="regular" className="space-y-4">
+    <Tabs defaultValue="active" className="space-y-4">
       <TabsList>
         <TabsTrigger value="regular">Active</TabsTrigger>
         {seasonalAttractions.length > 0 && (
@@ -1182,8 +1475,8 @@ function AttractionsForPark({
         )}
       </TabsList>
 
-      <TabsContent value="regular" className="space-y-4">
-        {regularAttractions.map(attraction => (
+      <TabsContent value="active" className="space-y-4">
+        {activeAttractions.map(attraction => (
           <RideLogCard
             key={`${parkId}-${attraction.id}`}
             parkId={parkId}
@@ -1200,9 +1493,12 @@ function AttractionsForPark({
         ))}
       </TabsContent>
 
-      {seasonalAttractions.length > 0 && (
-        <TabsContent value="seasonal" className="space-y-4">
-          {seasonalAttractions.map(attraction => (
+      {limitedAttractions.length > 0 && (
+        <TabsContent value="limited" className="space-y-4">
+          <div className="text-sm text-muted-foreground mb-4">
+            These attractions operate seasonally or for limited periods
+          </div>
+          {limitedAttractions.map(attraction => (
             <RideLogCard
               key={`${parkId}-${attraction.id}`}
               parkId={parkId}
@@ -1219,13 +1515,13 @@ function AttractionsForPark({
           ))}
         </TabsContent>
       )}
-
-      {defunctAttractions.length > 0 && (
-        <TabsContent value="defunct" className="space-y-4">
+      
+      {retiredAttractions.length > 0 && (
+        <TabsContent value="retired" className="space-y-4">
           <div className="text-sm text-muted-foreground mb-4">
             These attractions are no longer operating but can still be logged for historical visits
           </div>
-          {defunctAttractions.map(attraction => (
+          {retiredAttractions.map(attraction => (
             <RideLogCard
               key={`${parkId}-${attraction.id}`}
               parkId={parkId}
@@ -1279,6 +1575,10 @@ function RideLogCard({
       case 'thrill': return <Star size={16} />
       case 'family': return <Users size={16} />
       case 'show': return <Clock size={16} />
+      case 'experience': return <MapPin size={16} />
+      case 'parade': return <Ticket size={16} />
+      case 'character-meet': return <Users size={16} />
+      case 'dining-experience': return <Clock size={16} />
       default: return <Ticket size={16} />
     }
   }
@@ -1288,7 +1588,19 @@ function RideLogCard({
       case 'thrill': return 'bg-destructive text-destructive-foreground'
       case 'family': return 'bg-success text-success-foreground'
       case 'show': return 'bg-accent text-accent-foreground'
+      case 'experience': return 'bg-secondary text-secondary-foreground'
+      case 'parade': return 'bg-primary text-primary-foreground'
+      case 'character-meet': return 'bg-success text-success-foreground'
+      case 'dining-experience': return 'bg-muted text-muted-foreground'
       default: return 'bg-secondary text-secondary-foreground'
+    }
+  }
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'character-meet': return 'Character Meet'
+      case 'dining-experience': return 'Dining'
+      default: return type.charAt(0).toUpperCase() + type.slice(1)
     }
   }
 
@@ -1299,17 +1611,27 @@ function RideLogCard({
           <div className="flex items-center gap-3">
             <Badge className={getTypeColor(attraction.type)} variant="secondary">
               {getTypeIcon(attraction.type)}
-              <span className="ml-1 capitalize">{attraction.type}</span>
+              <span className="ml-1">{getTypeLabel(attraction.type)}</span>
             </Badge>
             <div>
               <h3 className="font-semibold flex items-center gap-2">
                 {attraction.name}
-                {attraction.isSeasonal && (
+                {attraction.availability === 'limited' && (
+                  <Badge variant="outline" className="text-xs text-amber-600">
+                    Limited/Seasonal
+                  </Badge>
+                )}
+                {attraction.availability === 'retired' && (
+                  <Badge variant="outline" className="text-xs text-muted-foreground">
+                    Retired
+                  </Badge>
+                )}
+                {attraction.isSeasonal && attraction.availability === 'active' && (
                   <Badge variant="outline" className="text-xs">
                     {attraction.seasonalPeriod || 'Seasonal'}
                   </Badge>
                 )}
-                {isDefunct && (
+                {isDefunct && !attraction.availability && (
                   <Badge variant="outline" className="text-xs text-muted-foreground">
                     Defunct
                   </Badge>
@@ -1331,7 +1653,7 @@ function RideLogCard({
             <div className="text-center min-w-[60px]">
               <div className="text-2xl font-bold">{count}</div>
               <div className="text-xs text-muted-foreground">
-                {count === 1 ? 'ride' : 'rides'}
+                {count === 1 ? 'time' : 'times'}
               </div>
             </div>
             <Button
@@ -1384,237 +1706,194 @@ function RideLogCard({
 interface ParkFamilyTripSelectorProps {
   selectedParks: string[]
   onParksChange: (parkIds: string[]) => void
+  initialParkId?: string
 }
 
-function ParkFamilyTripSelector({ selectedParks, onParksChange }: ParkFamilyTripSelectorProps) {
-  const [selectedFamily, setSelectedFamily] = useState<string>('')
-  const [showParkFilter, setShowParkFilter] = useState<Record<string, boolean>>({})
+function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }: ParkFamilyTripSelectorProps) {
+  const [availableParks, setAvailableParks] = useState<string[]>([])
+  const [isLoadingAvailableParks, setIsLoadingAvailableParks] = useState(true)
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set())
 
-  // Get available parks from the data service
-  const availableParks = ParkDataService.getAvailableParks()
+  // Load available parks data synchronously
+  useEffect(() => {
+    try {
+      const parks = ParkDataService.getAvailableParks()
+      console.log('📋 Available parks with data (ParkFamilyTripSelector):', parks)
+      setAvailableParks(parks)
+      setIsLoadingAvailableParks(false)
+      
+      // Auto-expand families that have available parks or have pre-selected parks
+      const familiesToExpand = new Set<string>()
+      parkFamilies.forEach(family => {
+        const hasAvailableParks = family.parks.some(park => parks.includes(park.id))
+        const hasSelectedParks = family.parks.some(park => selectedParks.includes(park.id))
+        if (hasAvailableParks || hasSelectedParks) {
+          familiesToExpand.add(family.id)
+        }
+      })
+      setExpandedFamilies(familiesToExpand)
+    } catch (error) {
+      console.error('❌ Failed to load available parks:', error)
+      setAvailableParks([])
+      setIsLoadingAvailableParks(false)
+    }
+  }, [selectedParks])
 
-  const handleParkToggle = (parkId: string, checked: boolean) => {
-    if (checked) {
-      onParksChange([...selectedParks, parkId])
+  const toggleFamilyExpansion = (familyId: string) => {
+    setExpandedFamilies(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(familyId)) {
+        newSet.delete(familyId)
+      } else {
+        newSet.add(familyId)
+      }
+      return newSet
+    })
+  }
+
+  const handleParkToggle = useCallback((parkId: string) => {
+    console.log('🔄 Toggling park:', parkId, 'Currently selected:', selectedParks.includes(parkId))
+    
+    if (selectedParks.includes(parkId)) {
+      // Remove park
+      const newSelection = selectedParks.filter(id => id !== parkId)
+      console.log('❌ Removing park, new selection:', newSelection)
+      onParksChange(newSelection)
     } else {
-      onParksChange(selectedParks.filter(id => id !== parkId))
+      // Add park
+      const newSelection = [...selectedParks, parkId]
+      console.log('✅ Adding park, new selection:', newSelection)
+      onParksChange(newSelection)
     }
+  }, [selectedParks, onParksChange])
+
+  if (isLoadingAvailableParks) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full"></div>
+          <Label className="text-sm text-muted-foreground">
+            Loading available parks...
+          </Label>
+        </div>
+      </div>
+    )
   }
 
-  const handleFamilySelectAll = (familyId: string) => {
-    const family = parkFamilies.find(f => f.id === familyId)
-    if (family) {
-      // Only select parks that have data available
-      const familyParkIds = family.parks
-        .filter(park => availableParks.includes(park.id))
-        .map(p => p.id)
-      const otherParks = selectedParks.filter(parkId => 
-        !family.parks.some(p => p.id === parkId)
-      )
-      onParksChange([...otherParks, ...familyParkIds])
-    }
-  }
-
-  const handleFamilyDeselectAll = (familyId: string) => {
-    const family = parkFamilies.find(f => f.id === familyId)
-    if (family) {
-      const familyParkIds = family.parks.map(p => p.id)
-      onParksChange(selectedParks.filter(parkId => 
-        !familyParkIds.includes(parkId)
-      ))
-    }
-  }
-
-  const toggleFamilyFilter = (familyId: string) => {
-    setShowParkFilter(prev => ({
-      ...prev,
-      [familyId]: !prev[familyId]
-    }))
-  }
-
-  // Reset park filter when changing family selection
-  const handleFamilyChange = (familyId: string) => {
-    setSelectedFamily(familyId)
-    // Auto-expand the newly selected family
-    if (familyId) {
-      setShowParkFilter(prev => ({
-        ...prev,
-        [familyId]: true
-      }))
-    }
-  }
-
-  // Get families to display - filtered by selection
-  const familiesToShow = selectedFamily 
-    ? parkFamilies.filter(family => family.id === selectedFamily)
-    : []
+  // Filter families that have at least one park with data
+  const familiesWithData = parkFamilies.filter(family => 
+    family.parks.some(park => availableParks.includes(park.id))
+  )
 
   return (
-    <div className="space-y-6">
-      {/* Resort Group Selection */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Funnel size={16} className="text-muted-foreground" />
-          <Label className="text-sm font-medium">Step 1: Choose Resort Group</Label>
-        </div>
-        <Select
-          value={selectedFamily || 'none'}
-          onValueChange={(value) => handleFamilyChange(value === 'none' ? '' : value)}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select a resort group to view parks" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">Choose a resort group...</SelectItem>
-            {[...parkFamilies]
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((family) => {
-              const familyParksWithData = family.parks.filter(park => availableParks.includes(park.id))
-              return (
-                <SelectItem key={family.id} value={family.id}>
-                  {`${family.name} (${familyParksWithData.length} parks)`}
-                </SelectItem>
-              )
-            })}
-          </SelectContent>
-        </Select>
+    <div className="space-y-4">
+      {/* Helpful tip */}
+      <div className="bg-muted/50 border border-muted rounded-lg p-3">
+        <p className="text-sm text-muted-foreground">
+          <strong>Tip:</strong> Select one or more parks you'll visit on this trip. You can track rides across multiple parks in the same trip log!
+        </p>
       </div>
 
-      {/* Parks Selection - Only show if family is selected */}
-      {selectedFamily && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <MapPin size={16} className="text-muted-foreground" />
-            <Label className="text-sm font-medium">Step 2: Choose Parks from Selected Resort</Label>
-          </div>
+      {/* Resort Groups */}
+      <div className="space-y-3">
+        {familiesWithData.map(family => {
+          const familyParks = family.parks.filter(park => availableParks.includes(park.id))
+          const selectedFamilyParks = selectedParks.filter(parkId => 
+            family.parks.some(p => p.id === parkId)
+          )
+          const isExpanded = expandedFamilies.has(family.id)
           
-          {/* Helpful info about multiple parks */}
-          <div className="bg-muted/50 border border-muted rounded-lg p-3">
-            <p className="text-sm text-muted-foreground">
-              <strong>Tip:</strong> Select multiple parks if you're visiting more than one park on the same day. 
-              This helps you track all your rides in one trip log!
-            </p>
-          </div>
-          
-          {familiesToShow.map(family => {
-            const familyParks = family.parks
-            const parksWithData = familyParks.filter(park => availableParks.includes(park.id))
-            const selectedFamilyParks = selectedParks.filter(parkId => 
-              familyParks.some(p => p.id === parkId)
-            )
-            const isExpanded = showParkFilter[family.id] !== false // Default to expanded
-
-            return (
-              <div key={family.id} className="border rounded-lg p-4 space-y-3">
-                {/* Family Header */}
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-foreground">{family.name}</h3>
-                      <Badge variant="outline" className="text-xs">
-                        {family.location}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedFamilyParks.length > 0 
-                        ? `${selectedFamilyParks.length} of ${parksWithData.length} parks selected`
-                        : `${parksWithData.length} of ${familyParks.length} parks have data available`
-                      }
-                    </p>
-                  </div>
-                  
+          return (
+            <div key={family.id} className="border rounded-lg p-4 space-y-3">
+              {/* Family Header */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-foreground">{family.name}</h3>
                   <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleFamilyFilter(family.id)}
-                      className="gap-1 text-muted-foreground hover:text-foreground"
-                    >
-                      <CaretDown 
-                        size={16} 
-                        className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
-                      />
-                      {isExpanded ? 'Hide' : 'Show'}
-                    </Button>
+                    <Badge variant="outline" className="text-xs">
+                      {family.location}
+                    </Badge>
+                    {selectedFamilyParks.length > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {selectedFamilyParks.length} selected
+                      </Badge>
+                    )}
                   </div>
                 </div>
-
-                {/* Quick Actions */}
-                {isExpanded && (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleFamilySelectAll(family.id)}
-                      disabled={selectedFamilyParks.length === parksWithData.length || parksWithData.length === 0}
-                    >
-                      Select All Available
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleFamilyDeselectAll(family.id)}
-                      disabled={selectedFamilyParks.length === 0}
-                    >
-                      Deselect All
-                    </Button>
-                  </div>
-                )}
-
-                {/* Parks List */}
-                {isExpanded && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
-                    {familyParks.map(park => {
-                      const hasData = availableParks.includes(park.id)
-                      return (
-                        <div key={park.id} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={park.id}
-                            checked={selectedParks.includes(park.id)}
-                            onCheckedChange={(checked) => handleParkToggle(park.id, checked as boolean)}
-                            disabled={!hasData}
-                          />
-                          <Label 
-                            htmlFor={park.id} 
-                            className={`text-sm cursor-pointer flex items-center gap-2 ${!hasData ? 'text-muted-foreground' : ''}`}
-                          >
-                            {park.name}
-                            {park.type === 'water-park' && (
-                              <Badge variant="secondary" className="text-xs">
-                                Water Park
-                              </Badge>
-                            )}
-                            {!hasData && (
-                              <Badge variant="outline" className="text-xs text-muted-foreground">
-                                No Data
-                              </Badge>
-                            )}
-                          </Label>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* Show selected parks when collapsed */}
-                {!isExpanded && selectedFamilyParks.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {selectedFamilyParks.map(parkId => {
-                      const park = familyParks.find(p => p.id === parkId)
-                      return park ? (
-                        <Badge key={parkId} variant="secondary" className="text-xs">
-                          {park.shortName || park.name}
-                        </Badge>
-                      ) : null
-                    })}
-                  </div>
-                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => toggleFamilyExpansion(family.id)}
+                  className="gap-1 text-muted-foreground hover:text-foreground"
+                >
+                  <CaretDown
+                    size={16} 
+                    className={isExpanded ? "transition-transform rotate-180" : "transition-transform"} 
+                  />
+                  {isExpanded ? 'Hide' : 'Show'} Parks ({familyParks.length})
+                </Button>
               </div>
-            )
-          })}
-        </div>
-      )}
+
+              {/* Parks List */}
+              {isExpanded && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                  {familyParks.map(park => {
+                    const isSelected = selectedParks.includes(park.id)
+                    
+                    return (
+                      <div 
+                        key={park.id} 
+                        className={`flex items-center space-x-3 p-3 rounded-md border cursor-pointer transition-colors ${
+                          isSelected 
+                            ? 'bg-primary/10 border-primary/30' 
+                            : 'bg-card hover:bg-muted/50'
+                        }`}
+                        onClick={() => handleParkToggle(park.id)}
+                      >
+                        <div 
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                            isSelected 
+                              ? 'bg-primary border-primary' 
+                              : 'border-muted-foreground/30'
+                          }`}
+                        >
+                          {isSelected && (
+                            <div className="w-2 h-2 bg-primary-foreground rounded-sm"></div>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <Label className="text-sm font-medium cursor-pointer">
+                            {park.name}
+                          </Label>
+                          {park.shortName && park.shortName !== park.name && (
+                            <p className="text-xs text-muted-foreground">{park.shortName}</p>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Show selected parks when collapsed */}
+              {!isExpanded && selectedFamilyParks.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {selectedFamilyParks.map(parkId => {
+                    const park = family.parks.find(p => p.id === parkId)
+                    return park ? (
+                      <Badge key={parkId} variant="secondary" className="text-xs">
+                        {park.shortName || park.name}
+                      </Badge>
+                    ) : null
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
       
+      {/* Selected Parks Summary */}
       {selectedParks.length > 0 && (
         <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
           <div className="flex items-center justify-between">

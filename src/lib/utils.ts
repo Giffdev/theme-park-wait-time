@@ -12,8 +12,12 @@ export function cn(...inputs: ClassValue[]) {
  * from attraction lists.
  */
 export function isAttractionNotDining(attraction: ExtendedAttraction): boolean {
-  // Always include thrill rides, family rides, and shows
-  if (attraction.type === 'thrill' || attraction.type === 'family' || attraction.type === 'show') {
+  // Always include thrill rides, family rides, shows, parades, and character meets
+  if (attraction.type === 'thrill' || 
+      attraction.type === 'family' || 
+      attraction.type === 'show' ||
+      attraction.type === 'parade' ||
+      attraction.type === 'character-meet') {
     return true
   }
   
@@ -39,6 +43,64 @@ export function isAttractionNotDining(attraction: ExtendedAttraction): boolean {
     return !isDining
   }
   
+  // Exclude dining-experience type attractions
+  if (attraction.type === 'dining-experience') {
+    return false
+  }
+  
+  return false
+}
+
+/**
+ * Filter function specifically for park overview - only shows attractions
+ * with meaningful wait times (thrill, family, and non-dining experiences).
+ * Excludes shows, parades, character meets, retired attractions, and inactive seasonal/limited attractions.
+ */
+export function isAttractionForOverview(attraction: ExtendedAttraction): boolean {
+  // First check if the attraction is active (not retired)
+  // If availability is not specified, assume it's active
+  if (attraction.availability === 'retired') {
+    return false
+  }
+  
+  // Filter out limited/seasonal attractions that are currently closed
+  // These are only active during specific periods and shouldn't show when closed
+  if (attraction.availability === 'limited' && 
+      (attraction.status === 'closed' || attraction.currentWaitTime === 0)) {
+    return false
+  }
+  
+  // Include thrill and family rides - these are the core wait-time attractions
+  if (attraction.type === 'thrill' || attraction.type === 'family') {
+    return true
+  }
+  
+  // Include experiences that aren't dining and have meaningful wait times
+  if (attraction.type === 'experience') {
+    const name = attraction.name.toLowerCase()
+    const isDining = name.includes('restaurant') || 
+                    name.includes('dining') || 
+                    name.includes('steakhaus') ||
+                    name.includes('stakehaus') ||
+                    name.includes('tavern') ||
+                    name.includes('café') ||
+                    name.includes('cafe') ||
+                    name.includes('bar') ||
+                    name.includes('grill') ||
+                    name.includes('kitchen') ||
+                    name.includes('eatery') ||
+                    name.includes('cantina') ||
+                    name.includes('bistro') ||
+                    name.includes('lounge') ||
+                    name.includes('food') ||
+                    name.includes('snack')
+    
+    // Only include non-dining experiences that typically have wait times
+    return !isDining
+  }
+  
+  // Exclude shows, parades, character meets, and dining experiences
+  // These are better for the live times section where scheduling is more relevant
   return false
 }
 

@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useKV } from '@github/spark/hooks'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,12 +32,28 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
   const [lastUpdate, setLastUpdate] = useState(new Date())
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [attractions, setAttractions] = useState<ExtendedAttraction[]>([])
+  
+  // Use useKV for consistent data management across the app
+  const [allAttractions, setAllAttractions] = useKV<ExtendedAttraction[]>(`attractions-${parkId}`, [])
+  
+  // Filter attractions for display (remove dining)
+  const attractions = useMemo(() => {
+    if (!allAttractions || !Array.isArray(allAttractions)) {
+      return []
+    }
+    return allAttractions.filter(attraction => 
+      attraction && 
+      typeof attraction === 'object' && 
+      attraction.name && 
+      typeof attraction.currentWaitTime === 'number' &&
+      isAttractionNotDining(attraction)
+    )
+  }, [allAttractions])
   
   const { getConsensusWaitTime, getRecentReports } = useReporting()
 
   // Helper function to load attractions for the current park
-  const loadAttractionsForPark = async () => {
+  const loadAttractionsForPark = useCallback(async () => {
     setIsLoading(true)
     setError(null)
     console.log(`🔄 LiveWaitTimes loading attractions for park: ${parkId}`)
@@ -55,7 +72,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
           canReportWaitTime(attraction)
         )
         
-        setAttractions(validAttractions)
+        setAllAttractions(validAttractions)
         console.log(`✅ LiveWaitTimes successfully loaded ${validAttractions.length} valid attractions for ${parkId}`)
       } else {
         console.warn(`⚠️ LiveWaitTimes no data returned from ParkDataService for ${parkId}`)
@@ -72,17 +89,17 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
           setError(`No park data available. Please refresh the page to reload data.`)
         }
         
-        setAttractions([])
+        setAllAttractions([])
       }
     } catch (error) {
       console.error(`❌ LiveWaitTimes error loading attractions for ${parkId}:`, error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       setError(`Error loading park data: ${errorMessage}. Please try refreshing the page.`)
-      setAttractions([])
+      setAllAttractions([])
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [parkId])
 
   // Helper function to get park display name
   const getParkDisplayName = (parkId: string): string => {
@@ -101,18 +118,30 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
   // Force reload attractions when park changes
   useEffect(() => {
     loadAttractionsForPark()
-  }, [parkId])
+  }, [parkId, loadAttractionsForPark])
+
+  // Update loading state based on attraction data
+  useEffect(() => {
+    if (allAttractions && Array.isArray(allAttractions) && allAttractions.length > 0) {
+      setIsLoading(false)
+      setError(null)
+    }
+  }, [allAttractions])
 
   // Update wait times based on consensus every 30 seconds
   useEffect(() => {
+    if (!allAttractions || allAttractions.length === 0) {
+      return // Don't set up interval if no attractions loaded yet
+    }
+
     const updateWaitTimes = () => {
       try {
         console.log('🔄 LiveWaitTimes updating consensus wait times')
         
-        setAttractions(currentAttractions => {
+        setAllAttractions(currentAttractions => {
           if (!currentAttractions || currentAttractions.length === 0) {
             console.log('⚠️ LiveWaitTimes no current attractions to update')
-            return currentAttractions
+            return currentAttractions || []
           }
           
           return currentAttractions.map(attraction => {
@@ -145,11 +174,11 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
     updateWaitTimes()
     const interval = setInterval(updateWaitTimes, 30000)
     return () => clearInterval(interval)
-  }, [getConsensusWaitTime])  // Removed attractions from dependencies and early return
+  }, [getConsensusWaitTime, allAttractions?.length]) // Include allAttractions.length to ensure we only start updates when data is loaded
 
   // Handle scrolling to target ride
   useEffect(() => {
-    if (targetRide && attractions.length > 0 && !isLoading) {
+    if (targetRide && attractions && attractions.length > 0 && !isLoading) {
       const timer = setTimeout(() => {
         const targetElement = document.getElementById(`ride-${targetRide}`)
         if (targetElement) {
@@ -384,7 +413,7 @@ export function LiveWaitTimes({ parkId, user, onLoginRequired, targetRide, onRid
             setSelectedAttraction(null)
           }}
           onSubmit={(waitTime) => {
-            // Refresh the data after a successful report
+            // Refresh the data after a successful report by reloading from service
             loadAttractionsForPark()
           }}
         />
