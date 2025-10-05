@@ -1953,7 +1953,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
                     onClick={() => toggleFamilyFilter(family.id)}
                     className="gap-1 text-muted-foreground hover:text-foreground"
                   >
-                    <CaretDown 
+                    <CaretDown
                       size={16} 
                       className={isExpanded ? "transition-transform rotate-180" : "transition-transform"} 
                     />
@@ -1972,16 +1972,9 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
                           <Checkbox
                             id={park.id}
                             checked={selectedParks.includes(park.id)}
-                            onCheckedChange={(checked) => {
-                              console.log('🔄 Checkbox clicked:', { 
-                                parkId: park.id, 
-                                parkName: park.name,
-                                checked, 
-                                hasData,
-                                currentSelection: selectedParks 
-                              })
+                            onCheckedChange={(checked) => 
                               handleParkToggle(park.id, checked)
-                            }}
+                            }
                             disabled={!hasData}
                           />
                           <Label 
