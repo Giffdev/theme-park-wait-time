@@ -1768,28 +1768,36 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
 
   const handleParkToggle = (parkId: string, checked: boolean | 'indeterminate') => {
     console.log('🔄 Park toggle called:', { parkId, checked, currentSelection: selectedParks })
-    console.log('🔄 Selected parks before change:', JSON.stringify(selectedParks))
     
-    if (checked === true) {
-      if (selectedParks.includes(parkId)) {
+    if (checked === 'indeterminate') {
+      console.log('⚠️ Indeterminate state not handled')
+      return
+    }
+    
+    let newSelection: string[]
+    
+    if (checked) {
+      // Add park if not already selected
+      if (!selectedParks.includes(parkId)) {
+        newSelection = [...selectedParks, parkId]
+        console.log('✅ Adding park:', parkId)
+      } else {
         console.log('ℹ️ Park already selected, no change needed')
         return
       }
-      const newSelection = [...selectedParks, parkId]
-      console.log('✅ Adding park:', parkId, 'New selection:', newSelection)
-      console.log('🔄 Calling onParksChange with:', newSelection)
-      onParksChange(newSelection)
-      console.log('✅ onParksChange called successfully')
     } else {
-      if (!selectedParks.includes(parkId)) {
+      // Remove park if currently selected
+      if (selectedParks.includes(parkId)) {
+        newSelection = selectedParks.filter(id => id !== parkId)
+        console.log('❌ Removing park:', parkId)
+      } else {
         console.log('ℹ️ Park already unselected, no change needed')
         return
       }
-      const newSelection = selectedParks.filter(id => id !== parkId);
-      console.log('❌ Removing park:', parkId, 'New selection:', newSelection)
-      onParksChange(newSelection);
-      console.log('✅ onParksChange called successfully')
     }
+    
+    console.log('🔄 New selection:', newSelection)
+    onParksChange(newSelection)
   }
 
   const handleFamilySelectAll = (familyId: string) => {
@@ -1994,38 +2002,72 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
 
               {/* Parks List */}
               {isExpanded && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
-                  {familyParks.map(park => {
-                    const hasData = availableParks.includes(park.id)
-                    const isSelected = selectedParks.includes(park.id)
-                    const actuallyDisabled = !hasData
-                    
-                    return (
-                      <div key={park.id} className="flex items-center space-x-2 p-2 rounded-md border">
-                        <Checkbox
-                          id={park.id}
-                          checked={isSelected}
-                          disabled={actuallyDisabled}
-                          onCheckedChange={(checked) => {
-                            if (hasData) {
-                              handleParkToggle(park.id, checked)
-                            }
-                          }}
-                        />
-                        <Label 
-                          htmlFor={park.id}
-                          className={`text-sm cursor-pointer flex items-center gap-2 ${actuallyDisabled ? 'text-muted-foreground' : ''}`}
-                        >
-                          {park.name}
-                          {actuallyDisabled && (
-                            <Badge variant="secondary" className="text-xs">
-                              No Data
-                            </Badge>
-                          )}
-                        </Label>
-                      </div>
-                    )
-                  })}
+                <div className="space-y-3 pt-2">
+                  <div className="text-xs text-muted-foreground">
+                    Debug: Selected parks = [{selectedParks.join(', ')}]
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {familyParks.map(park => {
+                      const hasData = availableParks.includes(park.id)
+                      const isSelected = selectedParks.includes(park.id)
+                      
+                      return (
+                        <div key={park.id} className="flex items-center space-x-2 p-2 rounded-md border bg-card">
+                          <Checkbox
+                            id={`park-${park.id}`}
+                            checked={isSelected}
+                            disabled={!hasData}
+                            onCheckedChange={(checked) => {
+                              console.log('🔄 Checkbox clicked:', { 
+                                parkId: park.id, 
+                                parkName: park.name,
+                                checked, 
+                                hasData,
+                                currentlySelected: isSelected,
+                                selectedParks: [...selectedParks]
+                              })
+                              
+                              if (!hasData) {
+                                console.log('❌ Checkbox disabled - no data available')
+                                return
+                              }
+                              
+                              // Direct state update instead of using handleParkToggle
+                              if (checked === true) {
+                                if (!selectedParks.includes(park.id)) {
+                                  const newParks = [...selectedParks, park.id]
+                                  console.log('✅ Adding park directly:', park.id, 'New array:', newParks)
+                                  onParksChange(newParks)
+                                }
+                              } else if (checked === false) {
+                                if (selectedParks.includes(park.id)) {
+                                  const newParks = selectedParks.filter(id => id !== park.id)
+                                  console.log('❌ Removing park directly:', park.id, 'New array:', newParks)
+                                  onParksChange(newParks)
+                                }
+                              }
+                            }}
+                          />
+                          <Label 
+                            htmlFor={`park-${park.id}`}
+                            className={`text-sm flex items-center gap-2 ${!hasData ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'}`}
+                          >
+                            {park.name}
+                            {!hasData && (
+                              <Badge variant="secondary" className="text-xs">
+                                No Data
+                              </Badge>
+                            )}
+                            {isSelected && (
+                              <Badge variant="default" className="text-xs">
+                                Selected
+                              </Badge>
+                            )}
+                          </Label>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
 
