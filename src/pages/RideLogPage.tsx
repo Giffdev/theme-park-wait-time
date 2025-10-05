@@ -78,6 +78,8 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       return
     }
 
+    console.log('🚀 Initializing RideLogPage:', { parkId, currentTrip: currentTrip?.id, selectedParks: selectedParks.length })
+
     // Clear current trip if it doesn't belong to the current user
     if (currentTrip && currentTrip.userId !== user.id) {
       console.log('🔄 Clearing trip that belongs to different user')
@@ -86,6 +88,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setSelectedVariants({})
       setNotes({})
       setTripNotes('')
+      setSelectedParks([])
     }
 
     // If user accessed /log directly (no parkId) and there's a current trip with no rides,
@@ -97,6 +100,8 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setSelectedVariants({})
       setNotes({})
       setTripNotes('')
+      // Also clear selected parks for a clean slate
+      setSelectedParks([])
     }
 
     // If user accessed /log directly and there's an existing trip with rides,
@@ -106,7 +111,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setShowContinuationPrompt(true)
     }
 
-    // Pre-select park if coming from a specific park page (but allow user to change)
+    // ONLY pre-select park if coming from a specific park page AND no current trip exists
     if (parkId && selectedParks.length === 0 && !currentTrip) {
       console.log(`🎯 Pre-selecting park from URL: ${parkId}`)
       setSelectedParks([parkId])
@@ -118,7 +123,22 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       // If no specific park, set loading to false so the trip setup can begin
       setIsLoading(false)
     }
-  }, [user, parkId, currentTrip, setCurrentTrip, selectedParks])
+  }, [user, parkId, currentTrip, setCurrentTrip])
+
+  // Separate effect to handle clean slate initialization when accessing /log directly
+  useEffect(() => {
+    // If user accessed /log directly (no parkId) and no current trip, ensure completely clean slate
+    if (!parkId && !currentTrip && user) {
+      console.log('🆕 Ensuring clean slate for direct /log access')
+      setSelectedParks([])
+      setRideCounts({})
+      setSelectedVariants({})
+      setNotes({})
+      setTripNotes('')
+      setActivePark('')
+      setAttractions({})
+    }
+  }, [parkId, currentTrip, user])
 
   // Restore state from existing current trip
   useEffect(() => {
@@ -137,12 +157,14 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       // Only restore selected parks if we have a specific parkId in URL (user came from park page)
       // OR if user explicitly wants to continue the existing trip
       // If user accessed /log directly (no parkId), they should get a clean slate
-      if (parkId || isExistingTrip) {
+      if (parkId || (isExistingTrip && showContinuationPrompt)) {
         const tripParkIds = currentTrip.parks.map(p => p.parkId)
         setSelectedParks(tripParkIds)
         console.log('🏰 Restored selected parks from trip:', tripParkIds)
       } else {
-        console.log('🆕 Clean slate - not restoring parks since user accessed /log directly')
+        console.log('🆕 Clean slate - not restoring parks since user accessed /log directly or is starting fresh')
+        // Explicitly clear selected parks for clean slate
+        setSelectedParks([])
       }
       
       const restoredRideCounts: Record<string, number> = {}
@@ -824,13 +846,13 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                       console.warn('⚠️ Could not clear current trip from storage:', error)
                     }
                     
-                    // Clear local state
+                    // Clear ALL local state for a completely fresh start
                     setCurrentTrip(null)
                     setRideCounts({})
                     setSelectedVariants({})
                     setNotes({})
                     setTripNotes('')
-                    setSelectedParks([])
+                    setSelectedParks([]) // Explicitly clear selected parks
                     setActivePark('')
                     setAttractions({})
                     setIsEditing(false)
@@ -966,15 +988,16 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                         console.warn('⚠️ Could not clear current trip from storage:', error)
                       }
                       
-                      // Clear local state
+                      // Clear ALL local state for a completely fresh start
                       setCurrentTrip(null)
                       setRideCounts({})
                       setSelectedVariants({})
                       setNotes({})
                       setTripNotes('')
-                      setSelectedParks([])
+                      setSelectedParks([]) // Explicitly clear parks
                       setActivePark('')
                       setAttractions({})
+                      setIsEditing(false)
                       
                       toast.success('Ready to start a new trip!')
                     }}
@@ -1643,6 +1666,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
   const availableParks = ParkDataService.getAvailableParks()
 
   // Auto-select family when parks are pre-selected (e.g., from URL)
+  // Also clear family when no parks are selected (clean slate)
   useEffect(() => {
     if (selectedParks.length > 0 && !selectedFamily) {
       // Find which family contains the first selected park
@@ -1659,6 +1683,11 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
           [familyWithPark.id]: true
         }))
       }
+    } else if (selectedParks.length === 0 && selectedFamily) {
+      // Clear family selection when no parks are selected (clean slate)
+      console.log('🆕 Clearing family selection for clean slate')
+      setSelectedFamily('')
+      setShowParkFilter({})
     }
   }, [selectedParks, selectedFamily])
 
