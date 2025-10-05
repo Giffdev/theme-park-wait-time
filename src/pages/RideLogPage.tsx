@@ -1718,155 +1718,62 @@ interface ParkFamilyTripSelectorProps {
 }
 
 function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }: ParkFamilyTripSelectorProps) {
-  const [selectedFamily, setSelectedFamily] = useState<string>('')
-  const [showParkFilter, setShowParkFilter] = useState<Record<string, boolean>>({})
   const [availableParks, setAvailableParks] = useState<string[]>([])
   const [isLoadingAvailableParks, setIsLoadingAvailableParks] = useState(true)
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set())
 
   // Load available parks data synchronously
   useEffect(() => {
     try {
       const parks = ParkDataService.getAvailableParks()
       console.log('📋 Available parks with data (ParkFamilyTripSelector):', parks)
-      console.log('📋 Total available parks count:', parks.length)
-      console.log('📋 Are Disney parks available?', {
-        'magic-kingdom': parks.includes('magic-kingdom'),
-        'epcot': parks.includes('epcot'),
-        'hollywood-studios': parks.includes('hollywood-studios'),
-        'animal-kingdom': parks.includes('animal-kingdom')
-      })
-      console.log('📋 Full available parks list:', JSON.stringify(parks, null, 2))
-      
       setAvailableParks(parks)
       setIsLoadingAvailableParks(false)
+      
+      // Auto-expand families that have available parks or have pre-selected parks
+      const familiesToExpand = new Set<string>()
+      parkFamilies.forEach(family => {
+        const hasAvailableParks = family.parks.some(park => parks.includes(park.id))
+        const hasSelectedParks = family.parks.some(park => selectedParks.includes(park.id))
+        if (hasAvailableParks || hasSelectedParks) {
+          familiesToExpand.add(family.id)
+        }
+      })
+      setExpandedFamilies(familiesToExpand)
     } catch (error) {
       console.error('❌ Failed to load available parks:', error)
       setAvailableParks([])
       setIsLoadingAvailableParks(false)
     }
-  }, [])
+  }, [selectedParks])
 
-  // Auto-select family when parks are pre-selected (e.g., from URL)
-  useEffect(() => {
-    if (selectedParks.length > 0 && !selectedFamily) {
-      // Find which family contains the first selected park
-      const firstParkId = selectedParks[0]
-      const familyWithPark = parkFamilies.find(family => 
-        family.parks.some(park => park.id === firstParkId)
-      )
-      
-      if (familyWithPark) {
-        console.log(`🎯 Auto-selecting family ${familyWithPark.name} for pre-selected park ${firstParkId}`)
-        setSelectedFamily(familyWithPark.id)
-        setShowParkFilter(prev => ({
-          ...prev,
-          [familyWithPark.id]: true
-        }))
-      }
-    }
-  }, [selectedParks, selectedFamily, parkFamilies])
-
-  const handleParkToggle = (parkId: string, checked: boolean | 'indeterminate') => {
-    console.log('🔄 Park toggle called:', { parkId, checked, currentSelection: selectedParks })
-    
-    if (checked === 'indeterminate') {
-      console.log('⚠️ Indeterminate state not handled')
-      return
-    }
-    
-    let newSelection: string[]
-    
-    if (checked) {
-      // Add park if not already selected
-      if (!selectedParks.includes(parkId)) {
-        newSelection = [...selectedParks, parkId]
-        console.log('✅ Adding park:', parkId)
+  const toggleFamilyExpansion = (familyId: string) => {
+    setExpandedFamilies(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(familyId)) {
+        newSet.delete(familyId)
       } else {
-        console.log('ℹ️ Park already selected, no change needed')
-        return
+        newSet.add(familyId)
       }
+      return newSet
+    })
+  }
+
+  const handleParkToggle = (parkId: string) => {
+    console.log('🔄 Toggling park:', parkId, 'Currently selected:', selectedParks.includes(parkId))
+    
+    if (selectedParks.includes(parkId)) {
+      // Remove park
+      const newSelection = selectedParks.filter(id => id !== parkId)
+      console.log('❌ Removing park, new selection:', newSelection)
+      onParksChange(newSelection)
     } else {
-      // Remove park if currently selected
-      if (selectedParks.includes(parkId)) {
-        newSelection = selectedParks.filter(id => id !== parkId)
-        console.log('❌ Removing park:', parkId)
-      } else {
-        console.log('ℹ️ Park already unselected, no change needed')
-        return
-      }
-    }
-    
-    console.log('🔄 New selection:', newSelection)
-    onParksChange(newSelection)
-  }
-
-  const handleFamilySelectAll = (familyId: string) => {
-    const family = parkFamilies.find(f => f.id === familyId)
-    if (family) {
-      const familyParkIds = family.parks.map(p => p.id)
-      const otherParks = selectedParks.filter(parkId => 
-        !family.parks.some(p => p.id === parkId)
-      )
-      onParksChange([...otherParks, ...familyParkIds])
+      // Add park
+      const newSelection = [...selectedParks, parkId]
+      console.log('✅ Adding park, new selection:', newSelection)
+      onParksChange(newSelection)
     }
   }
-
-  const handleFamilyDeselectAll = (familyId: string) => {
-    const family = parkFamilies.find(f => f.id === familyId)
-    if (family) {
-      const familyParkIds = family.parks.map(p => p.id)
-      onParksChange(selectedParks.filter(parkId => 
-        !familyParkIds.includes(parkId)
-      ))
-    }
-  }
-
-  const toggleFamilyFilter = (familyId: string) => {
-    setShowParkFilter(prev => ({
-      ...prev,
-      [familyId]: !prev[familyId]
-    }))
-  }
-
-  // Reset park filter when changing family selection
-  const handleFamilyChange = (familyId: string) => {
-    console.log('🎯 Family changed to:', familyId)
-    
-    setSelectedFamily(familyId)
-    
-    // Auto-expand the newly selected family
-    if (familyId) {
-      setShowParkFilter(prev => ({
-        ...prev,
-        [familyId]: true
-      }))
-    }
-    
-    // If changing to a different family, clear parks that don't belong to the new family
-    if (familyId !== selectedFamily && selectedParks.length > 0) {
-      const newFamily = parkFamilies.find(f => f.id === familyId)
-      if (newFamily) {
-        const validParks = selectedParks.filter(parkId => 
-          newFamily.parks.some(p => p.id === parkId)
-        )
-        // Only update if we need to remove parks
-        if (validParks.length !== selectedParks.length) {
-          onParksChange(validParks)
-        }
-      }
-    }
-  }
-
-  // Clear family selection
-  const clearFamilySelection = () => {
-    setSelectedFamily('')
-    setShowParkFilter({})
-    onParksChange([])
-  }
-
-  // Get families to display - all families for initial selection
-  const showFamilySelector = !selectedFamily
-  const showParkSelection = !!selectedFamily
 
   if (isLoadingAvailableParks) {
     return (
@@ -1881,215 +1788,120 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
     )
   }
 
+  // Filter families that have at least one park with data
+  const familiesWithData = parkFamilies.filter(family => 
+    family.parks.some(park => availableParks.includes(park.id))
+  )
+
   return (
-    <div className="space-y-6">
-      {/* Resort Group Selection */}
-      {showFamilySelector && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Funnel size={16} className="text-muted-foreground" />
-            <Label className="text-sm font-medium">
-              Step 1: Choose Resort Group
-            </Label>
-          </div>
-          <Select value="" onValueChange={handleFamilyChange}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Choose a resort group to see available parks..." />
-            </SelectTrigger>
-            <SelectContent>
-              {[...parkFamilies]
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((family) => {
-                  const familyParksWithData = family.parks.filter(park => availableParks.includes(park.id));
-                  return (
-                    <SelectItem key={family.id} value={family.id}>
-                      {`${family.name} (${familyParksWithData.length} park${familyParksWithData.length !== 1 ? 's' : ''})`}
-                    </SelectItem>
-                  )
-                })}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
+    <div className="space-y-4">
+      {/* Helpful tip */}
+      <div className="bg-muted/50 border border-muted rounded-lg p-3">
+        <p className="text-sm text-muted-foreground">
+          <strong>Tip:</strong> Select one or more parks you'll visit on this trip. You can track rides across multiple parks in the same trip log!
+        </p>
+      </div>
 
-      {/* Show family selection confirmation and park selection */}
-      {showParkSelection && (
-        <div className="space-y-4">
-          {/* Show confirmation of family selection */}
-          <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-primary">
-                  <strong>✓ Resort Selected:</strong> {parkFamilies.find(f => f.id === selectedFamily)?.name}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Now choose which parks you'll visit on this trip
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearFamilySelection}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                Change Resort
-              </Button>
-            </div>
-          </div>
-
-          {/* Show info about pre-selected parks */}
-          {selectedParks.length > 0 && (
-            <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
-              <p className="text-sm text-primary">
-                <strong>Note:</strong> Some parks may already be selected {initialParkId ? 'from the previous page' : ''}. 
-                You can change your selection below.
-              </p>
-            </div>
-          )}
+      {/* Resort Groups */}
+      <div className="space-y-3">
+        {familiesWithData.map(family => {
+          const familyParks = family.parks.filter(park => availableParks.includes(park.id))
+          const selectedFamilyParks = selectedParks.filter(parkId => 
+            family.parks.some(p => p.id === parkId)
+          )
+          const isExpanded = expandedFamilies.has(family.id)
           
-          {/* Helpful info about multiple parks */}
-          <div className="bg-muted/50 border border-muted rounded-lg p-3">
-            <p className="text-sm text-muted-foreground">
-              <strong>Tip:</strong> Select multiple parks if you're visiting more than one park on the same day. 
-              This helps you track all your rides in one trip log!
-            </p>
-          </div>
-          
-          {/* Family Park Groups */}
-          {selectedFamily && (() => {
-            const family = parkFamilies.find(f => f.id === selectedFamily)
-            if (!family) return null
-
-            const familyParks = family.parks
-            const parksWithData = familyParks.filter(park => availableParks.includes(park.id))
-            const selectedFamilyParks = selectedParks.filter(parkId => 
-              familyParks.some(p => p.id === parkId)
-            )
-            const isExpanded = showParkFilter[family.id] !== false // Default to expanded
-
-            return (
-              <div key={family.id} className="border rounded-lg p-4 space-y-3">
-                {/* Family Header */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-semibold text-foreground">{family.name}</h3>
+          return (
+            <div key={family.id} className="border rounded-lg p-4 space-y-3">
+              {/* Family Header */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-foreground">{family.name}</h3>
+                  <div className="flex items-center gap-2">
                     <Badge variant="outline" className="text-xs">
                       {family.location}
                     </Badge>
+                    {selectedFamilyParks.length > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {selectedFamilyParks.length} selected
+                      </Badge>
+                    )}
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedFamilyParks.length > 0 
-                      ? `${selectedFamilyParks.length} of ${parksWithData.length} parks selected`
-                      : `${parksWithData.length} of ${familyParks.length} parks have data available`
-                    }
-                  </p>
                 </div>
-                
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleFamilyFilter(family.id)}
-                    className="gap-1 text-muted-foreground hover:text-foreground"
-                  >
-                    <CaretDown
-                      size={16} 
-                      className={isExpanded ? "transition-transform rotate-180" : "transition-transform"} 
-                    />
-                    {isExpanded ? 'Hide' : 'Show'}
-                  </Button>
-                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => toggleFamilyExpansion(family.id)}
+                  className="gap-1 text-muted-foreground hover:text-foreground"
+                >
+                  <CaretDown
+                    size={16} 
+                    className={isExpanded ? "transition-transform rotate-180" : "transition-transform"} 
+                  />
+                  {isExpanded ? 'Hide' : 'Show'} Parks ({familyParks.length})
+                </Button>
+              </div>
 
               {/* Parks List */}
               {isExpanded && (
-                <div className="space-y-3 pt-2">
-                  <div className="text-xs text-muted-foreground">
-                    Debug: Selected parks = [{selectedParks.join(', ')}]
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {familyParks.map(park => {
-                      const hasData = availableParks.includes(park.id)
-                      const isSelected = selectedParks.includes(park.id)
-                      
-                      return (
-                        <div key={park.id} className="flex items-center space-x-2 p-2 rounded-md border bg-card">
-                          <Checkbox
-                            id={`park-${park.id}`}
-                            checked={isSelected}
-                            disabled={!hasData}
-                            onCheckedChange={(checked) => {
-                              console.log('🔄 Checkbox clicked:', { 
-                                parkId: park.id, 
-                                parkName: park.name,
-                                checked, 
-                                hasData,
-                                currentlySelected: isSelected,
-                                selectedParks: [...selectedParks]
-                              })
-                              
-                              if (!hasData) {
-                                console.log('❌ Checkbox disabled - no data available')
-                                return
-                              }
-                              
-                              // Direct state update instead of using handleParkToggle
-                              if (checked === true) {
-                                if (!selectedParks.includes(park.id)) {
-                                  const newParks = [...selectedParks, park.id]
-                                  console.log('✅ Adding park directly:', park.id, 'New array:', newParks)
-                                  onParksChange(newParks)
-                                }
-                              } else if (checked === false) {
-                                if (selectedParks.includes(park.id)) {
-                                  const newParks = selectedParks.filter(id => id !== park.id)
-                                  console.log('❌ Removing park directly:', park.id, 'New array:', newParks)
-                                  onParksChange(newParks)
-                                }
-                              }
-                            }}
-                          />
-                          <Label 
-                            htmlFor={`park-${park.id}`}
-                            className={`text-sm flex items-center gap-2 ${!hasData ? 'text-muted-foreground cursor-not-allowed' : 'cursor-pointer'}`}
-                          >
-                            {park.name}
-                            {!hasData && (
-                              <Badge variant="secondary" className="text-xs">
-                                No Data
-                              </Badge>
-                            )}
-                            {isSelected && (
-                              <Badge variant="default" className="text-xs">
-                                Selected
-                              </Badge>
-                            )}
-                          </Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                  {familyParks.map(park => {
+                    const isSelected = selectedParks.includes(park.id)
+                    
+                    return (
+                      <div 
+                        key={park.id} 
+                        className={`flex items-center space-x-3 p-3 rounded-md border cursor-pointer transition-colors ${
+                          isSelected 
+                            ? 'bg-primary/10 border-primary/30' 
+                            : 'bg-card hover:bg-muted/50'
+                        }`}
+                        onClick={() => handleParkToggle(park.id)}
+                      >
+                        <div 
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                            isSelected 
+                              ? 'bg-primary border-primary' 
+                              : 'border-muted-foreground/30'
+                          }`}
+                        >
+                          {isSelected && (
+                            <div className="w-2 h-2 bg-primary-foreground rounded-sm"></div>
+                          )}
                         </div>
-                      )
-                    })}
-                  </div>
+                        <div className="flex-1">
+                          <Label className="text-sm font-medium cursor-pointer">
+                            {park.name}
+                          </Label>
+                          {park.shortName && park.shortName !== park.name && (
+                            <p className="text-xs text-muted-foreground">{park.shortName}</p>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 
-                {/* Show selected parks when collapsed */}
-                {!isExpanded && selectedFamilyParks.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {selectedFamilyParks.map(parkId => {
-                      const park = familyParks.find(p => p.id === parkId)
-                      return park ? (
-                        <Badge key={parkId} variant="secondary" className="text-xs">
-                          {park.shortName || park.name}
-                        </Badge>
-                      ) : null
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          })()}
-        </div>
-      )}
+              {/* Show selected parks when collapsed */}
+              {!isExpanded && selectedFamilyParks.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {selectedFamilyParks.map(parkId => {
+                    const park = family.parks.find(p => p.id === parkId)
+                    return park ? (
+                      <Badge key={parkId} variant="secondary" className="text-xs">
+                        {park.shortName || park.name}
+                      </Badge>
+                    ) : null
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
       
+      {/* Selected Parks Summary */}
       {selectedParks.length > 0 && (
         <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
           <div className="flex items-center justify-between">
