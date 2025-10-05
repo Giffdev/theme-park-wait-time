@@ -37,12 +37,12 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
         <Link
           to="/parks"
           className={`flex flex-col items-center gap-1 py-2 px-3 rounded-lg transition-colors ${
-            isActive('/park')
+            isActive('/parks') || isActive('/park')
               ? 'text-primary bg-primary/10'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
-          <Suitcase size={20} weight={isActive('/park') ? 'fill' : 'regular'} />
+          <Suitcase size={20} weight={isActive('/parks') || isActive('/park') ? 'fill' : 'regular'} />
           <span className="text-xs">Parks</span>
         </Link>
 
