@@ -1666,7 +1666,7 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
   console.log('📋 Available parks with data:', availableParks)
 
   // Auto-select family when parks are pre-selected (e.g., from URL)
-  // Also clear family when no parks are selected (clean slate)
+  // But don't clear family selection when parks are cleared - user might be in the process of selecting
   useEffect(() => {
     if (selectedParks.length > 0 && !selectedFamily) {
       // Find which family contains the first selected park
@@ -1683,12 +1683,9 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
           [familyWithPark.id]: true
         }))
       }
-    } else if (selectedParks.length === 0 && selectedFamily) {
-      // Clear family selection when no parks are selected (clean slate)
-      console.log('🆕 Clearing family selection for clean slate')
-      setSelectedFamily('')
-      setShowParkFilter({})
     }
+    // Removed the logic that clears family when no parks are selected
+    // This was causing the dropdown to reset when user selected a family but hadn't selected parks yet
   }, [selectedParks, selectedFamily])
 
   const handleParkToggle = (parkId: string, checked: boolean) => {
@@ -1769,11 +1766,27 @@ function ParkFamilyTripSelector({ selectedParks, onParksChange, initialParkId }:
     <div className="space-y-6">
       {/* Resort Group Selection */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Funnel size={16} className="text-muted-foreground" />
-          <Label className="text-sm font-medium">
-            Step 1: Choose Resort Group {selectedFamily && '(can be changed)'}
-          </Label>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Funnel size={16} className="text-muted-foreground" />
+            <Label className="text-sm font-medium">
+              Step 1: Choose Resort Group {selectedFamily && '(can be changed)'}
+            </Label>
+          </div>
+          {selectedFamily && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSelectedFamily('')
+                setShowParkFilter({})
+                onParksChange([]) // Also clear selected parks
+              }}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              Clear Selection
+            </Button>
+          )}
         </div>
         <Select
           value={selectedFamily || ''}
