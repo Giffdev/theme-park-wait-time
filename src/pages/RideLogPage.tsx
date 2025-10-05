@@ -1231,9 +1231,9 @@ interface AttractionsForParkProps {
   selectedVariants: Record<string, string>
   notes: Record<string, string>
   onUpdateRideCount: (parkId: string, attractionId: string, change: number) => void
-  onVariantChange: (key: string, variant: string) => void
-  onNotesChange: (key: string, notes: string) => void
-  onNotesBlur: (key: string) => void
+  onVariantChange: (attractionId: string, variant: string) => void
+  onNotesChange: (attractionId: string, notes: string) => void
+  onNotesBlur: (attractionId: string) => void
   user: User | null
 }
 
