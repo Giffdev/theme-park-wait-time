@@ -54,12 +54,19 @@ export function isAttractionNotDining(attraction: ExtendedAttraction): boolean {
 /**
  * Filter function specifically for park overview - only shows attractions
  * with meaningful wait times (thrill, family, and non-dining experiences).
- * Excludes shows, parades, character meets, and retired attractions.
+ * Excludes shows, parades, character meets, retired attractions, and inactive seasonal/limited attractions.
  */
 export function isAttractionForOverview(attraction: ExtendedAttraction): boolean {
   // First check if the attraction is active (not retired)
   // If availability is not specified, assume it's active
   if (attraction.availability === 'retired') {
+    return false
+  }
+  
+  // Filter out limited/seasonal attractions that are currently closed
+  // These are only active during specific periods and shouldn't show when closed
+  if (attraction.availability === 'limited' && 
+      (attraction.status === 'closed' || attraction.currentWaitTime === 0)) {
     return false
   }
   
