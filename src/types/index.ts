@@ -46,7 +46,7 @@ export type AttractionVariant = {
 export type ExtendedAttraction = {
   id: string
   name: string
-  type: 'thrill' | 'family' | 'show' | 'experience'
+  type: 'thrill' | 'family' | 'show' | 'experience' | 'parade' | 'character-meet' | 'dining-experience'
   category: 'active' | 'limited' | 'retired'
   hasWaitTime: boolean // true for rides, false for shows/parades
   currentWaitTime: number

@@ -234,6 +234,64 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       currentWaitTime: 0,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    // Parades and Shows
+    {
+      id: 'universal-superstar-parade',
+      name: 'Universal\'s Superstar Parade',
+      type: 'parade',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Former parade featuring SpongeBob, Dora, and more',
+      openingYear: 2012,
+      closingYear: 2020
+    },
+    // Retired Attractions
+    {
+      id: 'jaws',
+      name: 'Jaws',
+      type: 'family',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Boat ride with animatronic shark',
+      openingYear: 1990,
+      closingYear: 2012
+    },
+    {
+      id: 'back-to-the-future',
+      name: 'Back to the Future: The Ride',
+      type: 'thrill',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Motion simulator ride replaced by The Simpsons Ride',
+      openingYear: 1991,
+      closingYear: 2007
+    },
+    {
+      id: 'twister-ride-it-out',
+      name: 'Twister...Ride it Out',
+      type: 'show',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Special effects show featuring a tornado',
+      openingYear: 1998,
+      closingYear: 2015
     }
   ],
   'islands-of-adventure': [
@@ -372,6 +430,35 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       currentWaitTime: 0,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    // Retired Attractions
+    {
+      id: 'dragon-challenge',
+      name: 'Dragon Challenge (Dueling Dragons)',
+      type: 'thrill',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Dueling inverted roller coasters',
+      openingYear: 1999,
+      closingYear: 2017
+    },
+    {
+      id: 'disaster-transport',
+      name: 'The Flying Unicorn',
+      type: 'family',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Family coaster replaced by Flight of the Hippogriff',
+      openingYear: 1999,
+      closingYear: 2012
     }
   ],
   'epic-universe': [
@@ -636,6 +723,21 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       currentWaitTime: 5,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    // Parades
+    {
+      id: 'disney-stars-motorcade',
+      name: 'Disney Stars and Motor Cars Parade',
+      type: 'parade',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Former daytime parade featuring Disney characters in motor vehicles',
+      openingYear: 2001,
+      closingYear: 2008
     }
   ],
   'animal-kingdom': [
@@ -771,6 +873,36 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       currentWaitTime: 0,
       status: 'closed',
       lastUpdated: new Date().toISOString()
+    },
+    // Parades and Entertainment
+    {
+      id: 'kilimanjaro-safari-night',
+      name: 'Kilimanjaro Safaris - After Dark',
+      type: 'experience',
+      category: 'limited',
+      hasWaitTime: true,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'limited',
+      description: 'Special nighttime safari experience',
+      isSeasonal: true,
+      seasonalPeriod: 'Select Seasons'
+    },
+    // Retired Shows
+    {
+      id: 'flights-of-wonder',
+      name: 'Flights of Wonder',
+      type: 'show',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Bird show featuring exotic species',
+      openingYear: 1998,
+      closingYear: 2018
     }
   ],
   'magic-kingdom': [
@@ -1299,6 +1431,92 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       currentWaitTime: 0,
       status: 'operating',
       lastUpdated: new Date().toISOString()
+    },
+    // Shows and Entertainment
+    {
+      id: 'harmonious',
+      name: 'Harmonious',
+      type: 'show',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Former nighttime spectacular on World Showcase Lagoon',
+      openingYear: 2021,
+      closingYear: 2023
+    },
+    {
+      id: 'epcot-forever',
+      name: 'EPCOT Forever',
+      type: 'show',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Temporary nighttime fireworks show',
+      openingYear: 2019,
+      closingYear: 2021
+    },
+    // Retired Attractions
+    {
+      id: 'horizons',
+      name: 'Horizons',
+      type: 'experience',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Dark ride showcasing future living environments',
+      openingYear: 1983,
+      closingYear: 1999
+    },
+    {
+      id: 'world-of-motion',
+      name: 'World of Motion',
+      type: 'experience',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Dark ride about the history of transportation',
+      openingYear: 1982,
+      closingYear: 1996
+    },
+    {
+      id: 'journey-into-imagination-original',
+      name: 'Journey Into Imagination (Original)',
+      type: 'experience',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Original version with Dreamfinder and Figment',
+      openingYear: 1983,
+      closingYear: 1998
+    },
+    {
+      id: 'maelstrom',
+      name: 'Maelstrom',
+      type: 'family',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Boat ride through Norwegian mythology',
+      openingYear: 1988,
+      closingYear: 2014
     }
   ],
   'disneyland': [
@@ -1479,18 +1697,63 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       status: 'operating',
       lastUpdated: new Date().toISOString()
     },
+    // Active Parades
+    {
+      id: 'magic-happens-parade',
+      name: 'Magic Happens Parade',
+      type: 'parade',
+      category: 'active',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'operating',
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      description: 'Daytime parade celebrating magical moments',
+      openingYear: 2020
+    },
     // Limited Shows/Parades (seasonal)
     {
       id: 'paint-the-night',
       name: 'Paint the Night',
-      type: 'show',
+      type: 'parade',
       category: 'limited',
       hasWaitTime: false,
       currentWaitTime: 0,
       status: 'operating',
       lastUpdated: new Date().toISOString(),
       isSeasonal: true,
-      seasonalPeriod: 'Summer'
+      seasonalPeriod: 'Summer',
+      availability: 'limited',
+      description: 'LED-illuminated nighttime parade'
+    },
+    // Retired Parades
+    {
+      id: 'main-street-electrical-parade-dl',
+      name: 'Main Street Electrical Parade',
+      type: 'parade',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Iconic nighttime electrical parade',
+      openingYear: 1972,
+      closingYear: 2022
+    },
+    {
+      id: 'disney-stars-n-cars',
+      name: 'Disney Stars and Motor Cars',
+      type: 'parade',
+      category: 'retired',
+      hasWaitTime: false,
+      currentWaitTime: 0,
+      status: 'closed',
+      lastUpdated: new Date().toISOString(),
+      availability: 'retired',
+      description: 'Motor vehicle parade featuring Disney characters',
+      openingYear: 2001,
+      closingYear: 2008
     },
     // Retired Attractions - Examples
     {

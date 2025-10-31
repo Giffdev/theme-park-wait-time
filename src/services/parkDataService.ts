@@ -10,7 +10,57 @@ console.log('🔍 ParkDataService imported sampleAttractions:', {
 })
 
 // Version identifier for data updates - increment when data structure changes
-const DATA_VERSION = '2024-12-19-v6-attraction-categories'
+const DATA_VERSION = '2024-12-19-v7-normalized-categories'
+
+/**
+ * Normalize attraction data to ensure all required fields are present
+ */
+function normalizeAttraction(attraction: Partial<ExtendedAttraction>): ExtendedAttraction {
+  // Determine category based on availability field or status
+  let category: 'active' | 'limited' | 'retired' = 'active'
+  if (attraction.availability) {
+    category = attraction.availability
+  } else if (attraction.isDefunct) {
+    category = 'retired'
+  } else if (attraction.isSeasonal) {
+    category = 'limited'
+  }
+  
+  // Determine hasWaitTime based on attraction type
+  let hasWaitTime = true
+  if (attraction.type === 'show' || attraction.type === 'parade') {
+    hasWaitTime = false
+  } else if (attraction.type === 'character-meet') {
+    hasWaitTime = true // Character meets typically have wait times
+  } else if (attraction.type === 'experience') {
+    // Some experiences have wait times, some don't - default to checking current wait time
+    hasWaitTime = (attraction.currentWaitTime ?? 0) > 0
+  }
+  
+  // Override with explicit hasWaitTime if provided
+  if (typeof attraction.hasWaitTime === 'boolean') {
+    hasWaitTime = attraction.hasWaitTime
+  }
+  
+  return {
+    id: attraction.id ?? '',
+    name: attraction.name ?? 'Unknown',
+    type: attraction.type ?? 'experience',
+    category,
+    hasWaitTime,
+    currentWaitTime: attraction.currentWaitTime ?? 0,
+    status: attraction.status ?? 'operating',
+    lastUpdated: attraction.lastUpdated ?? new Date().toISOString(),
+    isDefunct: attraction.isDefunct,
+    isSeasonal: attraction.isSeasonal,
+    seasonalPeriod: attraction.seasonalPeriod,
+    variants: attraction.variants,
+    availability: category,
+    description: attraction.description,
+    openingYear: attraction.openingYear,
+    closingYear: attraction.closingYear
+  }
+}
 
 /**
  * Service for reliably loading park attraction data with fallback mechanisms
@@ -31,7 +81,7 @@ export class ParkDataService {
         
         if (storedVersion === DATA_VERSION && kvData && Array.isArray(kvData) && kvData.length > 0) {
           console.log(`✅ ParkDataService loaded from KV: ${kvData.length} attractions`)
-          return kvData
+          return kvData.map(normalizeAttraction)
         } else if (storedVersion !== DATA_VERSION) {
           console.log(`🔄 ParkDataService data version outdated, refreshing data`)
         }
@@ -47,10 +97,13 @@ export class ParkDataService {
     if (sampleData && Array.isArray(sampleData) && sampleData.length > 0) {
       console.log(`✅ ParkDataService sample data found: ${sampleData.length} attractions`)
       
+      // Normalize the data
+      const normalizedData = sampleData.map(normalizeAttraction)
+      
       // Try to save to KV for future use
       try {
         if (window.spark?.kv) {
-          await window.spark.kv.set(`attractions-${parkId}`, sampleData)
+          await window.spark.kv.set(`attractions-${parkId}`, normalizedData)
           await window.spark.kv.set('data-version', DATA_VERSION)
           console.log(`💾 ParkDataService saved sample data to KV`)
         }
@@ -58,7 +111,7 @@ export class ParkDataService {
         console.warn('ParkDataService could not save to KV:', saveError)
       }
       
-      return sampleData
+      return normalizedData
     }
     
     // Strategy 3: Return empty array if no data found
@@ -121,9 +174,10 @@ export class ParkDataService {
           }
         }
         
-        // Initialize with sample data
-        await window.spark.kv.set(`attractions-${parkId}`, attractions)
-        console.log(`✅ ParkDataService initialized ${parkId} (${attractions.length} attractions)`)
+        // Normalize and initialize with sample data
+        const normalizedAttractions = attractions.map(normalizeAttraction)
+        await window.spark.kv.set(`attractions-${parkId}`, normalizedAttractions)
+        console.log(`✅ ParkDataService initialized ${parkId} (${normalizedAttractions.length} attractions)`)
         successCount++
         
         // Small delay to avoid overwhelming the system
