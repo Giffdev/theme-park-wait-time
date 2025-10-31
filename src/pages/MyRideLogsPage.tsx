@@ -358,8 +358,8 @@ export function MyRideLogsPage({ user, onLoginRequired }: MyRideLogsPageProps) {
       
       console.log(`✅ Loaded ${validTrips.length} valid trips out of ${tripIds.length} trip IDs`)
       
-      // Sort by visit date descending
-      validTrips.sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime())
+      // Sort by creation date descending (newest saved trips first)
+      validTrips.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       setTrips(validTrips)
     } catch (error) {
       console.error('❌ Failed to load user trips:', error)
