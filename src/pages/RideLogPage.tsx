@@ -759,7 +759,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
           </CardHeader>
           <CardContent className="text-center">
             <Button onClick={onLoginRequired}>
-              Sign In to Continue
+      </div>
             </Button>
           </CardContent>
         </Card>
