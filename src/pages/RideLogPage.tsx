@@ -169,18 +169,26 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setIsEditing(isExistingTrip)
       console.log(`✏️ Trip editing mode: ${isExistingTrip ? 'EDITING' : 'NEW'}`)
       
-      // Only restore selected parks if we have a specific parkId in URL (user came from park page)
-      // OR if user explicitly wants to continue the existing trip
-      // If user accessed /log directly (no parkId), they should get a clean slate
-      if (parkId || (isExistingTrip && showContinuationPrompt)) {
-        const tripParkIds = currentTrip.parks.map(p => p.parkId)
-        setSelectedParks(tripParkIds)
-        console.log('🏰 Restored selected parks from trip:', tripParkIds)
-      } else {
-        console.log('🆕 Clean slate - not restoring parks since user accessed /log directly or is starting fresh')
-        // Explicitly clear selected parks for clean slate
-        setSelectedParks([])
-      }
+      // Always restore selected parks from the current trip to prevent navigation issues
+      const tripParkIds = currentTrip.parks.map(p => p.parkId)
+      
+      // Only update selectedParks if they're different to avoid unnecessary re-renders
+      setSelectedParks(currentSelectedParks => {
+        const currentSet = new Set(currentSelectedParks)
+        const tripSet = new Set(tripParkIds)
+        
+        // Check if they're the same
+        const areSame = currentSet.size === tripSet.size && 
+          tripParkIds.every(id => currentSet.has(id))
+        
+        if (areSame) {
+          console.log('🏰 Selected parks already match trip parks, skipping update')
+          return currentSelectedParks
+        }
+        
+        console.log('🏰 Restoring selected parks from trip:', tripParkIds)
+        return tripParkIds
+      })
       
       const restoredRideCounts: Record<string, number> = {}
       const restoredVariants: Record<string, string> = {}
