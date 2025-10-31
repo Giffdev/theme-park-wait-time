@@ -148,22 +148,9 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   }, [parkId, currentTrip, selectedParks, user, isLoading])
 
   // Separate effect to handle clean slate initialization when accessing /log directly
-  useEffect(() => {
-    // If user accessed /log directly (no parkId) and no current trip, ensure completely clean slate
-    if (!parkId && !currentTrip && user && !showContinuationPrompt) {
-      console.log('🆕 Ensuring clean slate for direct /log access')
-      // Only clear if values are actually set to avoid unnecessary re-renders
-      if (selectedParks.length > 0 || Object.keys(rideCounts).length > 0) {
-        setSelectedParks([])
-        setRideCounts({})
-        setSelectedVariants({})
-        setNotes({})
-        setTripNotes('')
-        setActivePark('')
-        setAttractions({})
-      }
-    }
-  }, [parkId, currentTrip, user, showContinuationPrompt, selectedParks.length, Object.keys(rideCounts).length])
+  // REMOVED: This effect was causing the bug where users couldn't select parks.
+  // The effect was continuously clearing selectedParks state even when the user
+  // was actively trying to select parks in the trip setup UI.
 
   // Restore state from existing current trip
   useEffect(() => {
