@@ -62,6 +62,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const [activePark, setActivePark] = useState<string>(parkId || '')
   const [isEditing, setIsEditing] = useState(false)
   const [showContinuationPrompt, setShowContinuationPrompt] = useState(false)
+  const [justCreatedTrip, setJustCreatedTrip] = useState(false)
 
   // Get attraction ID from URL search params
   const searchParams = new URLSearchParams(location.search)
@@ -92,8 +93,8 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     }
 
     // If user accessed /log directly (no parkId) and there's a current trip with no rides,
-    // clear it to give them a fresh start
-    if (!parkId && currentTrip && currentTrip.totalRides === 0) {
+    // clear it to give them a fresh start - BUT only if we didn't just create this trip
+    if (!parkId && currentTrip && currentTrip.totalRides === 0 && !justCreatedTrip) {
       console.log('🆕 Clearing empty current trip for fresh start from /log')
       setCurrentTrip(null)
       setRideCounts({})
@@ -478,6 +479,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
       // Update state only after successful save
       setCurrentTrip(newTrip)
+      setJustCreatedTrip(true) // Mark that we just created this trip
       console.log('✅ Trip created and state updated:', {
         tripId: newTrip.id,
         parks: newTrip.parks.map(p => p.parkName),
@@ -487,6 +489,9 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       
       const parkNames = tripParks.map(p => p.parkName).join(', ')
       toast.success(`Started trip log for: ${parkNames}`)
+      
+      // Clear the flag after a brief moment to allow the trip to be displayed
+      setTimeout(() => setJustCreatedTrip(false), 1000)
       
       // If some parks were invalid, warn the user but continue
       if (invalidParks.length > 0 && validParks.length > 0) {
