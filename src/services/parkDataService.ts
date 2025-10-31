@@ -10,7 +10,7 @@ console.log('🔍 ParkDataService imported sampleAttractions:', {
 })
 
 // Version identifier for data updates - increment when data structure changes
-const DATA_VERSION = '2024-12-19-v7-normalized-categories'
+const DATA_VERSION = '2024-12-19-v8-duplicate-fixes'
 
 /**
  * Normalize attraction data to ensure all required fields are present

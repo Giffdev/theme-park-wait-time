@@ -1110,20 +1110,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       hasWaitTime: false,
       currentWaitTime: 0,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
-    },
-    // Limited/Seasonal Show Example  
-    {
-      id: 'mickeys-very-merry-christmas-party',
-      name: 'Mickey\'s Very Merry Christmas Party',
-      type: 'show',
-      category: 'limited',
-      hasWaitTime: false,
-      currentWaitTime: 0,
-      status: 'operating',
       lastUpdated: new Date().toISOString(),
-      isSeasonal: true,
-      seasonalPeriod: 'Christmas'
+      availability: 'active',
+      openingYear: 2016
     },
     {
       id: 'swiss-family-treehouse',
@@ -1594,7 +1583,6 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       availability: 'active',
       openingYear: 1979
     },
-    // Active Rides with Wait Times - Examples you mentioned
     {
       id: 'buzz-lightyear-astro-blasters',
       name: 'Buzz Lightyear Astro Blasters',
@@ -1605,7 +1593,7 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       status: 'operating',
       lastUpdated: new Date().toISOString(),
       availability: 'active',
-      openingYear: 2011
+      openingYear: 2005
     },
     {
       id: 'chip-dale-gadgetcoaster',
@@ -1615,7 +1603,9 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       hasWaitTime: true,
       currentWaitTime: 20,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      openingYear: 1993
     },
     // Classic Dark Rides - Active
     {
@@ -1675,7 +1665,10 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       hasWaitTime: false,
       currentWaitTime: 0,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      description: 'Barbershop quartet performing on Main Street',
+      openingYear: 1959
     },
     {
       id: 'disneyland-band',
@@ -1685,17 +1678,23 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       hasWaitTime: false,
       currentWaitTime: 0,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      description: 'Marching band performances throughout the park',
+      openingYear: 1955
     },
     {
-      id: 'fantasmic',
+      id: 'fantasmic-dl',
       name: 'Fantasmic!',
       type: 'show',
       category: 'active',
       hasWaitTime: false,
       currentWaitTime: 0,
       status: 'operating',
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      availability: 'active',
+      description: 'Nighttime spectacular at Rivers of America',
+      openingYear: 1992
     },
     // Active Parades
     {
@@ -1724,7 +1723,8 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       isSeasonal: true,
       seasonalPeriod: 'Summer',
       availability: 'limited',
-      description: 'LED-illuminated nighttime parade'
+      description: 'LED-illuminated nighttime parade',
+      openingYear: 2015
     },
     // Retired Parades
     {
@@ -1811,28 +1811,6 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       availability: 'active',
       openingYear: 1955
     },
-    
-    // Tomorrowland Active Rides - EXAMPLES FROM USER
-    {
-      id: 'buzz-lightyear-dl',
-      name: 'Buzz Lightyear Astro Blasters',
-      type: 'family',
-      currentWaitTime: 30,
-      status: 'operating',
-      lastUpdated: new Date().toISOString(),
-      availability: 'active',
-      openingYear: 2005
-    },
-    {
-      id: 'chip-dale-gadgetcoaster',
-      name: 'Chip \'n\' Dale\'s GADGETcoaster',
-      type: 'family',
-      currentWaitTime: 20,
-      status: 'operating',
-      lastUpdated: new Date().toISOString(),
-      availability: 'active',
-      openingYear: 1993
-    },
     {
       id: 'astro-orbitor-dl',
       name: 'Astro Orbitor',
@@ -1843,8 +1821,6 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       availability: 'active',
       openingYear: 1998
     },
-    
-    // Active Shows & Entertainment - EXAMPLES FROM USER
     {
       id: 'enchanted-tiki-room-dl',
       name: 'Walt Disney\'s Enchanted Tiki Room',
@@ -1857,53 +1833,6 @@ export const sampleAttractions: Record<string, ExtendedAttraction[]> = {
       availability: 'active',
       openingYear: 1963
     },
-    {
-      id: 'dapper-dans',
-      name: 'The Dapper Dans',
-      type: 'show',
-      currentWaitTime: 0,
-      status: 'operating',
-      lastUpdated: new Date().toISOString(),
-      availability: 'active',
-      description: 'Barbershop quartet performing on Main Street',
-      openingYear: 1959
-    },
-    {
-      id: 'disneyland-band',
-      name: 'The Disneyland Band',
-      type: 'show',
-      currentWaitTime: 0,
-      status: 'operating',
-      lastUpdated: new Date().toISOString(),
-      availability: 'active',
-      description: 'Marching band performances throughout the park',
-      openingYear: 1955
-    },
-    {
-      id: 'fantasmic-dl',
-      name: 'Fantasmic!',
-      type: 'show',
-      currentWaitTime: 0,
-      status: 'operating',
-      lastUpdated: new Date().toISOString(),
-      availability: 'active',
-      description: 'Nighttime spectacular at Rivers of America',
-      openingYear: 1992
-    },
-    
-    // Active Parades - EXAMPLES FROM USER
-    {
-      id: 'paint-the-night',
-      name: 'Paint the Night',
-      type: 'parade',
-      currentWaitTime: 0,
-      status: 'operating',
-      lastUpdated: new Date().toISOString(),
-      availability: 'active',
-      description: 'LED-illuminated nighttime parade',
-      openingYear: 2015
-    },
-    
     // Active Experiences
     {
       id: 'disneyland-railroad',
