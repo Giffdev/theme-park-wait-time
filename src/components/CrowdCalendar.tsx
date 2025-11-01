@@ -261,12 +261,18 @@ export function CrowdCalendar({ parkId }: CrowdCalendarProps) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Calendar size={24} />
-              Crowd Calendar
-            </CardTitle>
-            <div className="flex items-center space-x-2">
+          <CardTitle className="flex items-center gap-2">
+            <Calendar size={24} />
+            Crowd Calendar
+          </CardTitle>
+          <div className="flex flex-col items-center gap-3 pt-4">
+            <h3 className="text-xl font-semibold">
+              {isMobile 
+                ? `${monthNames[currentMonth]} ${currentDate}, ${currentYear}`
+                : `${monthNames[currentMonth]} ${currentYear}`
+              }
+            </h3>
+            <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -274,12 +280,6 @@ export function CrowdCalendar({ parkId }: CrowdCalendarProps) {
               >
                 <ArrowLeft size={16} />
               </Button>
-              <h3 className="text-lg font-semibold min-w-[180px] text-center">
-                {isMobile 
-                  ? `${monthNames[currentMonth]} ${currentDate}, ${currentYear}`
-                  : `${monthNames[currentMonth]} ${currentYear}`
-                }
-              </h3>
               <Button
                 variant="outline"
                 size="sm"
