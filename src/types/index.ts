@@ -80,6 +80,16 @@ export type RideLog = {
   trackVariant?: string
   loggedAt: string
   notes?: string
+  visitDate?: string
+}
+
+export type TripDay = {
+  date: string
+  parkId: string
+  parkName: string
+  rideLogs: RideLog[]
+  rideCount: number
+  notes?: string
 }
 
 export type Trip = {
@@ -92,6 +102,9 @@ export type Trip = {
   createdAt: string
   updatedAt: string
   notes?: string
+  days?: TripDay[]
+  startDate?: string
+  endDate?: string
 }
 
 export type User = {

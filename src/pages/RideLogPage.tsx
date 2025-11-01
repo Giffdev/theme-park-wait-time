@@ -36,7 +36,9 @@ import {
 import { ParkDataService } from '@/services/parkDataService'
 import { parkFamilies } from '@/data/sampleData'
 import { isAttractionNotDining, canLogInTrip, isRetiredAttraction } from '@/lib/utils'
-import type { ExtendedAttraction, Trip, TripPark, RideLog, User } from '@/types'
+import type { ExtendedAttraction, Trip, TripPark, RideLog, User, TripDay } from '@/types'
+import { MultiDayTripPicker, type DayParkSelection } from '@/components/MultiDayTripPicker'
+import { format } from 'date-fns'
 
 interface RideLogPageProps {
   user: User | null
@@ -52,7 +54,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     `current-trip-${user?.id || 'anonymous'}`, 
     null
   )
-  const [rideCounts, setRideCounts] = useState<Record<string, number>>({}) // key: "parkId-attractionId"
+  const [rideCounts, setRideCounts] = useState<Record<string, number>>({}) // key: "date-parkId-attractionId"
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [visitDate, setVisitDate] = useState<Date>(new Date())
@@ -61,9 +63,11 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [tripNotes, setTripNotes] = useState('')
   const [activePark, setActivePark] = useState<string>(parkId || '')
+  const [activeDay, setActiveDay] = useState<string>('')
   const [isEditing, setIsEditing] = useState(false)
   const [showContinuationPrompt, setShowContinuationPrompt] = useState(false)
   const [justCreatedTrip, setJustCreatedTrip] = useState(false)
+  const [tripDays, setTripDays] = useState<TripDay[]>([])
 
   // Get attraction ID from URL search params
   const searchParams = new URLSearchParams(location.search)
@@ -161,42 +165,45 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     if (currentTrip && currentTrip.rideLogs.length > 0) {
       console.log('🔄 Restoring state from existing trip with', currentTrip.rideLogs.length, 'logs')
       
-      // Check if this is an existing trip being edited (has a createdAt date in the past)
       const tripCreated = new Date(currentTrip.createdAt)
       const now = new Date()
       const timeDiff = now.getTime() - tripCreated.getTime()
-      const isExistingTrip = timeDiff > 60000 // More than 1 minute ago
+      const isExistingTrip = timeDiff > 60000
       
       setIsEditing(isExistingTrip)
       console.log(`✏️ Trip editing mode: ${isExistingTrip ? 'EDITING' : 'NEW'}`)
       
-      // Always restore selected parks from the current trip to prevent navigation issues
-      const tripParkIds = currentTrip.parks.map(p => p.parkId)
-      
-      // Only update selectedParks if they're different to avoid unnecessary re-renders
-      setSelectedParks(currentSelectedParks => {
-        const currentSet = new Set(currentSelectedParks)
-        const tripSet = new Set(tripParkIds)
-        
-        // Check if they're the same
-        const areSame = currentSet.size === tripSet.size && 
-          tripParkIds.every(id => currentSet.has(id))
-        
-        if (areSame) {
-          console.log('🏰 Selected parks already match trip parks, skipping update')
-          return currentSelectedParks
-        }
-        
-        console.log('🏰 Restoring selected parks from trip:', tripParkIds)
-        return tripParkIds
-      })
+      if (currentTrip.days && currentTrip.days.length > 0) {
+        setTripDays(currentTrip.days)
+        setActiveDay(currentTrip.days[0].date)
+        setActivePark(currentTrip.days[0].parkId)
+      } else {
+        const tripParkIds = currentTrip.parks.map(p => p.parkId)
+        setSelectedParks(currentSelectedParks => {
+          const currentSet = new Set(currentSelectedParks)
+          const tripSet = new Set(tripParkIds)
+          
+          const areSame = currentSet.size === tripSet.size && 
+            tripParkIds.every(id => currentSet.has(id))
+          
+          if (areSame) {
+            console.log('🏰 Selected parks already match trip parks, skipping update')
+            return currentSelectedParks
+          }
+          
+          console.log('🏰 Restoring selected parks from trip:', tripParkIds)
+          return tripParkIds
+        })
+      }
       
       const restoredRideCounts: Record<string, number> = {}
       const restoredVariants: Record<string, string> = {}
       const restoredNotes: Record<string, string> = {}
       
       currentTrip.rideLogs.forEach(log => {
-        const key = `${log.parkId}-${log.attractionId}`
+        const key = log.visitDate 
+          ? `${log.visitDate}-${log.parkId}-${log.attractionId}`
+          : `${log.parkId}-${log.attractionId}`
         restoredRideCounts[key] = log.rideCount
         
         if (log.trackVariant) {
@@ -220,7 +227,6 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       })
     } else {
       setIsEditing(false)
-      // Hide continuation prompt if there's no current trip
       if (!currentTrip) {
         setShowContinuationPrompt(false)
       }
@@ -357,7 +363,9 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
   }, [currentTrip, user])
 
   const updateRideCount = (parkId: string, attractionId: string, change: number) => {
-    const key = `${parkId}-${attractionId}`
+    const key = activeDay 
+      ? `${activeDay}-${parkId}-${attractionId}`
+      : `${parkId}-${attractionId}`
     
     setRideCounts(prev => {
       const currentCount = prev[key] || 0
@@ -368,9 +376,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         [key]: newCount
       }
       
-      // Auto-save the trip with updated counts - add validation
       if (currentTrip && user && window.spark?.kv) {
-        // Add a small delay to prevent rapid-fire saves
         setTimeout(() => {
           try {
             autoSaveTrip(newCounts)
@@ -393,7 +399,6 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       return
     }
 
-    // Check if Spark KV is available
     if (!window.spark?.kv) {
       toast.error('Storage system not available. Please refresh the page and try again.')
       return
@@ -404,7 +409,6 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     try {
       console.log(`🚀 Starting new trip for ${selectedParks.length} parks:`, selectedParks)
       
-      // First, validate that the selected parks have data available
       const availableParks = ParkDataService.getAvailableParks()
       console.log('📋 Available parks with data:', availableParks)
       
@@ -435,14 +439,11 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         }
       }
       
-      // Use only valid parks for the trip
       const parksToUse = validParks.length > 0 ? validParks : selectedParks
       console.log(`🎯 Using parks for trip:`, parksToUse)
       
-      // Load attractions for all selected parks  
       await loadAllSelectedParksAttractions(parksToUse)
 
-      // Create trip parks data
       const tripParks: TripPark[] = parksToUse.map(parkId => {
         const parkInfo = parkFamilies
           .flatMap(family => family.parks.map(park => ({ ...park, familyId: family.id, familyName: family.name })))
@@ -455,13 +456,12 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         }
       })
 
-      // Generate unique trip ID
       const tripId = `trip-${user.id}-${Date.now()}`
       
       const newTrip: Trip = {
         id: tripId,
         userId: user.id,
-        visitDate: visitDate.toISOString().split('T')[0], // Convert Date to string
+        visitDate: visitDate.toISOString().split('T')[0],
         parks: tripParks,
         rideLogs: [],
         totalRides: 0,
@@ -472,14 +472,12 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
       console.log('💾 Saving new trip to storage...', newTrip)
       
-      // Save trip to storage
       try {
         await window.spark.kv.set(`current-trip-${user.id}`, newTrip)
         console.log('✅ New trip saved successfully')
       } catch (kvError) {
         console.error('❌ Failed to save new trip:', kvError)
         
-        // Show specific error
         if (kvError instanceof Error && kvError.message.includes('quota')) {
           toast.error('Storage quota exceeded. Please delete some old trips and try again.')
         } else {
@@ -488,23 +486,20 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
         throw kvError
       }
 
-      // Update state only after successful save
       setCurrentTrip(newTrip)
-      setJustCreatedTrip(true) // Mark that we just created this trip
+      setJustCreatedTrip(true)
       console.log('✅ Trip created and state updated:', {
         tripId: newTrip.id,
         parks: newTrip.parks.map(p => p.parkName),
         stateUpdateComplete: true
       })
-      setActivePark(parksToUse[0]) // Set first park as active
+      setActivePark(parksToUse[0])
       
       const parkNames = tripParks.map(p => p.parkName).join(', ')
       toast.success(`Started trip log for: ${parkNames}`)
       
-      // Clear the flag after a brief moment to allow the trip to be displayed
       setTimeout(() => setJustCreatedTrip(false), 1000)
       
-      // If some parks were invalid, warn the user but continue
       if (invalidParks.length > 0 && validParks.length > 0) {
         setTimeout(() => {
           toast.warning(`Note: Some parks were excluded due to missing data. Contact support if you need those parks added.`)
@@ -522,13 +517,99 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     }
   }, [user, selectedParks, visitDate, tripNotes, setCurrentTrip, loadAllSelectedParksAttractions])
 
+  const startMultiDayTrip = useCallback(async (days: DayParkSelection[], startDate: Date, endDate: Date) => {
+    if (!user) {
+      toast.error('Please sign in to start your trip log.')
+      return
+    }
+
+    if (!window.spark?.kv) {
+      toast.error('Storage system not available. Please refresh the page and try again.')
+      return
+    }
+
+    setIsLoading(true)
+    
+    try {
+      console.log(`🚀 Starting multi-day trip with ${days.length} days`)
+      
+      const allParkIds = new Set<string>()
+      days.forEach(day => day.parkIds.forEach(parkId => allParkIds.add(parkId)))
+      
+      const parksToUse = Array.from(allParkIds)
+      await loadAllSelectedParksAttractions(parksToUse)
+
+      const tripId = `trip-${user.id}-${Date.now()}`
+      
+      const tripDaysData: TripDay[] = days.map(day => {
+        const parkId = day.parkIds[0]
+        const parkInfo = parkFamilies
+          .flatMap(family => family.parks.map(park => ({ ...park, familyId: family.id, familyName: family.name })))
+          .find(park => park.id === parkId)
+        
+        return {
+          date: day.date,
+          parkId,
+          parkName: parkInfo?.name || parkId,
+          rideLogs: [],
+          rideCount: 0
+        }
+      })
+
+      const tripParks: TripPark[] = parksToUse.map(parkId => {
+        const parkInfo = parkFamilies
+          .flatMap(family => family.parks.map(park => ({ ...park, familyId: family.id, familyName: family.name })))
+          .find(park => park.id === parkId)
+        
+        return {
+          parkId,
+          parkName: parkInfo?.name || parkId,
+          rideCount: 0
+        }
+      })
+
+      const newTrip: Trip = {
+        id: tripId,
+        userId: user.id,
+        visitDate: format(startDate, 'yyyy-MM-dd'),
+        startDate: format(startDate, 'yyyy-MM-dd'),
+        endDate: format(endDate, 'yyyy-MM-dd'),
+        parks: tripParks,
+        days: tripDaysData,
+        rideLogs: [],
+        totalRides: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        notes: tripNotes.trim() || undefined
+      }
+
+      await window.spark.kv.set(`current-trip-${user.id}`, newTrip)
+      
+      setCurrentTrip(newTrip)
+      setTripDays(tripDaysData)
+      setActiveDay(tripDaysData[0].date)
+      setActivePark(tripDaysData[0].parkId)
+      setJustCreatedTrip(true)
+      
+      toast.success(`Started multi-day trip: ${format(startDate, 'MMM d')} - ${format(endDate, 'MMM d, yyyy')}`)
+      
+      setTimeout(() => setJustCreatedTrip(false), 1000)
+      
+    } catch (error) {
+      console.error('❌ Failed to start multi-day trip:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`Failed to start trip: ${errorMessage}`)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [user, tripNotes, setCurrentTrip, loadAllSelectedParksAttractions])
+
   const autoSaveTrip = async (updatedRideCounts: Record<string, number>) => {
     if (!user || !currentTrip) {
       console.warn('⚠️ Cannot save trip: missing user or current trip')
       return
     }
 
-    // Check if spark KV is available
     if (!window.spark?.kv) {
       console.error('❌ Spark KV not available')
       toast.error('Storage not available. Please try refreshing the page.')
@@ -543,19 +624,22 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       
       const logsToSave: RideLog[] = []
 
-      // Build ride logs from current counts
       Object.entries(updatedRideCounts).forEach(([key, count]) => {
         console.log(`🎢 Processing ride: ${key} = ${count}`)
         if (count > 0) {
-          // Find the correct parkId by checking which selected park the key starts with
-          const parkId = selectedParks.find(p => key.startsWith(`${p}-`))
-          if (!parkId) {
-            console.warn(`⚠️ Could not determine parkId for key: ${key}`)
-            return
-          }
+          let dateStr: string | undefined
+          let parkId: string
+          let attractionId: string
           
-          // Extract attractionId by removing the parkId prefix and the connecting dash
-          const attractionId = key.substring(parkId.length + 1)
+          const parts = key.split('-')
+          if (parts.length >= 3 && parts[0].match(/^\d{4}/)) {
+            dateStr = parts.slice(0, 3).join('-')
+            parkId = parts[3]
+            attractionId = parts.slice(4).join('-')
+          } else {
+            parkId = parts[0]
+            attractionId = parts.slice(1).join('-')
+          }
           
           const attraction = attractions[parkId]?.find(a => a.id === attractionId)
           
@@ -571,14 +655,17 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
               rideCount: count,
               trackVariant: selectedVariants[key] || undefined,
               loggedAt: new Date().toISOString(),
-              notes: notes[key] || undefined
+              notes: notes[key] || undefined,
+              visitDate: dateStr
             }
             logsToSave.push(rideLog)
-            console.log(`✅ Added ride log for ${attraction.name}: ${count} rides`)
+            console.log(`✅ Added ride log for ${attraction.name}: ${count} rides${dateStr ? ` on ${dateStr}` : ''}`)
           } else {
             console.warn(`⚠️ Attraction not found for key: ${key}, trying fallback`)
-            // Try to find existing log data as fallback
-            const existingLog = currentTrip.rideLogs.find(log => log.parkId === parkId && log.attractionId === attractionId)
+            const existingLog = currentTrip.rideLogs.find(log => 
+              log.parkId === parkId && log.attractionId === attractionId && 
+              (!dateStr || log.visitDate === dateStr)
+            )
             if (existingLog) {
               const rideLog: RideLog = {
                 id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -591,14 +678,13 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                 rideCount: count,
                 trackVariant: selectedVariants[key] || undefined,
                 loggedAt: new Date().toISOString(),
-                notes: notes[key] || undefined
+                notes: notes[key] || undefined,
+                visitDate: dateStr
               }
               logsToSave.push(rideLog)
               console.log(`✅ Added fallback ride log for ${existingLog.attractionName}: ${count} rides`)
             } else {
               console.error(`❌ No fallback data available for ${key}`)
-              // As last resort, create a basic log entry to prevent total failure
-              console.log(`🆘 Creating emergency fallback log for ${key}`)
               const rideLog: RideLog = {
                 id: `log-${user.id}-${attractionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 userId: user.id,
@@ -610,7 +696,8 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                 rideCount: count,
                 trackVariant: selectedVariants[key] || undefined,
                 loggedAt: new Date().toISOString(),
-                notes: notes[key] || undefined
+                notes: notes[key] || undefined,
+                visitDate: dateStr
               }
               logsToSave.push(rideLog)
               console.log(`⚠️ Created emergency fallback log`)
@@ -623,110 +710,77 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
 
       console.log(`📝 Built ${logsToSave.length} ride logs to save`)
 
-      // Update park ride counts
       const updatedParks = currentTrip.parks.map(park => ({
         ...park,
         rideCount: logsToSave.filter(log => log.parkId === park.parkId).reduce((sum, log) => sum + log.rideCount, 0)
       }))
 
-      // Create updated trip object
+      let updatedDays = currentTrip.days
+      if (currentTrip.days && currentTrip.days.length > 0) {
+        updatedDays = currentTrip.days.map(day => ({
+          ...day,
+          rideLogs: logsToSave.filter(log => log.visitDate === day.date),
+          rideCount: logsToSave
+            .filter(log => log.visitDate === day.date)
+            .reduce((sum, log) => sum + log.rideCount, 0)
+        }))
+      }
+
       const updatedTrip: Trip = {
-        id: currentTrip.id,
-        userId: user.id,
-        visitDate: currentTrip.visitDate,
+        ...currentTrip,
         parks: updatedParks,
+        days: updatedDays,
         rideLogs: logsToSave,
         totalRides: logsToSave.reduce((sum, log) => sum + log.rideCount, 0),
-        createdAt: currentTrip.createdAt,
         updatedAt: new Date().toISOString(),
         notes: tripNotes.trim() || undefined
       }
 
       console.log(`💾 Saving trip with ${logsToSave.length} logs, ${updatedTrip.totalRides} total rides`)
-      console.log('📊 Trip data to save:', {
-        id: updatedTrip.id,
-        userId: updatedTrip.userId,
-        visitDate: updatedTrip.visitDate,
-        parks: updatedTrip.parks.map(p => ({ parkId: p.parkId, parkName: p.parkName, rideCount: p.rideCount })),
-        totalRides: updatedTrip.totalRides,
-        logCount: updatedTrip.rideLogs.length,
-        rideLogsDetails: updatedTrip.rideLogs.map(log => ({ name: log.attractionName, count: log.rideCount }))
-      })
 
-      // Update current trip state first - this ensures the completion handler gets the right data
       setCurrentTrip(updatedTrip)
       console.log('✅ Updated currentTrip state')
       
-      // Save to KV storage
       try {
-        // Save current trip (for resuming sessions)
         await window.spark.kv.set(`current-trip-${user.id}`, updatedTrip)
         console.log('✅ Current trip saved to KV')
         
-        // If there are rides logged, save to permanent trip storage  
         if (updatedTrip.totalRides > 0) {
           await window.spark.kv.set(`trip-${updatedTrip.id}`, updatedTrip)
-          console.log('✅ Trip record saved to KV permanent storage with proper ride counts')
+          console.log('✅ Trip record saved to KV permanent storage')
           
-          // Update user's trip history - this is critical for My Trips to work
           const userTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`) || []
-          console.log('📋 Current user trip history before update:', userTrips)
           
           if (!userTrips.includes(updatedTrip.id)) {
             const updatedUserTrips = [...userTrips, updatedTrip.id]
             await window.spark.kv.set(`user-trips-${user.id}`, updatedUserTrips)
-            console.log('✅ User trip history updated - added trip ID:', updatedTrip.id)
-            console.log('📋 Updated user trip history:', updatedUserTrips)
-            
-            // Verify the save worked
-            const verifyUserTrips = await window.spark.kv.get<string[]>(`user-trips-${user.id}`)
-            console.log('🔍 Verification - User trips after save:', verifyUserTrips)
-          } else {
-            console.log('ℹ️ Trip already exists in user trip history')
+            console.log('✅ User trip history updated')
           }
-        } else {
-          console.log('ℹ️ No rides logged yet, trip not saved to permanent storage')
         }
         
       } catch (kvError) {
         console.error('❌ KV Storage error:', kvError)
         
-        // Try to diagnose the issue
-        const errorDetails = {
-          error: kvError instanceof Error ? kvError.message : 'Unknown error',
-          tripId: updatedTrip.id,
-          userId: user.id,
-          dataSize: JSON.stringify(updatedTrip).length,
-          logsCount: logsToSave.length
-        }
-        console.error('KV Error details:', errorDetails)
-        
-        // Show user-friendly error message
         if (kvError instanceof Error && kvError.message.includes('quota')) {
-          toast.error('Storage quota exceeded. Please delete some old trip logs and try again.')
+          toast.error('Storage quota exceeded. Please delete some old trips and try again.')
         } else if (kvError instanceof Error && kvError.message.includes('network')) {
           toast.error('Network error. Your changes will be saved when connection is restored.')
         } else {
           toast.error('Failed to save trip data. Please try again or refresh the page.')
         }
         
-        throw kvError // Re-throw to be caught by outer catch
+        throw kvError
       }
       
     } catch (error) {
       console.error('❌ Trip save failed:', error)
-      
-      // Show specific error message to user
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       toast.error(`Unable to save trip: ${errorMessage}`)
       
     } finally {
-      // Brief delay to show saving status
       setTimeout(() => setIsSaving(false), 1000)
     }
   }
-
-
 
   const handleParksChange = useCallback((parks: string[]) => {
     console.log('🏰 handleParksChange called:', { 
@@ -943,70 +997,86 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar size={20} />
-              Start Your Trip Log
+              Plan Your Trip
             </CardTitle>
             <CardDescription>
-              Select your visit date and the parks you plan to visit
+              Choose between a single-day visit or a multi-day trip across different parks
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div>
-              <Label htmlFor="visit-date">Visit Date</Label>
-              <div className="mt-1">
-                <DatePicker
-                  date={visitDate}
-                  onDateChange={(date) => {
-                    if (date) {
-                      setVisitDate(date)
-                    }
-                  }}
-                  placeholder="Select your visit date"
-                  disableFutureDates={true}
-                />
-                <p className="text-xs text-muted-foreground mt-2">
-                  Select today's date or any past date for your trip
-                </p>
-              </div>
-            </div>
+            <Tabs defaultValue="multi-day" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="single-day">Single Day</TabsTrigger>
+                <TabsTrigger value="multi-day">Multi-Day Trip</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="single-day" className="space-y-6 mt-6">
+                <div>
+                  <Label htmlFor="visit-date">Visit Date</Label>
+                  <div className="mt-1">
+                    <DatePicker
+                      date={visitDate}
+                      onDateChange={(date) => {
+                        if (date) {
+                          setVisitDate(date)
+                        }
+                      }}
+                      placeholder="Select your visit date"
+                      disableFutureDates={true}
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Select today's date or any past date for your trip
+                    </p>
+                  </div>
+                </div>
 
-            <div>
-              <Label>Select Parks to Visit</Label>
-              <div className="mt-2">
-                <ParkFamilyTripSelector 
-                  selectedParks={selectedParks}
-                  onParksChange={handleParksChange}
+                <div>
+                  <Label>Select Parks to Visit</Label>
+                  <div className="mt-2">
+                    <ParkFamilyTripSelector 
+                      selectedParks={selectedParks}
+                      onParksChange={handleParksChange}
+                      initialParkId={parkId}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="trip-notes">Trip Notes (optional)</Label>
+                  <Textarea
+                    id="trip-notes"
+                    placeholder="Add any notes about your trip..."
+                    value={tripNotes}
+                    onChange={(e) => setTripNotes(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+
+                <Button 
+                  onClick={startNewTrip} 
+                  className="w-full"
+                  disabled={selectedParks.length === 0 || isLoading || !window.spark?.kv}
+                >
+                  {isLoading ? (
+                    <>
+                      <div className="animate-spin h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full mr-2"></div>
+                      Loading attractions...
+                    </>
+                  ) : !window.spark?.kv ? (
+                    'Storage not available - please refresh'
+                  ) : (
+                    `Start Trip Log (${selectedParks.length} park${selectedParks.length !== 1 ? 's' : ''} selected)`
+                  )}
+                </Button>
+              </TabsContent>
+              
+              <TabsContent value="multi-day" className="mt-6">
+                <MultiDayTripPicker
+                  onTripSelected={startMultiDayTrip}
                   initialParkId={parkId}
                 />
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="trip-notes">Trip Notes (optional)</Label>
-              <Textarea
-                id="trip-notes"
-                placeholder="Add any notes about your trip..."
-                value={tripNotes}
-                onChange={(e) => setTripNotes(e.target.value)}
-                rows={3}
-              />
-            </div>
-
-            <Button 
-              onClick={startNewTrip} 
-              className="w-full"
-              disabled={selectedParks.length === 0 || isLoading || !window.spark?.kv}
-            >
-              {isLoading ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full mr-2"></div>
-                  Loading attractions...
-                </>
-              ) : !window.spark?.kv ? (
-                'Storage not available - please refresh'
-              ) : (
-                `Start Trip Log (${selectedParks.length} park${selectedParks.length !== 1 ? 's' : ''} selected)`
-              )}
-            </Button>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       ) : (
@@ -1344,52 +1414,104 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2">
                   <MapPin size={20} />
-                  Select Park to Log Rides
+                  {currentTrip?.days && currentTrip.days.length > 0 
+                    ? 'Select Day & Park' 
+                    : 'Select Park to Log Rides'}
                 </span>
                 <span className="text-sm font-normal text-muted-foreground">
-                  {currentTrip?.parks.length || 0} park{(currentTrip?.parks.length || 0) !== 1 ? 's' : ''} in trip
+                  {currentTrip?.days && currentTrip.days.length > 0
+                    ? `${currentTrip.days.length} day${currentTrip.days.length !== 1 ? 's' : ''} in trip`
+                    : `${currentTrip?.parks.length || 0} park${(currentTrip?.parks.length || 0) !== 1 ? 's' : ''} in trip`}
                 </span>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {currentTrip?.parks.map(park => (
-                  <Button
-                    key={park.parkId}
-                    variant={activePark === park.parkId ? "default" : "outline"}
-                    onClick={async () => {
-                      console.log(`🎯 Switching to park: ${park.parkId}`)
-                      setActivePark(park.parkId)
-                      
-                      // Load attractions for this park if not already loaded
-                      if (!attractions[park.parkId] || attractions[park.parkId].length === 0) {
-                        console.log(`🔄 Loading attractions for ${park.parkId} (not cached)`)
-                        try {
-                          await loadAttractionsForPark(park.parkId)
-                          toast.success(`Loaded attractions for ${park.parkName}`)
-                        } catch (error) {
-                          console.error(`❌ Failed to load attractions for ${park.parkId}:`, error)
-                          toast.error(`Failed to load attractions for ${park.parkName}. Click again to retry.`)
+            <CardContent className="space-y-4">
+              {currentTrip?.days && currentTrip.days.length > 0 ? (
+                <>
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Trip Days</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {currentTrip.days.map(day => {
+                        const date = new Date(day.date)
+                        const isActive = activeDay === day.date
+                        const dayRideCount = Object.entries(rideCounts)
+                          .filter(([key]) => key.startsWith(`${day.date}-`))
+                          .reduce((sum, [, count]) => sum + count, 0)
+                        
+                        return (
+                          <Button
+                            key={day.date}
+                            variant={isActive ? "default" : "outline"}
+                            onClick={() => {
+                              setActiveDay(day.date)
+                              setActivePark(day.parkId)
+                              
+                              if (!attractions[day.parkId] || attractions[day.parkId].length === 0) {
+                                loadAttractionsForPark(day.parkId)
+                              }
+                            }}
+                            className="flex flex-col items-start gap-1 h-auto py-2 px-3"
+                          >
+                            <div className="font-semibold">{format(date, 'MMM d')}</div>
+                            <div className="text-xs opacity-80">{day.parkName}</div>
+                            {dayRideCount > 0 && (
+                              <Badge variant="secondary" className="text-xs mt-1">
+                                {dayRideCount} rides
+                              </Badge>
+                            )}
+                          </Button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {currentTrip?.parks.map(park => (
+                    <Button
+                      key={park.parkId}
+                      variant={activePark === park.parkId ? "default" : "outline"}
+                      onClick={async () => {
+                        console.log(`🎯 Switching to park: ${park.parkId}`)
+                        setActivePark(park.parkId)
+                        
+                        if (!attractions[park.parkId] || attractions[park.parkId].length === 0) {
+                          console.log(`🔄 Loading attractions for ${park.parkId} (not cached)`)
+                          try {
+                            await loadAttractionsForPark(park.parkId)
+                            toast.success(`Loaded attractions for ${park.parkName}`)
+                          } catch (error) {
+                            console.error(`❌ Failed to load attractions for ${park.parkId}:`, error)
+                            toast.error(`Failed to load attractions for ${park.parkName}. Click again to retry.`)
+                          }
+                        } else {
+                          console.log(`✅ Attractions already loaded for ${park.parkId} (${attractions[park.parkId].length} attractions)`)
                         }
-                      } else {
-                        console.log(`✅ Attractions already loaded for ${park.parkId} (${attractions[park.parkId].length} attractions)`)
-                      }
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    {park.parkName}
-                    {Object.entries(rideCounts)
-                      .filter(([key]) => key.startsWith(`${park.parkId}-`))
-                      .reduce((sum, [, count]) => sum + count, 0) > 0 && (
-                      <Badge variant="secondary" className="ml-1">
-                        {Object.entries(rideCounts)
-                          .filter(([key]) => key.startsWith(`${park.parkId}-`))
-                          .reduce((sum, [, count]) => sum + count, 0)}
-                      </Badge>
-                    )}
-                  </Button>
-                ))}
-              </div>
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      {park.parkName}
+                      {Object.entries(rideCounts)
+                        .filter(([key]) => {
+                          const parts = key.split('-')
+                          const keyParkId = parts.length === 3 ? parts[1] : parts[0]
+                          return keyParkId === park.parkId
+                        })
+                        .reduce((sum, [, count]) => sum + count, 0) > 0 && (
+                        <Badge variant="secondary" className="ml-1">
+                          {Object.entries(rideCounts)
+                            .filter(([key]) => {
+                              const parts = key.split('-')
+                              const keyParkId = parts.length === 3 ? parts[1] : parts[0]
+                              return keyParkId === park.parkId
+                            })
+                            .reduce((sum, [, count]) => sum + count, 0)}
+                        </Badge>
+                      )}
+                    </Button>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -1408,6 +1530,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                   onNotesChange={handleNotesChange}
                   onNotesBlur={handleNotesBlur}
                   user={user}
+                  activeDay={activeDay}
                 />
               ) : (
                 <Card>
@@ -1443,6 +1566,7 @@ interface AttractionsForParkProps {
   onNotesChange: (attractionId: string, notes: string) => void
   onNotesBlur: (attractionId: string) => void
   user: User | null
+  activeDay?: string
 }
 
 function AttractionsForPark({
@@ -1455,15 +1579,17 @@ function AttractionsForPark({
   onVariantChange,
   onNotesChange,
   onNotesBlur,
-  user
+  user,
+  activeDay
 }: AttractionsForParkProps) {
-  // Filter for trip logging - includes rides, shows, parades, experiences
   const attractionOnlyFilter = canLogInTrip
 
   const activeAttractions = attractions.filter(a => !isRetiredAttraction(a) && attractionOnlyFilter(a))
   const defunctAttractions = attractions.filter(a => isRetiredAttraction(a) && attractionOnlyFilter(a)).sort((a, b) => a.name.localeCompare(b.name))
   const seasonalAttractions = activeAttractions.filter(a => a.isSeasonal).sort((a, b) => a.name.localeCompare(b.name))
   const regularAttractions = activeAttractions.filter(a => !a.isSeasonal).sort((a, b) => a.name.localeCompare(b.name))
+
+  const getKey = (attractionId: string) => activeDay ? `${activeDay}-${parkId}-${attractionId}` : `${parkId}-${attractionId}`
 
   return (
     <Tabs defaultValue="regular" className="space-y-4">
@@ -1478,21 +1604,24 @@ function AttractionsForPark({
       </TabsList>
 
       <TabsContent value="regular" className="space-y-4">
-        {regularAttractions.map(attraction => (
-          <RideLogCard
-            key={`${parkId}-${attraction.id}`}
-            parkId={parkId}
-            attraction={attraction}
-            count={rideCounts[`${parkId}-${attraction.id}`] || 0}
-            selectedVariant={selectedVariants[`${parkId}-${attraction.id}`]}
-            notes={notes[`${parkId}-${attraction.id}`] || ''}
-            onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
-            onVariantChange={(variant) => onVariantChange(`${parkId}-${attraction.id}`, variant)}
-            onNotesChange={(note) => onNotesChange(`${parkId}-${attraction.id}`, note)}
-            onNotesBlur={() => onNotesBlur(`${parkId}-${attraction.id}`)}
-            user={user}
-          />
-        ))}
+        {regularAttractions.map(attraction => {
+          const key = getKey(attraction.id)
+          return (
+            <RideLogCard
+              key={key}
+              parkId={parkId}
+              attraction={attraction}
+              count={rideCounts[key] || 0}
+              selectedVariant={selectedVariants[key]}
+              notes={notes[key] || ''}
+              onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
+              onVariantChange={(variant) => onVariantChange(key, variant)}
+              onNotesChange={(note) => onNotesChange(key, note)}
+              onNotesBlur={() => onNotesBlur(key)}
+              user={user}
+            />
+          )
+        })}
       </TabsContent>
 
       {seasonalAttractions.length > 0 && (
@@ -1500,21 +1629,24 @@ function AttractionsForPark({
           <div className="text-sm text-muted-foreground mb-4">
             These attractions operate seasonally or for limited periods
           </div>
-          {seasonalAttractions.map(attraction => (
-            <RideLogCard
-              key={`${parkId}-${attraction.id}`}
-              parkId={parkId}
-              attraction={attraction}
-              count={rideCounts[`${parkId}-${attraction.id}`] || 0}
-              selectedVariant={selectedVariants[`${parkId}-${attraction.id}`]}
-              notes={notes[`${parkId}-${attraction.id}`] || ''}
-              onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
-              onVariantChange={(variant) => onVariantChange(`${parkId}-${attraction.id}`, variant)}
-              onNotesChange={(note) => onNotesChange(`${parkId}-${attraction.id}`, note)}
-              onNotesBlur={() => onNotesBlur(`${parkId}-${attraction.id}`)}
-              user={user}
-            />
-          ))}
+          {seasonalAttractions.map(attraction => {
+            const key = getKey(attraction.id)
+            return (
+              <RideLogCard
+                key={key}
+                parkId={parkId}
+                attraction={attraction}
+                count={rideCounts[key] || 0}
+                selectedVariant={selectedVariants[key]}
+                notes={notes[key] || ''}
+                onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
+                onVariantChange={(variant) => onVariantChange(key, variant)}
+                onNotesChange={(note) => onNotesChange(key, note)}
+                onNotesBlur={() => onNotesBlur(key)}
+                user={user}
+              />
+            )
+          })}
         </TabsContent>
       )}
       
@@ -1523,22 +1655,25 @@ function AttractionsForPark({
           <div className="text-sm text-muted-foreground mb-4">
             These attractions are no longer operating but can still be logged for historical visits
           </div>
-          {defunctAttractions.map(attraction => (
-            <RideLogCard
-              key={`${parkId}-${attraction.id}`}
-              parkId={parkId}
-              attraction={attraction}
-              count={rideCounts[`${parkId}-${attraction.id}`] || 0}
-              selectedVariant={selectedVariants[`${parkId}-${attraction.id}`]}
-              notes={notes[`${parkId}-${attraction.id}`] || ''}
-              onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
-              onVariantChange={(variant) => onVariantChange(`${parkId}-${attraction.id}`, variant)}
-              onNotesChange={(note) => onNotesChange(`${parkId}-${attraction.id}`, note)}
-              onNotesBlur={() => onNotesBlur(`${parkId}-${attraction.id}`)}
-              isDefunct
-              user={user}
-            />
-          ))}
+          {defunctAttractions.map(attraction => {
+            const key = getKey(attraction.id)
+            return (
+              <RideLogCard
+                key={key}
+                parkId={parkId}
+                attraction={attraction}
+                count={rideCounts[key] || 0}
+                selectedVariant={selectedVariants[key]}
+                notes={notes[key] || ''}
+                onCountChange={(change) => onUpdateRideCount(parkId, attraction.id, change)}
+                onVariantChange={(variant) => onVariantChange(key, variant)}
+                onNotesChange={(note) => onNotesChange(key, note)}
+                onNotesBlur={() => onNotesBlur(key)}
+                isDefunct
+                user={user}
+              />
+            )
+          })}
         </TabsContent>
       )}
     </Tabs>
