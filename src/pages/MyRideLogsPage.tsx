@@ -728,7 +728,11 @@ function RideLogCard({ log, getTypeIcon, getTypeColor }: RideLogCardProps) {
             <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
               <span className="flex items-center gap-1">
                 <MapPin size={12} />
-                {log.trip.parks.find((p: any) => p.parkId === log.parkId)?.parkName || getParkNameFromId(log.parkId)}
+                {(() => {
+                  const storedPark = log.trip.parks.find((p: any) => p.parkId === log.parkId)
+                  const storedName = storedPark?.parkName
+                  return storedName && storedName.length > 3 ? storedName : getParkNameFromId(log.parkId)
+                })()}
               </span>
               <span className="flex items-center gap-1">
                 <Calendar size={12} />
@@ -798,7 +802,7 @@ function TripCard({ trip, onDelete, onEdit, getTypeIcon, getTypeColor }: TripCar
               <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
                 <span className="flex items-center gap-1">
                   <MapPin size={14} />
-                  {trip.parks.length} park{trip.parks.length !== 1 ? 's' : ''}: {trip.parks.map(p => p.parkName).join(', ')}
+                  {trip.parks.length} park{trip.parks.length !== 1 ? 's' : ''}: {trip.parks.map(p => p.parkName && p.parkName.length > 3 ? p.parkName : getParkNameFromId(p.parkId)).join(', ')}
                 </span>
                 <span>{trip.rideLogs.length} attractions logged</span>
                 <span>{trip.totalRides} total rides</span>
@@ -870,11 +874,16 @@ function TripCard({ trip, onDelete, onEdit, getTypeIcon, getTypeColor }: TripCar
               })
               const actualRideCount = parkLogs.reduce((sum, log) => sum + log.rideCount, 0)
               
+              // Use stored parkName, but fallback to getParkNameFromId if it's missing or looks malformed
+              const displayParkName = park.parkName && park.parkName.length > 3 
+                ? park.parkName 
+                : getParkNameFromId(park.parkId)
+              
               return (
                 <div key={park.parkId}>
                   <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
                     <MapPin size={14} />
-                    {park.parkName} ({actualRideCount} rides)
+                    {displayParkName} ({actualRideCount} rides)
                   </h4>
                   <div className="grid gap-2 pl-4">
                     {parkLogs.length === 0 ? (
