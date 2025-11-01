@@ -175,8 +175,26 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       
       if (currentTrip.days && currentTrip.days.length > 0) {
         setTripDays(currentTrip.days)
-        setActiveDay(currentTrip.days[0].date)
-        setActivePark(currentTrip.days[0].parkId)
+        
+        // Only set activeDay/activePark if they haven't been set yet
+        // This prevents resetting the user's day selection when auto-save updates the trip
+        setActiveDay(currentActiveDay => {
+          if (currentActiveDay) {
+            console.log('🔒 Preserving active day:', currentActiveDay)
+            return currentActiveDay
+          }
+          console.log('📅 Setting initial active day:', currentTrip.days[0].date)
+          return currentTrip.days[0].date
+        })
+        
+        setActivePark(currentActivePark => {
+          if (currentActivePark) {
+            console.log('🔒 Preserving active park:', currentActivePark)
+            return currentActivePark
+          }
+          console.log('🏰 Setting initial active park:', currentTrip.days[0].parkId)
+          return currentTrip.days[0].parkId
+        })
       } else {
         const tripParkIds = currentTrip.parks.map(p => p.parkId)
         setSelectedParks(currentSelectedParks => {
