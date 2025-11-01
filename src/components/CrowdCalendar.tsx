@@ -300,14 +300,14 @@ export function CrowdCalendar({ parkId }: CrowdCalendarProps) {
             ) : (
               // Desktop view: Full month calendar
               <>
-                <div className="grid grid-cols-7 gap-2 text-center text-sm font-medium text-muted-foreground">
-                  <div>Sun</div>
-                  <div>Mon</div>
-                  <div>Tue</div>
-                  <div>Wed</div>
-                  <div>Thu</div>
-                  <div>Fri</div>
-                  <div>Sat</div>
+                <div className="grid grid-cols-7 gap-2">
+                  <div className="text-center text-sm font-medium text-muted-foreground">Su</div>
+                  <div className="text-center text-sm font-medium text-muted-foreground">Mo</div>
+                  <div className="text-center text-sm font-medium text-muted-foreground">Tu</div>
+                  <div className="text-center text-sm font-medium text-muted-foreground">We</div>
+                  <div className="text-center text-sm font-medium text-muted-foreground">Th</div>
+                  <div className="text-center text-sm font-medium text-muted-foreground">Fr</div>
+                  <div className="text-center text-sm font-medium text-muted-foreground">Sa</div>
                 </div>
                 <div className="grid grid-cols-7 gap-2">
                   {renderCalendarDays()}
