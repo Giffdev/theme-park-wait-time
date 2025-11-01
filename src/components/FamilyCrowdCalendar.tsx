@@ -416,9 +416,16 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                 variant="outline"
                 size="sm"
                 onClick={() => isMobile ? navigateDay('prev') : navigateMonth('prev')}
+              >
                 <ArrowLeft size={16} />
               </Button>
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => isMobile ? navigateDay('next') : navigateMonth('next')}
+              >
+                <ArrowRight size={16} />
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -447,7 +454,6 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                 </div>
               </>
             )}
-          </div>
         </CardContent>
       </Card>
 
