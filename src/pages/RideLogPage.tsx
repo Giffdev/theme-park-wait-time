@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
+import { DatePicker } from '@/components/ui/date-picker'
 
 
 import { 
@@ -951,20 +952,19 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
           <CardContent className="space-y-6">
             <div>
               <Label htmlFor="visit-date">Visit Date</Label>
-              <div className="mt-1 p-3 bg-muted rounded-md border">
-                <div className="flex items-center gap-2 text-sm">
-                  <Calendar size={16} className="text-muted-foreground" />
-                  <span className="font-medium">
-                    {new Date().toLocaleDateString('en-US', { 
-                      weekday: 'long',
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Currently only today's date is supported for new trip logs
+              <div className="mt-1">
+                <DatePicker
+                  date={visitDate}
+                  onDateChange={(date) => {
+                    if (date) {
+                      setVisitDate(date)
+                    }
+                  }}
+                  placeholder="Select your visit date"
+                  disableFutureDates={true}
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  Select today's date or any past date for your trip
                 </p>
               </div>
             </div>
