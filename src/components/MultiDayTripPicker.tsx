@@ -53,7 +53,10 @@ export function MultiDayTripPicker({ onTripSelected, initialParkId }: MultiDayTr
       return
     }
 
-    const dateStr = format(currentDayDate, 'yyyy-MM-dd')
+    const year = currentDayDate.getFullYear()
+    const month = String(currentDayDate.getMonth() + 1).padStart(2, '0')
+    const day = String(currentDayDate.getDate()).padStart(2, '0')
+    const dateStr = `${year}-${month}-${day}`
     
     const existingDayIndex = tripDays.findIndex(d => d.date === dateStr)
     
@@ -87,8 +90,10 @@ export function MultiDayTripPicker({ onTripSelected, initialParkId }: MultiDayTr
     }
 
     const sortedDays = [...tripDays].sort((a, b) => a.date.localeCompare(b.date))
-    const startDate = new Date(sortedDays[0].date)
-    const endDate = new Date(sortedDays[sortedDays.length - 1].date)
+    const [startYear, startMonth, startDay] = sortedDays[0].date.split('-').map(Number)
+    const [endYear, endMonth, endDay] = sortedDays[sortedDays.length - 1].date.split('-').map(Number)
+    const startDate = new Date(startYear, startMonth - 1, startDay)
+    const endDate = new Date(endYear, endMonth - 1, endDay)
     
     onTripSelected(sortedDays, startDate, endDate)
   }, [tripDays, onTripSelected])
@@ -218,7 +223,13 @@ export function MultiDayTripPicker({ onTripSelected, initialParkId }: MultiDayTr
             className="w-full"
           >
             <Plus size={16} className="mr-2" />
-            {tripDays.some(d => d.date === (currentDayDate ? format(currentDayDate, 'yyyy-MM-dd') : '')) 
+            {tripDays.some(d => {
+              if (!currentDayDate) return false
+              const year = currentDayDate.getFullYear()
+              const month = String(currentDayDate.getMonth() + 1).padStart(2, '0')
+              const day = String(currentDayDate.getDate()).padStart(2, '0')
+              return d.date === `${year}-${month}-${day}`
+            }) 
               ? 'Update This Day' 
               : 'Add This Day to Trip'}
           </Button>
@@ -240,7 +251,8 @@ export function MultiDayTripPicker({ onTripSelected, initialParkId }: MultiDayTr
             {[...tripDays]
               .sort((a, b) => a.date.localeCompare(b.date))
               .map((day) => {
-                const date = new Date(day.date)
+                const [year, month, dayNum] = day.date.split('-').map(Number)
+                const date = new Date(year, month - 1, dayNum)
                 return (
                   <div 
                     key={day.date}
