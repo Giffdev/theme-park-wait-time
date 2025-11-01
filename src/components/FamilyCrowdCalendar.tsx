@@ -416,21 +416,13 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
                 variant="outline"
                 size="sm"
                 onClick={() => isMobile ? navigateDay('prev') : navigateMonth('prev')}
-              >
                 <ArrowLeft size={16} />
               </Button>
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() => isMobile ? navigateDay('next') : navigateMonth('next')}
-              >
-                <ArrowRight size={16} />
-              </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
             {isMobile ? (
               // Mobile view: 2 days side by side with proper overflow handling
               <div className="w-full">
