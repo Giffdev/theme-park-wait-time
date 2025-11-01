@@ -79,7 +79,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       return
     }
 
-    console.log('🚀 Initializing RideLogPage:', { parkId, currentTrip: currentTrip?.id, selectedParks: selectedParks.length })
+    console.log('🚀 Initializing RideLogPage:', { parkId, currentTrip: currentTrip?.id, selectedParks: selectedParks.length, justCreatedTrip })
 
     // Clear current trip if it doesn't belong to the current user
     if (currentTrip && currentTrip.userId !== user.id) {
@@ -90,6 +90,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setNotes({})
       setTripNotes('')
       setSelectedParks([])
+      return
     }
 
     // If user accessed /log directly (no parkId) and there's a current trip with no rides,
@@ -101,8 +102,8 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setSelectedVariants({})
       setNotes({})
       setTripNotes('')
-      // Also clear selected parks for a clean slate
       setSelectedParks([])
+      return
     }
 
     // If user accessed /log directly and there's an existing trip with rides,
@@ -110,6 +111,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
     if (!parkId && currentTrip && currentTrip.totalRides > 0 && !showContinuationPrompt) {
       console.log('❓ Showing continuation prompt for existing trip with rides')
       setShowContinuationPrompt(true)
+      return
     }
 
     // Pre-select park when coming from a specific park page (e.g., /log/disneyland) - only once
@@ -124,7 +126,7 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       // If no specific park, set loading to false so the trip setup can begin
       setIsLoading(false)
     }
-  }, [user, parkId, currentTrip, setCurrentTrip])
+  }, [user, parkId, currentTrip?.id, currentTrip?.totalRides, currentTrip?.userId])
 
   // Separate effect to auto-start trip when park is pre-selected
   useEffect(() => {
@@ -167,18 +169,26 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
       setIsEditing(isExistingTrip)
       console.log(`✏️ Trip editing mode: ${isExistingTrip ? 'EDITING' : 'NEW'}`)
       
-      // Only restore selected parks if we have a specific parkId in URL (user came from park page)
-      // OR if user explicitly wants to continue the existing trip
-      // If user accessed /log directly (no parkId), they should get a clean slate
-      if (parkId || (isExistingTrip && showContinuationPrompt)) {
-        const tripParkIds = currentTrip.parks.map(p => p.parkId)
-        setSelectedParks(tripParkIds)
-        console.log('🏰 Restored selected parks from trip:', tripParkIds)
-      } else {
-        console.log('🆕 Clean slate - not restoring parks since user accessed /log directly or is starting fresh')
-        // Explicitly clear selected parks for clean slate
-        setSelectedParks([])
-      }
+      // Always restore selected parks from the current trip to prevent navigation issues
+      const tripParkIds = currentTrip.parks.map(p => p.parkId)
+      
+      // Only update selectedParks if they're different to avoid unnecessary re-renders
+      setSelectedParks(currentSelectedParks => {
+        const currentSet = new Set(currentSelectedParks)
+        const tripSet = new Set(tripParkIds)
+        
+        // Check if they're the same
+        const areSame = currentSet.size === tripSet.size && 
+          tripParkIds.every(id => currentSet.has(id))
+        
+        if (areSame) {
+          console.log('🏰 Selected parks already match trip parks, skipping update')
+          return currentSelectedParks
+        }
+        
+        console.log('🏰 Restoring selected parks from trip:', tripParkIds)
+        return tripParkIds
+      })
       
       const restoredRideCounts: Record<string, number> = {}
       const restoredVariants: Record<string, string> = {}
