@@ -136,9 +136,12 @@ export function MultiDayTripPicker({ onTripSelected, initialParkId }: MultiDayTr
                 date={currentDayDate}
                 onDateChange={setCurrentDayDate}
                 placeholder="Select visit date"
-                disableFutureDates={true}
+                disableFutureDates={false}
               />
             </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              You can plan future trips, but can only log rides for today and past dates
+            </p>
           </div>
 
           <div className="space-y-3">

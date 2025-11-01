@@ -1433,36 +1433,55 @@ export function RideLogPage({ user, onLoginRequired }: RideLogPageProps) {
                     <div className="flex flex-wrap gap-2">
                       {currentTrip.days.map(day => {
                         const date = new Date(day.date)
+                        const today = new Date()
+                        today.setHours(0, 0, 0, 0)
+                        const dayDate = new Date(date)
+                        dayDate.setHours(0, 0, 0, 0)
+                        const isFuture = dayDate > today
                         const isActive = activeDay === day.date
                         const dayRideCount = Object.entries(rideCounts)
                           .filter(([key]) => key.startsWith(`${day.date}-`))
                           .reduce((sum, [, count]) => sum + count, 0)
                         
                         return (
-                          <Button
-                            key={day.date}
-                            variant={isActive ? "default" : "outline"}
-                            onClick={() => {
-                              setActiveDay(day.date)
-                              setActivePark(day.parkId)
-                              
-                              if (!attractions[day.parkId] || attractions[day.parkId].length === 0) {
-                                loadAttractionsForPark(day.parkId)
-                              }
-                            }}
-                            className="flex flex-col items-start gap-1 h-auto py-2 px-3"
-                          >
-                            <div className="font-semibold">{format(date, 'MMM d')}</div>
-                            <div className="text-xs opacity-80">{day.parkName}</div>
-                            {dayRideCount > 0 && (
-                              <Badge variant="secondary" className="text-xs mt-1">
-                                {dayRideCount} rides
-                              </Badge>
-                            )}
-                          </Button>
+                          <div key={day.date} className="relative">
+                            <Button
+                              variant={isActive ? "default" : "outline"}
+                              onClick={() => {
+                                if (isFuture) {
+                                  toast.error('You can only log rides for today and past dates')
+                                  return
+                                }
+                                setActiveDay(day.date)
+                                setActivePark(day.parkId)
+                                
+                                if (!attractions[day.parkId] || attractions[day.parkId].length === 0) {
+                                  loadAttractionsForPark(day.parkId)
+                                }
+                              }}
+                              disabled={isFuture}
+                              className="flex flex-col items-start gap-1 h-auto py-2 px-3"
+                            >
+                              <div className="font-semibold">{format(date, 'MMM d')}</div>
+                              <div className="text-xs opacity-80">{day.parkName}</div>
+                              {dayRideCount > 0 && (
+                                <Badge variant="secondary" className="text-xs mt-1">
+                                  {dayRideCount} rides
+                                </Badge>
+                              )}
+                              {isFuture && (
+                                <Badge variant="outline" className="text-xs mt-1 opacity-60">
+                                  Future
+                                </Badge>
+                              )}
+                            </Button>
+                          </div>
                         )
                       })}
                     </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      You can only log rides for today and past dates. Future days are shown for planning.
+                    </p>
                   </div>
                 </>
               ) : (
