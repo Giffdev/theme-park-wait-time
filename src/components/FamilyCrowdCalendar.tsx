@@ -394,39 +394,35 @@ export function FamilyCrowdCalendar({ familyId, selectedParks }: FamilyCrowdCale
 
       <Card>
         <CardHeader>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar size={24} />
-                {family.name} Crowd Calendar
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                {isMobile 
-                  ? "Compare busy levels across parks. Navigate to view different days. Click days with 'more' to expand."
-                  : "Compare busy levels across all parks to plan your visit. Day colors reflect overall business. Click days with 'more' to expand."
-                }
-              </p>
-            </div>
-            <div className="flex items-center justify-center space-x-1 md:space-x-2">
+          <CardTitle className="flex items-center gap-2">
+            <Calendar size={24} />
+            {family.name} Crowd Calendar
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {isMobile 
+              ? "Compare busy levels across parks. Navigate to view different days. Click days with 'more' to expand."
+              : "Compare busy levels across all parks to plan your visit. Day colors reflect overall business. Click days with 'more' to expand."
+            }
+          </p>
+          <div className="flex flex-col items-center gap-3 pt-4">
+            <h3 className="text-xl font-semibold">
+              {isMobile 
+                ? `${monthNames[currentMonth]} ${currentDate}, ${currentYear}`
+                : `${monthNames[currentMonth]} ${currentYear}`
+              }
+            </h3>
+            <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => isMobile ? navigateDay('prev') : navigateMonth('prev')}
-                className="hover:bg-muted hover:text-foreground"
               >
                 <ArrowLeft size={16} />
               </Button>
-              <h3 className="text-base md:text-lg font-semibold min-w-[140px] md:min-w-[180px] text-center">
-                {isMobile 
-                  ? `${monthNames[currentMonth]} ${currentDate}, ${currentYear}`
-                  : `${monthNames[currentMonth]} ${currentYear}`
-                }
-              </h3>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => isMobile ? navigateDay('next') : navigateMonth('next')}
-                className="hover:bg-muted hover:text-foreground"
               >
                 <ArrowRight size={16} />
               </Button>
