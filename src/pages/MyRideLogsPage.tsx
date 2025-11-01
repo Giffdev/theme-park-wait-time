@@ -36,6 +36,7 @@ function getParkNameFromId(parkId: string): string {
     'animal-kingdom': "Disney's Animal Kingdom",
     'disneyland': 'Disneyland Park',
     'disney-california-adventure': 'Disney California Adventure',
+    'california-adventure': 'Disney California Adventure',
     'universal-studios-orlando': 'Universal Studios Florida',
     'universal-studios-florida': 'Universal Studios Florida',
     'islands-of-adventure': "Universal's Islands of Adventure",
@@ -46,7 +47,8 @@ function getParkNameFromId(parkId: string): string {
     'hollywood': "Disney's Hollywood Studios",
     'studios': "Disney's Hollywood Studios",
     'kingdom': 'Magic Kingdom',
-    'universal': 'Universal Studios Florida'
+    'universal': 'Universal Studios Florida',
+    'adventure': 'Disney California Adventure'
   }
   
   return parkNameMap[parkId] || parkId.split('-').map(word => 
@@ -70,6 +72,8 @@ async function cleanupUserRideLogData(userId: string): Promise<number> {
       // Fix each ride log in the trip
       for (const log of trip.rideLogs) {
         let logModified = false
+        const originalAttractionId = log.attractionId
+        const originalParkId = log.parkId
         
         // Clean up any debug information in attraction names
         if (log.attractionName && log.attractionName.includes('debug:')) {
@@ -83,36 +87,50 @@ async function cleanupUserRideLogData(userId: string): Promise<number> {
           }
         }
         
+        // Fix attraction IDs that have park prefixes
+        const parkPrefixes = [
+          { prefix: 'california-adventure-', correctParkId: 'disney-california-adventure' },
+          { prefix: 'disney-california-adventure-', correctParkId: 'disney-california-adventure' },
+          { prefix: 'magic-kingdom-', correctParkId: 'magic-kingdom' },
+          { prefix: 'hollywood-studios-', correctParkId: 'hollywood-studios' },
+          { prefix: 'animal-kingdom-', correctParkId: 'animal-kingdom' },
+          { prefix: 'epcot-', correctParkId: 'epcot' },
+          { prefix: 'disneyland-', correctParkId: 'disneyland' }
+        ]
+        
+        for (const { prefix, correctParkId } of parkPrefixes) {
+          if (log.attractionId?.startsWith(prefix)) {
+            log.attractionId = log.attractionId.substring(prefix.length)
+            log.parkId = correctParkId
+            logModified = true
+            console.log(`🔧 Stripped park prefix: ${prefix} from ${originalAttractionId} -> ${log.attractionId}`)
+            break
+          }
+        }
+        
         // Fix common park ID issues
         if (log.parkId === 'hollywood') {
           log.parkId = 'hollywood-studios'
           logModified = true
-        }
-        
-        // Fix common attraction ID issues
-        if (log.attractionId?.includes('studios-alien-swirling-saurces')) {
-          log.attractionId = 'alien-swirling-saucers'
-          log.attractionName = 'Alien Swirling Saucers'
+        } else if (log.parkId === 'california-adventure') {
+          log.parkId = 'disney-california-adventure'
+          logModified = true
+        } else if (log.parkId === 'adventure' || log.parkId === 'california') {
+          log.parkId = 'disney-california-adventure'
           logModified = true
         }
         
-        // Fix other common malformed attraction IDs
-        if (log.attractionId?.startsWith('studios-')) {
-          const correctedId = log.attractionId.replace('studios-', '')
-          // Try to find the attraction with the corrected ID
+        // If we modified the attraction ID or park ID, try to look up the correct name
+        if (logModified && log.attractionId) {
           try {
-            const attractions = await ParkDataService.loadAttractions('hollywood-studios')
-            const found = attractions.find(a => a.id === correctedId)
+            const attractions = await ParkDataService.loadAttractions(log.parkId)
+            const found = attractions.find(a => a.id === log.attractionId)
             if (found) {
-              log.attractionId = correctedId
               log.attractionName = found.name
-              if (log.parkId !== 'hollywood-studios') {
-                log.parkId = 'hollywood-studios'
-              }
-              logModified = true
+              console.log(`✅ Resolved attraction name: ${log.attractionId} -> ${found.name}`)
             }
           } catch (error) {
-            // Silently continue if we can't verify
+            console.warn(`⚠️ Could not resolve attraction name for ${log.attractionId} in ${log.parkId}`)
           }
         }
         
@@ -174,10 +192,40 @@ async function resolveAttractionName(log: any): Promise<string> {
     return cleanName
   }
   
-  // Try to find the attraction in park data with the stored park ID
+  let attractionId = log.attractionId
+  let parkId = log.parkId
+  
+  // Check if the attraction ID has a park prefix that needs to be stripped
+  // Pattern: "california-adventure-guardians-galaxy..." should be split into
+  // parkId: "disney-california-adventure" (or "california-adventure")
+  // attractionId: "guardians-galaxy-mission-breakout"
+  if (attractionId) {
+    const parkPrefixes = [
+      { prefix: 'california-adventure-', correctParkId: 'disney-california-adventure' },
+      { prefix: 'disney-california-adventure-', correctParkId: 'disney-california-adventure' },
+      { prefix: 'magic-kingdom-', correctParkId: 'magic-kingdom' },
+      { prefix: 'hollywood-studios-', correctParkId: 'hollywood-studios' },
+      { prefix: 'animal-kingdom-', correctParkId: 'animal-kingdom' },
+      { prefix: 'epcot-', correctParkId: 'epcot' },
+      { prefix: 'disneyland-', correctParkId: 'disneyland' },
+      { prefix: 'universal-studios-orlando-', correctParkId: 'universal-studios-orlando' },
+      { prefix: 'islands-of-adventure-', correctParkId: 'islands-of-adventure' }
+    ]
+    
+    for (const { prefix, correctParkId } of parkPrefixes) {
+      if (attractionId.startsWith(prefix)) {
+        attractionId = attractionId.substring(prefix.length)
+        parkId = correctParkId
+        console.log(`🔧 Stripped park prefix from attraction ID: ${prefix} -> ${attractionId}, using park: ${parkId}`)
+        break
+      }
+    }
+  }
+  
+  // Try to find the attraction in park data with the (possibly corrected) park ID
   try {
-    const attractions = await ParkDataService.loadAttractions(log.parkId)
-    const attraction = attractions.find(a => a.id === log.attractionId)
+    const attractions = await ParkDataService.loadAttractions(parkId)
+    const attraction = attractions.find(a => a.id === attractionId)
     
     if (attraction) {
       return attraction.name
@@ -191,7 +239,9 @@ async function resolveAttractionName(log: any): Promise<string> {
     'hollywood': ['hollywood-studios'],
     'kingdom': ['magic-kingdom'],
     'studios': ['hollywood-studios', 'universal-studios-orlando', 'universal-studios-hollywood'],
-    'adventure': ['islands-of-adventure', 'disney-california-adventure'],
+    'adventure': ['disney-california-adventure', 'islands-of-adventure'],
+    'california-adventure': ['disney-california-adventure'],
+    'california': ['disney-california-adventure'],
     'universal': ['universal-studios-orlando', 'universal-studios-hollywood', 'islands-of-adventure']
   }
   
@@ -200,7 +250,7 @@ async function resolveAttractionName(log: any): Promise<string> {
   
   // Add direct mappings
   for (const [key, parks] of Object.entries(parkIdMappings)) {
-    if (log.parkId?.toLowerCase().includes(key)) {
+    if (parkId?.toLowerCase().includes(key)) {
       parks.forEach(park => possibleParks.add(park))
     }
   }
@@ -211,18 +261,18 @@ async function resolveAttractionName(log: any): Promise<string> {
                        'disney-california-adventure', 'universal-studios-hollywood']
   commonParks.forEach(park => possibleParks.add(park))
   
-  for (const parkId of possibleParks) {
+  for (const testParkId of possibleParks) {
     try {
-      const attractions = await ParkDataService.loadAttractions(parkId)
+      const attractions = await ParkDataService.loadAttractions(testParkId)
       
       // Try the full attractionId first
-      let attraction = attractions.find(a => a.id === log.attractionId)
+      let attraction = attractions.find(a => a.id === attractionId)
       if (attraction) {
         return attraction.name
       }
       
       // Handle malformed attraction IDs with common corrections
-      let correctedId = log.attractionId
+      let correctedId = attractionId
       
       // Fix common typos and malformations
       if (correctedId?.includes('studios-')) {
@@ -239,8 +289,8 @@ async function resolveAttractionName(log: any): Promise<string> {
       }
       
       // Try partial matches for malformed compound IDs
-      if (log.attractionId?.includes('-')) {
-        const parts = log.attractionId.split('-')
+      if (attractionId?.includes('-')) {
+        const parts = attractionId.split('-')
         
         // Try removing first part (e.g., "kingdom-space-mountain" -> "space-mountain")
         for (let i = 1; i < parts.length; i++) {
@@ -269,7 +319,7 @@ async function resolveAttractionName(log: any): Promise<string> {
   }
   
   // Last resort: return a cleaned up version of the ID without debug info
-  const cleanId = log.attractionId?.replace(/^[^-]+-/, '') || log.attractionId || 'unknown'
+  const cleanId = attractionId?.replace(/^[^-]+-/, '') || attractionId || 'unknown'
   return cleanId.split('-').map((word: string) => 
     word.charAt(0).toUpperCase() + word.slice(1)
   ).join(' ')
