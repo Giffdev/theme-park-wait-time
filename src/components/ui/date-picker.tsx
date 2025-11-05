@@ -2,7 +2,7 @@ import { useState } from "react"
 import { format } from "date-fns"
 import { Calendar as CalendarIcon } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils"
-import { Calendar } from "@/components/ui/calendar"
+import { EnhancedCalendar } from "@/components/ui/enhanced-calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 
@@ -42,19 +42,19 @@ export function DatePicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="single"
+        <EnhancedCalendar
           selected={date}
           onSelect={(newDate) => {
             onDateChange(newDate)
-            setOpen(false)
+            if (newDate) {
+              setOpen(false)
+            }
           }}
           disabled={
             disableFutureDates
               ? (date) => date > new Date()
               : undefined
           }
-          initialFocus
         />
       </PopoverContent>
     </Popover>
