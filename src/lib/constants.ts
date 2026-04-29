@@ -64,6 +64,14 @@ export const PARK_FAMILIES = [
       { id: 'busch-gardens-tampa', name: 'Busch Gardens Tampa Bay' },
     ],
   },
+  {
+    id: 'worlds-of-fun',
+    name: 'Worlds of Fun',
+    parks: [
+      { id: 'worlds-of-fun', name: 'Worlds of Fun' },
+      { id: 'oceans-of-fun', name: 'Oceans of Fun' },
+    ],
+  },
 ] as const;
 
 export type ParkFamily = (typeof PARK_FAMILIES)[number];

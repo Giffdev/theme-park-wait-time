@@ -60,6 +60,15 @@ export const PARK_FAMILY_REGISTRY: ParkFamilyDefinition[] = [
       { parkId: '3a3c0b0e-24c5-4f1c-b34e-ec26c571e4b6', parkName: 'Busch Gardens Tampa Bay' },
     ],
   },
+  {
+    id: 'worlds-of-fun',
+    name: 'Worlds of Fun',
+    slug: 'wof',
+    parks: [
+      { parkId: 'bb731eae-7bd3-4713-bd7b-89d79b031743', parkName: 'Worlds of Fun' },
+      { parkId: 'oceans-of-fun-kc', parkName: 'Oceans of Fun' },
+    ],
+  },
 ];
 
 /** Find a park family by its ID. */
