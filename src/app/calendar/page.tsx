@@ -5,7 +5,6 @@ import { ChevronLeft, ChevronRight, Thermometer } from 'lucide-react';
 import { PARK_FAMILIES, CROWD_LEVEL_COLORS } from '@/lib/constants';
 import { FamilySelector } from '@/components/crowd-calendar/FamilySelector';
 import { CalendarDayCell } from '@/components/crowd-calendar/CalendarDayCell';
-import { BestPlanBanner } from '@/components/crowd-calendar/BestPlanBanner';
 import { MiniMonth } from '@/components/crowd-calendar/MiniMonth';
 import type { FamilyCrowdMonth, CrowdDay } from '@/types/crowd-calendar';
 
@@ -213,12 +212,7 @@ export default function CalendarPage() {
         })}
       </div>
 
-      {/* Best plan banner */}
-      {data?.bestPlan && (
-        <div className="mb-5">
-          <BestPlanBanner bestPlan={data.bestPlan} />
-        </div>
-      )}
+
 
       {/* Month navigation */}
       <div className="mb-3 flex items-center justify-between">

@@ -1,12 +1,17 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
-import { X, Clock } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { X, Clock, MessageSquarePlus } from 'lucide-react';
 import WaitTimeBadge from '@/components/WaitTimeBadge';
 import ForecastChart from '@/components/parks/ForecastChart';
+import RecentReports from '@/components/parks/RecentReports';
+import ReportWaitTimeModal from '@/components/parks/ReportWaitTimeModal';
+import { useAuth } from '@/lib/firebase/auth-context';
 import type { QueueData, ForecastEntry, OperatingHoursEntry } from '@/types/queue';
 
 interface RideDetailPanelProps {
+  attractionId: string;
+  parkId: string;
   name: string;
   entityType: string;
   status: string;
@@ -87,8 +92,11 @@ function VirtualQueueDetail({ queue }: { queue: QueueData }) {
   return <div className="space-y-2">{sections}</div>;
 }
 
-export default function RideDetailPanel({ name, entityType, status, waitMinutes, queue, forecast, operatingHours, onClose }: RideDetailPanelProps) {
+export default function RideDetailPanel({ attractionId, parkId, name, entityType, status, waitMinutes, queue, forecast, operatingHours, onClose }: RideDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportRefreshKey, setReportRefreshKey] = useState(0);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -158,8 +166,37 @@ export default function RideDetailPanel({ name, entityType, status, waitMinutes,
               currentWait={waitMinutes}
             />
           </div>
+
+          {/* Report Wait Time Button */}
+          <button
+            onClick={() => {
+              if (!user) {
+                window.location.href = '/auth/signin';
+                return;
+              }
+              setShowReportModal(true);
+            }}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-coral-500 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-coral-600"
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+            Report Wait Time
+          </button>
+
+          {/* Recent Community Reports */}
+          <RecentReports attractionId={attractionId} refreshKey={reportRefreshKey} />
         </div>
       </div>
+
+      {/* Report Modal */}
+      {showReportModal && (
+        <ReportWaitTimeModal
+          attractionId={attractionId}
+          attractionName={name}
+          parkId={parkId}
+          onClose={() => setShowReportModal(false)}
+          onSuccess={() => setReportRefreshKey((k) => k + 1)}
+        />
+      )}
     </div>
   );
 }

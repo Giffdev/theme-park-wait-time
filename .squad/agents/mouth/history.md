@@ -242,6 +242,15 @@
 - MiniMonth cells use hex color + `'40'` suffix (25% opacity) for subtle aggregate coloring without defining extra Tailwind classes
 - Park toggle chips with `line-through` when disabled give clear visual feedback without removing the chip from layout (prevents layout shift)
 
+## Homepage Auth-Aware Fix (2026-04-29)
+
+- Extracted feature cards from `src/app/page.tsx` (server component) into `src/components/FeatureCards.tsx` (client component with `useAuth()`)
+- Trip card now links to `/auth/signin` for unauthenticated users, `/trips/new` for signed-in users
+- Description text adjusts: "Sign in to track…" vs "Track wait times…"
+- CTA text in hover state: "Sign in →" vs "Explore →"
+- Pattern: Keep page layout as server component, extract auth-dependent sections into client components
+- Audited all public pages — only the home page trip card linked to a protected route without auth check
+
 ## Scribe Orchestration Log (2026-04-29 18:47:57Z)
 
 **Phase 1 Team Delivery:**

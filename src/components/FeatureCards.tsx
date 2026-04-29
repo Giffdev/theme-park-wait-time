@@ -9,9 +9,9 @@ export function FeatureCards() {
   const tripCard = {
     href: !loading && !user ? '/auth/signin' : '/trips/new',
     emoji: '🎟️',
-    title: !loading && !user ? 'Log Your Trip' : 'Log Your Trip',
+    title: !loading && !user ? 'Start Your Park Journal' : 'Log Your Trip',
     description: !loading && !user
-      ? 'Sign in to track wait times, rate attractions, and help the community.'
+      ? 'Sign in to log rides, track wait times, and build your ultimate theme park history. 🎢'
       : 'Track wait times, rate attractions, and help the community with real-time insights.',
     color: 'bg-coral-50 hover:bg-coral-100 border-coral-200',
     textColor: 'text-coral-700',
@@ -53,7 +53,7 @@ export function FeatureCards() {
             {feature.description}
           </p>
           <div className={`mt-4 inline-flex items-center gap-1 text-sm font-medium ${feature.textColor} opacity-0 transition-opacity group-hover:opacity-100`}>
-            {!loading && !user && feature.href === '/auth/signin' ? 'Sign in →' : 'Explore →'}
+            {!loading && !user && feature.href === '/auth/signin' ? 'Join the fun →' : 'Explore →'}
           </div>
         </Link>
       ))}

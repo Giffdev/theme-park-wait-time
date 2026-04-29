@@ -64,6 +64,7 @@ export default function ParkDetailPage() {
     attractionTypes: new Set<AttractionType>(),
   });
   const [selectedRide, setSelectedRide] = useState<{
+    attractionId: string;
     name: string;
     entityType: string;
     status: string;
@@ -348,7 +349,7 @@ export default function ParkDetailPage() {
               status={a.status}
               waitMinutes={a.waitMinutes}
               queue={a.queue}
-              onClick={() => setSelectedRide({ name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, operatingHours: a.operatingHours })}
+              onClick={() => setSelectedRide({ attractionId: a.id, name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, operatingHours: a.operatingHours })}
             />
           ))}
           {operating.length === 0 && (
@@ -374,7 +375,7 @@ export default function ParkDetailPage() {
                 status={a.status}
                 waitMinutes={a.waitMinutes}
                 queue={a.queue}
-                onClick={() => setSelectedRide({ name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, operatingHours: a.operatingHours })}
+                onClick={() => setSelectedRide({ attractionId: a.id, name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, operatingHours: a.operatingHours })}
               />
             ))}
           </div>
@@ -384,6 +385,8 @@ export default function ParkDetailPage() {
       {/* Ride Detail Panel */}
       {selectedRide && (
         <RideDetailPanel
+          attractionId={selectedRide.attractionId}
+          parkId={parkId as string}
           name={selectedRide.name}
           entityType={selectedRide.entityType}
           status={selectedRide.status}
