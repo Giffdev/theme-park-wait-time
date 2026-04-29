@@ -74,3 +74,25 @@
 
 - **Test Coverage:** 99 passing tests across 6 files (auth helpers, sign-in/sign-up pages, parks/wait-times components).
 - **Status:** All Phase 1 QA targets met. Firebase Auth flows validated. Parks dashboard UI tested. Ready for Phase 2 feature tests (seeding, scheduling, crowd calendar).
+
+## Phase 2 — Ride Logging & Crowdsourced Wait Times (2026-04-29)
+
+- **Test Coverage:** 66 new tests across 7 files — all passing. Total suite: 216 passing tests.
+- **Files Created:**
+  - `tests/services/ride-log-service.test.ts` — 12 tests: CRUD on users/{userId}/rideLogs subcollection
+  - `tests/services/timer-service.test.ts` — 12 tests: start/stop/abandon timer, 4-hour abandoned boundary
+  - `tests/services/crowd-service.test.ts` — 4 tests: aggregate reads via Admin SDK
+  - `tests/api/queue-report.test.ts` — 10 tests: auth, validation, privacy (no userId leak), boundary values
+  - `tests/components/queue-timer.test.tsx` — 10 tests: QueueTimerButton states, TimerDisplay ticking + colors, TimerCompleteSheet
+  - `tests/components/ride-log.test.tsx` — 6 tests: empty state, date grouping, entry display, form validation
+  - `tests/components/crowd-estimate.test.tsx` — 12 tests: CrowdBadge rendering/null, ConfidenceIndicator dots + checkmark
+
+## Learnings (Phase 2)
+
+- **2026-04-29:** Timer service uses `firebase/firestore` SDK directly (not the generic helpers). Mock `Timestamp` must be a real class (for `instanceof` checks). Use `vi.hoisted()` to define the class before `vi.mock()` hoisting.
+- **2026-04-29:** Crowd service uses Firebase Admin SDK (`firebase-admin/firestore`). Mock `adminDb.doc(...).get()` and `adminDb.collection(...).get()` chain patterns.
+- **2026-04-29:** API route tests use real `NextRequest` constructor with JSON body — much more reliable than mocking request objects manually.
+- **2026-04-29:** QueueTimerButton uses `useAuth()` + `useActiveTimer()` hooks. Both must be mocked at the module level for component tests.
+- **2026-04-29:** CrowdBadge returns `null` when `estimateMinutes === null || reportCount === 0` — test both cases separately.
+- **2026-04-29:** ConfidenceIndicator takes `confidence` + `reportCount` props (not `level`). Uses `span.inline-block` dots with `bg-primary-500` (filled) vs `bg-primary-200` (empty).
+- **2026-04-29:** ManualLogForm fetches parks/attractions via `getCollection` on mount. Must mock `@/lib/firebase/firestore` at module level to prevent Firebase init errors.
