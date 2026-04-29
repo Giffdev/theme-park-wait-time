@@ -3,13 +3,25 @@ import { Timestamp } from 'firebase-admin/firestore';
 
 const API_BASE = 'https://api.themeparks.wiki/v1';
 
-// Orlando destination keywords to match
-const ORLANDO_DESTINATIONS = [
-  'walt disney world',
-  'universal orlando',
-  'seaworld orlando',
-  'seaworld parks',
-];
+// Destinations to seed, matched by keyword in destination name
+interface DestinationConfig {
+  keywords: string[];
+  // If specified, only seed parks matching these UUIDs (skip others like water parks not in API)
+  parkFilter?: string[];
+  // Override timezone for parks in this destination
+  timezoneOverride?: string;
+}
+
+const SEED_DESTINATIONS: Record<string, DestinationConfig> = {
+  orlando: {
+    keywords: ['walt disney world', 'universal orlando', 'seaworld orlando', 'seaworld parks'],
+  },
+  'worlds-of-fun': {
+    keywords: ['worlds of fun'],
+    parkFilter: ['bb731eae-7bd3-4713-bd7b-89d79b031743'],
+    timezoneOverride: 'America/Chicago',
+  },
+};
 
 interface Destination {
   id: string;
@@ -36,34 +48,68 @@ function slugify(name: string): string {
     .replace(/^-|-$/g, '');
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
+async function fetchJson<T>(url: string): Promise<T | null> {
   const res = await fetch(url);
   if (!res.ok) {
+    if (res.status === 404) {
+      return null;
+    }
     throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;
 }
 
-async function getOrlandoDestinations(): Promise<Destination[]> {
-  console.log('Fetching destinations from ThemeParks.wiki...');
-  const data = await fetchJson<{ destinations: Destination[] }>(`${API_BASE}/destinations`);
-
-  const orlandoDestinations = data.destinations.filter((dest) =>
-    ORLANDO_DESTINATIONS.some((keyword) => dest.name.toLowerCase().includes(keyword))
-  );
-
-  console.log(`Found ${orlandoDestinations.length} Orlando destinations:`);
-  orlandoDestinations.forEach((d) => console.log(`  - ${d.name} (${d.parks.length} parks)`));
-
-  return orlandoDestinations;
+interface MatchedDestination {
+  destination: Destination;
+  config: DestinationConfig;
 }
 
-async function seedParksAndAttractions(destinations: Destination[]): Promise<void> {
+async function getConfiguredDestinations(): Promise<MatchedDestination[]> {
+  console.log('Fetching destinations from ThemeParks.wiki...');
+  const data = await fetchJson<{ destinations: Destination[] }>(`${API_BASE}/destinations`);
+  if (!data) {
+    throw new Error('Could not fetch destinations list from API');
+  }
+
+  const matched: MatchedDestination[] = [];
+
+  for (const [name, config] of Object.entries(SEED_DESTINATIONS)) {
+    const found = data.destinations.filter((dest) =>
+      config.keywords.some((keyword) => dest.name.toLowerCase().includes(keyword))
+    );
+
+    if (found.length === 0) {
+      console.warn(`  ⚠ No destinations matched for "${name}" — skipping`);
+      continue;
+    }
+
+    for (const dest of found) {
+      matched.push({ destination: dest, config });
+    }
+  }
+
+  console.log(`\nMatched ${matched.length} destinations:`);
+  matched.forEach((m) =>
+    console.log(`  - ${m.destination.name} (${m.destination.parks.length} parks)`)
+  );
+
+  return matched;
+}
+
+async function seedParksAndAttractions(matches: MatchedDestination[]): Promise<void> {
   let parkCount = 0;
   let attractionCount = 0;
+  let skippedCount = 0;
 
-  for (const dest of destinations) {
+  for (const { destination: dest, config } of matches) {
     for (const park of dest.parks) {
+      // If a park filter is set, skip parks not in the filter
+      if (config.parkFilter && !config.parkFilter.includes(park.id)) {
+        console.log(`\n  Skipping ${park.name} (not in park filter)`);
+        skippedCount++;
+        continue;
+      }
+
       console.log(`\nProcessing park: ${park.name}...`);
 
       // Fetch park entity details for timezone/location
@@ -74,13 +120,25 @@ async function seedParksAndAttractions(destinations: Destination[]): Promise<voi
           timezone?: string;
           location?: { latitude: number; longitude: number };
         }>(`${API_BASE}/entity/${park.id}`);
+
+        if (!entityData) {
+          console.warn(`  ⚠ Park ${park.name} (${park.id}) not found in API — skipping`);
+          skippedCount++;
+          continue;
+        }
+
         timezone = entityData.timezone || null;
         if (entityData.location) {
           location = { lat: entityData.location.latitude, lng: entityData.location.longitude };
         }
       } catch (e) {
-        console.warn(`  Warning: Could not fetch entity details for ${park.name}`);
+        console.warn(`  ⚠ Could not fetch entity details for ${park.name} — skipping`);
+        skippedCount++;
+        continue;
       }
+
+      // Apply timezone override if configured
+      const finalTimezone = config.timezoneOverride || timezone || 'America/New_York';
 
       // Write park document
       const parkDoc = {
@@ -89,14 +147,14 @@ async function seedParksAndAttractions(destinations: Destination[]): Promise<voi
         slug: park.slug || slugify(park.name),
         destinationName: dest.name,
         destinationId: dest.id,
-        timezone: timezone || 'America/New_York',
+        timezone: finalTimezone,
         location,
         updatedAt: Timestamp.now(),
       };
 
       await adminDb.collection('parks').doc(park.id).set(parkDoc, { merge: true });
       parkCount++;
-      console.log(`  ✓ Park saved: ${park.name}`);
+      console.log(`  ✓ Park saved: ${park.name} (${finalTimezone})`);
 
       // Fetch children (attractions)
       let children: EntityChild[] = [];
@@ -104,9 +162,13 @@ async function seedParksAndAttractions(destinations: Destination[]): Promise<voi
         const childData = await fetchJson<{ children: EntityChild[] }>(
           `${API_BASE}/entity/${park.id}/children`
         );
+        if (!childData) {
+          console.warn(`  ⚠ No children data for ${park.name} — skipping attractions`);
+          continue;
+        }
         children = childData.children || [];
       } catch (e) {
-        console.warn(`  Warning: Could not fetch children for ${park.name}`);
+        console.warn(`  ⚠ Could not fetch children for ${park.name}`);
         continue;
       }
 
@@ -146,21 +208,22 @@ async function seedParksAndAttractions(destinations: Destination[]): Promise<voi
 
   console.log(`\n========================================`);
   console.log(`Seeding complete!`);
-  console.log(`  Parks: ${parkCount}`);
-  console.log(`  Attractions: ${attractionCount}`);
+  console.log(`  Parks seeded: ${parkCount}`);
+  console.log(`  Attractions seeded: ${attractionCount}`);
+  console.log(`  Parks skipped: ${skippedCount}`);
   console.log(`========================================`);
 }
 
 async function main(): Promise<void> {
   try {
-    const destinations = await getOrlandoDestinations();
+    const matches = await getConfiguredDestinations();
 
-    if (destinations.length === 0) {
-      console.error('No Orlando destinations found. Check API response.');
+    if (matches.length === 0) {
+      console.error('No configured destinations found. Check API response.');
       process.exit(1);
     }
 
-    await seedParksAndAttractions(destinations);
+    await seedParksAndAttractions(matches);
   } catch (error) {
     console.error('Seed failed:', error);
     process.exit(1);

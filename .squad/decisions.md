@@ -1073,6 +1073,15 @@ Show temperatures in both Fahrenheit and Celsius (e.g. "92°F (33°C)"). **Actio
 
 ---
 
+### D7: Only Include ThemeParks Wiki Supported Parks
+
+**Date:** 2026-04-29T15:06:01-07:00  
+**By:** Devin Sinha
+
+Only include parks that exist in the ThemeParks Wiki API. If a park (like Oceans of Fun) isn't in the API, omit it entirely — don't use placeholder IDs. Add error handling for when the wiki removes a park from our registry.
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus

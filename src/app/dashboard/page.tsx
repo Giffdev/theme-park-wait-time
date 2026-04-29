@@ -61,10 +61,7 @@ export default function DashboardPage() {
           <p className="text-sm text-primary-700">
             <span className="font-medium">Email:</span> {user.email}
           </p>
-          <p className="text-sm text-primary-700">
-            <span className="font-medium">Provider:</span>{' '}
-            {user.providerData[0]?.providerId === 'google.com' ? 'Google' : 'Email/Password'}
-          </p>
+
         </div>
       </div>
 

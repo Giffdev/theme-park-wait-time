@@ -80,3 +80,33 @@ Successfully shipped forecast blending + crowd calendar historical fix. 11 decis
 
 **Status:** Batch orchestration complete. Decisions archived. All components integrated. Ready for Phase 2 refinement.
 
+
+## Recent Work (2026-04-29T15:04:45-07:00)
+
+### Worlds of Fun Park Registration
+
+Added Worlds of Fun (Kansas City) park family to both registries:
+- `src/lib/constants.ts` - Added `worlds-of-fun` entry with parks: Worlds of Fun, Oceans of Fun
+- `src/lib/crowd-calendar/park-families.ts` - Added `worlds-of-fun` entry with slug `wof`, real UUID for Worlds of Fun (`bb731eae-7bd3-4713-bd7b-89d79b031743`), placeholder ID `oceans-of-fun-kc` for water park (not yet in ThemeParks Wiki API)
+- Build passes, deployed to Vercel prod.
+
+## Recent Work (2026-04-29T15:16:06-07:00)
+
+### Seed Script Generalization + Worlds of Fun Seeding
+
+Refactored `scripts/seed-parks.ts` from Orlando-only to a multi-destination architecture:
+- `SEED_DESTINATIONS` config map: each entry has `keywords` (for matching API destinations), optional `parkFilter` (UUID allowlist to exclude water parks not in API), and optional `timezoneOverride`.
+- `fetchJson` now returns `null` on 404 instead of throwing — enables graceful skip for removed parks.
+- Parks that return no data from API are warned and skipped, not crashed.
+- Worlds of Fun seeded: UUID `bb731eae-7bd3-4713-bd7b-89d79b031743`, timezone `America/Chicago`, 94 attractions.
+- Oceans of Fun excluded via `parkFilter` (not in ThemeParks Wiki API).
+- Total: 13 parks, 627 attractions seeded across Orlando + Kansas City.
+
+## Learnings
+
+- Park registration requires entries in TWO files: `src/lib/constants.ts` (PARK_FAMILIES) and `src/lib/crowd-calendar/park-families.ts` (PARK_FAMILY_REGISTRY). The first uses simple string IDs; the second uses ThemeParks Wiki UUIDs.
+- When a park isn't in the ThemeParks Wiki API yet, use a descriptive placeholder ID (e.g., `oceans-of-fun-kc`) - it won't have live data but reserves the slot.
+- User wants to eventually add ALL parks from the wiki. Current approach: add incrementally per request.
+- `scripts/seed-parks.ts` now uses a `SEED_DESTINATIONS` config map — to add a new destination, just add an entry with keywords, optional parkFilter (UUID list), and optional timezoneOverride. No structural changes needed.
+- Firestore seeding uses `service-account.json` at project root (or `FIREBASE_SERVICE_ACCOUNT` env var).
+- ThemeParks Wiki API destination for Worlds of Fun ID: `c4231018-dc6f-4d8d-bfc2-7a21a6c9e9fa`. The destination contains both Worlds of Fun and Oceans of Fun, but only WoF is in the API.

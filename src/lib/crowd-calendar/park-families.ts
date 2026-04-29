@@ -66,7 +66,6 @@ export const PARK_FAMILY_REGISTRY: ParkFamilyDefinition[] = [
     slug: 'wof',
     parks: [
       { parkId: 'bb731eae-7bd3-4713-bd7b-89d79b031743', parkName: 'Worlds of Fun' },
-      { parkId: 'oceans-of-fun-kc', parkName: 'Oceans of Fun' },
     ],
   },
 ];

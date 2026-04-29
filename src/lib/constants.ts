@@ -69,7 +69,6 @@ export const PARK_FAMILIES = [
     name: 'Worlds of Fun',
     parks: [
       { id: 'worlds-of-fun', name: 'Worlds of Fun' },
-      { id: 'oceans-of-fun', name: 'Oceans of Fun' },
     ],
   },
 ] as const;
