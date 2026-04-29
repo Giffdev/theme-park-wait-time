@@ -19,28 +19,56 @@ function slugToName(slug: string): string {
 
 export default function AttractionDetailPage() {
   const params = useParams<{ parkId: string; attractionId: string }>();
-  const parkId = params.parkId;
-  const attractionId = params.attractionId;
+  const parkSlug = params.parkId;
+  const attractionSlug = params.attractionId;
   const { user } = useAuth();
 
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportRefreshKey, setReportRefreshKey] = useState(0);
   const [consensus, setConsensus] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [attractionUuid, setAttractionUuid] = useState<string | null>(null);
+  const [parkUuid, setParkUuid] = useState<string | null>(null);
+  const [attractionName, setAttractionName] = useState(slugToName(attractionSlug));
+  const [parkName, setParkName] = useState(slugToName(parkSlug));
 
-  const attractionName = slugToName(attractionId);
-  const parkName = slugToName(parkId);
-
-  // Load consensus wait time
+  // Resolve slugs to UUIDs and real names
   useEffect(() => {
     let cancelled = false;
+    async function resolve() {
+      try {
+        const [parks, attractions] = await Promise.all([
+          getCollection<{ id: string; name: string; slug: string }>('parks', [whereConstraint('slug', '==', parkSlug)]),
+          getCollection<{ id: string; name: string; slug: string }>('attractions', [whereConstraint('slug', '==', attractionSlug)]),
+        ]);
+        if (cancelled) return;
+        if (parks.length > 0) {
+          setParkUuid(parks[0].id);
+          setParkName(parks[0].name);
+        }
+        if (attractions.length > 0) {
+          setAttractionUuid(attractions[0].id);
+          setAttractionName(attractions[0].name);
+        }
+      } catch {
+        // Fall back to slug-derived names
+      }
+    }
+    resolve();
+    return () => { cancelled = true; };
+  }, [parkSlug, attractionSlug]);
+
+  // Load consensus wait time once we have the attraction UUID
+  useEffect(() => {
+    if (!attractionUuid) return;
+    let cancelled = false;
     setLoading(true);
-    getConsensusWaitTime(attractionId)
+    getConsensusWaitTime(attractionUuid)
       .then((val) => { if (!cancelled) setConsensus(val); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [attractionId, reportRefreshKey]);
+  }, [attractionUuid, reportRefreshKey]);
 
   const consensusDisplay = consensus === null
     ? '—'
@@ -64,7 +92,7 @@ export default function AttractionDetailPage() {
       <nav className="mb-6 text-sm text-primary-400">
         <Link href="/parks" className="hover:text-primary-600">Parks</Link>
         <span className="mx-2">›</span>
-        <Link href={`/parks/${parkId}`} className="hover:text-primary-600">{parkName}</Link>
+        <Link href={`/parks/${parkSlug}`} className="hover:text-primary-600">{parkName}</Link>
         <span className="mx-2">›</span>
         <span className="text-primary-700">{attractionName}</span>
       </nav>
@@ -73,7 +101,7 @@ export default function AttractionDetailPage() {
       <div className="flex items-start justify-between gap-4 mb-8">
         <div>
           <Link
-            href={`/parks/${parkId}`}
+            href={`/parks/${parkSlug}`}
             className="inline-flex items-center gap-1 text-sm text-primary-500 hover:text-primary-700 mb-2"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -160,7 +188,7 @@ export default function AttractionDetailPage() {
 
           {/* Recent Reports */}
           <div className="rounded-xl border border-primary-100 p-5">
-            <RecentReports attractionId={attractionId} refreshKey={reportRefreshKey} />
+            <RecentReports attractionId={attractionUuid || attractionSlug} refreshKey={reportRefreshKey} />
           </div>
 
           {/* CTA to report */}
@@ -185,11 +213,11 @@ export default function AttractionDetailPage() {
       </div>
 
       {/* Report Modal */}
-      {showReportModal && (
+      {showReportModal && attractionUuid && parkUuid && (
         <ReportWaitTimeModal
-          attractionId={attractionId}
+          attractionId={attractionUuid}
           attractionName={attractionName}
-          parkId={parkId}
+          parkId={parkUuid}
           onClose={() => setShowReportModal(false)}
           onSuccess={() => setReportRefreshKey((k) => k + 1)}
         />

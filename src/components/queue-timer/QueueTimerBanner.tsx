@@ -21,11 +21,14 @@ export default function QueueTimerBanner() {
     await stopTimer(user.uid);
   };
 
+  // Derive slug for link: use stored parkSlug, or fall back to slugified parkName
+  const parkSlug = timer.parkSlug || timer.parkName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
   return (
     <div className="relative z-40 bg-gradient-to-r from-primary-600 to-primary-700 text-white shadow-md">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-2 sm:px-6">
         <Link
-          href={`/parks/${timer.parkId}`}
+          href={`/parks/${parkSlug}`}
           className="flex min-w-0 flex-1 items-center gap-3 transition-opacity hover:opacity-80"
         >
           <span className="animate-pulse text-lg">⏱️</span>

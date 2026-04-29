@@ -37,10 +37,9 @@ vi.mock('@/lib/firebase/config', () => ({
 }));
 
 // Mock Firestore
-const mockGetDocument = vi.fn();
 const mockGetCollection = vi.fn();
 vi.mock('@/lib/firebase/firestore', () => ({
-  getDocument: (...args: unknown[]) => mockGetDocument(...args),
+  getDocument: vi.fn(),
   getCollection: (...args: unknown[]) => mockGetCollection(...args),
   whereConstraint: vi.fn((...args: unknown[]) => args),
 }));
@@ -74,10 +73,10 @@ const mockAttractions = [
 ];
 
 const mockWaitTimes = [
-  { id: 'wt-1', attractionId: 'space-mountain', attractionName: 'Space Mountain', status: 'OPERATING', waitMinutes: 60, lastUpdated: '2026-04-29T09:00:00Z', fetchedAt: '2026-04-29T09:05:00Z' },
-  { id: 'wt-2', attractionId: 'haunted-mansion', attractionName: 'Haunted Mansion', status: 'OPERATING', waitMinutes: 20, lastUpdated: '2026-04-29T09:00:00Z', fetchedAt: '2026-04-29T09:05:00Z' },
-  { id: 'wt-3', attractionId: 'pirates', attractionName: 'Pirates of the Caribbean', status: 'CLOSED', waitMinutes: null, lastUpdated: null, fetchedAt: '2026-04-29T09:05:00Z' },
-  { id: 'wt-4', attractionId: 'jungle-cruise', attractionName: 'Jungle Cruise', status: 'OPERATING', waitMinutes: 35, lastUpdated: '2026-04-29T09:00:00Z', fetchedAt: '2026-04-29T09:05:00Z' },
+  { id: 'wt-1', attractionId: 'space-mountain', attractionName: 'Space Mountain', status: 'OPERATING', waitMinutes: 60, lastUpdated: '2026-04-29T09:00:00Z', fetchedAt: '2026-04-29T09:05:00Z', forecast: [{ time: '10:00', wait: 60 }] },
+  { id: 'wt-2', attractionId: 'haunted-mansion', attractionName: 'Haunted Mansion', status: 'OPERATING', waitMinutes: 20, lastUpdated: '2026-04-29T09:00:00Z', fetchedAt: '2026-04-29T09:05:00Z', forecast: [{ time: '10:00', wait: 20 }] },
+  { id: 'wt-3', attractionId: 'pirates', attractionName: 'Pirates of the Caribbean', status: 'CLOSED', waitMinutes: null, lastUpdated: null, fetchedAt: '2026-04-29T09:05:00Z', forecast: [] },
+  { id: 'wt-4', attractionId: 'jungle-cruise', attractionName: 'Jungle Cruise', status: 'OPERATING', waitMinutes: 35, lastUpdated: '2026-04-29T09:00:00Z', fetchedAt: '2026-04-29T09:05:00Z', forecast: [{ time: '10:00', wait: 35 }] },
 ];
 
 describe('Park Detail Page', () => {
@@ -92,7 +91,6 @@ describe('Park Detail Page', () => {
 
   describe('loading state', () => {
     it('shows loading skeletons while data loads', () => {
-      mockGetDocument.mockReturnValue(new Promise(() => {}));
       mockGetCollection.mockReturnValue(new Promise(() => {}));
 
       const { container } = render(<ParkDetailPage />);
@@ -104,8 +102,8 @@ describe('Park Detail Page', () => {
 
   describe('after data loads', () => {
     beforeEach(() => {
-      mockGetDocument.mockResolvedValue(mockPark);
       mockGetCollection
+        .mockResolvedValueOnce([mockPark])  // park by slug query
         .mockResolvedValueOnce(mockAttractions)
         .mockResolvedValueOnce(mockWaitTimes);
     });
@@ -187,11 +185,14 @@ describe('Park Detail Page', () => {
 
   describe('refresh behavior', () => {
     beforeEach(() => {
-      mockGetDocument.mockResolvedValue(mockPark);
       mockGetCollection
+        .mockResolvedValueOnce([mockPark])  // park by slug query
         .mockResolvedValueOnce(mockAttractions)
         .mockResolvedValueOnce(mockWaitTimes)
-        .mockResolvedValue([]);
+        // After refresh: park slug query, attractions, wait times
+        .mockResolvedValueOnce([mockPark])
+        .mockResolvedValueOnce(mockAttractions)
+        .mockResolvedValueOnce(mockWaitTimes);
     });
 
     it('has a refresh button', async () => {
@@ -235,8 +236,8 @@ describe('Park Detail Page', () => {
 
   describe('sort toggle', () => {
     beforeEach(() => {
-      mockGetDocument.mockResolvedValue(mockPark);
       mockGetCollection
+        .mockResolvedValueOnce([mockPark])  // park by slug query
         .mockResolvedValueOnce(mockAttractions)
         .mockResolvedValueOnce(mockWaitTimes);
     });
@@ -265,7 +266,6 @@ describe('Park Detail Page', () => {
 
   describe('error handling', () => {
     it('handles Firestore fetch errors gracefully (no crash)', async () => {
-      mockGetDocument.mockRejectedValue(new Error('Network error'));
       mockGetCollection.mockRejectedValue(new Error('Network error'));
 
       render(<ParkDetailPage />);

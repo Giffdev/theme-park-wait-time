@@ -44,6 +44,7 @@ export interface ActiveTimer {
   parkId: string;
   attractionId: string;
   parkName: string;
+  parkSlug?: string;
   attractionName: string;
   startedAt: Date;
   clientStartedAt: number; // client epoch ms (for offline resilience)
@@ -54,7 +55,7 @@ export interface ActiveTimer {
 /** Data required to start a new timer. */
 export type TimerStartData = Pick<
   ActiveTimer,
-  'parkId' | 'attractionId' | 'parkName' | 'attractionName' | 'clientStartedAt'
+  'parkId' | 'attractionId' | 'parkName' | 'parkSlug' | 'attractionName' | 'clientStartedAt'
 >;
 
 // ---------------------------------------------------------------------------

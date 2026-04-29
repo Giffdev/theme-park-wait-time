@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RefreshCw, ArrowUpDown, TrendingUp, Clock, AlertCircle } from 'lucide-react';
-import { getDocument, getCollection, whereConstraint } from '@/lib/firebase/firestore';
+import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
 import AttractionRow from '@/components/AttractionRow';
 import AttractionFilterChips, {
   type FilterState,
@@ -113,18 +113,28 @@ export default function ParkDetailPage() {
   const fetchData = useCallback(async () => {
     if (!parkId) return;
     try {
-      const [parkDoc, attractionDocs, waitDocs] = await Promise.all([
-        getDocument<Park>('parks', parkId),
-        getCollection<Attraction>('attractions', [whereConstraint('parkId', '==', parkId)]),
-        getCollection<WaitTimeEntry>(`waitTimes/${parkId}/current`),
-      ]);
+      // Look up park by slug field
+      const parkDocs = await getCollection<Park>('parks', [whereConstraint('slug', '==', parkId)]);
+      const parkDoc = parkDocs.length > 0 ? parkDocs[0] : null;
       setPark(parkDoc);
+
+      if (!parkDoc) {
+        setLoading(false);
+        return null;
+      }
+
+      // Use the park's UUID for attraction and wait time queries
+      const parkUuid = parkDoc.id;
+      const [attractionDocs, waitDocs] = await Promise.all([
+        getCollection<Attraction>('attractions', [whereConstraint('parkId', '==', parkUuid)]),
+        getCollection<WaitTimeEntry>(`waitTimes/${parkUuid}/current`),
+      ]);
       setAttractions(attractionDocs);
       setWaitTimes(waitDocs);
 
       // Fetch park schedule
       try {
-        const scheduleRes = await fetch(`/api/park-schedule?parkId=${parkId}`);
+        const scheduleRes = await fetch(`/api/park-schedule?parkId=${parkUuid}`);
         if (scheduleRes.ok) {
           const scheduleData = await scheduleRes.json();
           setSchedule(scheduleData);
@@ -149,10 +159,13 @@ export default function ParkDetailPage() {
       if (waitDocs && waitDocs.length > 0) {
         const hasForecast = waitDocs.some((w) => w.forecast && w.forecast.length > 0);
         if (!hasForecast) {
-          // Refresh from API to populate forecast data, then re-read
+          // Look up park UUID for API call
           try {
-            await fetch(`/api/wait-times?parkId=${parkId}`);
-            await fetchData();
+            const parkDocs = await getCollection<Park>('parks', [whereConstraint('slug', '==', parkId)]);
+            if (parkDocs && parkDocs.length > 0) {
+              await fetch(`/api/wait-times?parkId=${parkDocs[0].id}`);
+              await fetchData();
+            }
           } catch {
             // Non-critical: user can still manually refresh
           }
@@ -163,9 +176,10 @@ export default function ParkDetailPage() {
   }, [fetchData, parkId]);
 
   const handleRefresh = async () => {
+    if (!park) return;
     setRefreshing(true);
     try {
-      await fetch(`/api/wait-times?parkId=${parkId}`);
+      await fetch(`/api/wait-times?parkId=${park.id}`);
       await fetchData();
     } catch (error) {
       console.error('Refresh failed:', error);
@@ -386,10 +400,10 @@ export default function ParkDetailPage() {
       )}
 
       {/* Ride Detail Panel */}
-      {selectedRide && (
+      {selectedRide && park && (
         <RideDetailPanel
           attractionId={selectedRide.attractionId}
-          parkId={parkId as string}
+          parkId={park.id}
           name={selectedRide.name}
           entityType={selectedRide.entityType}
           status={selectedRide.status}

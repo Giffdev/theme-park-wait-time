@@ -163,7 +163,7 @@ export default function ParksPage() {
                 {destParks.map((park) => (
                   <ParkCard
                     key={park.id}
-                    id={park.id}
+                    slug={park.slug}
                     name={park.name}
                     destinationName={park.destinationName}
                     shortestWait={shortestWaits[park.id] ?? null}

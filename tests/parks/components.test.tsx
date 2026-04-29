@@ -146,7 +146,7 @@ describe('StatusIndicator', () => {
 
 describe('ParkCard', () => {
   const defaultProps = {
-    id: 'magic-kingdom',
+    slug: 'magic-kingdom',
     name: 'Magic Kingdom',
     destinationName: 'Walt Disney World',
     shortestWait: 15,
@@ -162,7 +162,7 @@ describe('ParkCard', () => {
     expect(screen.getByText('Walt Disney World')).toBeInTheDocument();
   });
 
-  it('links to the correct park detail page using id', () => {
+  it('links to the correct park detail page using slug', () => {
     render(<ParkCard {...defaultProps} />);
     const link = screen.getByRole('link');
     expect(link).toHaveAttribute('href', '/parks/magic-kingdom');

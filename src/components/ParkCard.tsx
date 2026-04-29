@@ -4,17 +4,17 @@ import Link from 'next/link';
 import WaitTimeBadge from './WaitTimeBadge';
 
 interface ParkCardProps {
-  id: string;
+  slug: string;
   name: string;
   destinationName: string;
   shortestWait: number | null;
   attractionCount?: number;
 }
 
-export default function ParkCard({ id, name, destinationName, shortestWait, attractionCount }: ParkCardProps) {
+export default function ParkCard({ slug, name, destinationName, shortestWait, attractionCount }: ParkCardProps) {
   return (
     <Link
-      href={`/parks/${id}`}
+      href={`/parks/${slug}`}
       className="group flex flex-col justify-between rounded-xl border border-primary-200 bg-white p-5 transition-all hover:border-coral-300 hover:shadow-lg hover:shadow-coral-100/50"
     >
       <div>

@@ -12,6 +12,7 @@ interface QueueTimerButtonProps {
   parkId: string;
   attractionId: string;
   parkName: string;
+  parkSlug?: string;
   attractionName: string;
 }
 
@@ -22,6 +23,7 @@ export default function QueueTimerButton({
   parkId,
   attractionId,
   parkName,
+  parkSlug,
   attractionName,
 }: QueueTimerButtonProps) {
   const { user } = useAuth();
@@ -57,6 +59,7 @@ export default function QueueTimerButton({
         parkId,
         attractionId,
         parkName,
+        parkSlug,
         attractionName,
         clientStartedAt: Date.now(),
       });
