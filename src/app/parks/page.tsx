@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { getCollection } from '@/lib/firebase/firestore';
 import ParkCard from '@/components/ParkCard';
@@ -18,6 +18,7 @@ interface WaitTimeEntry {
   attractionName: string;
   status: string;
   waitMinutes: number | null;
+  fetchedAt?: string;
 }
 
 export default function ParksPage() {
@@ -25,6 +26,32 @@ export default function ParksPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [shortestWaits, setShortestWaits] = useState<Record<string, number | null>>({});
+  const [latestFetchedAt, setLatestFetchedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  // Tick every 30s for freshness label
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const dataFreshness = useMemo(() => {
+    if (!latestFetchedAt) return null;
+    const ageMs = now - latestFetchedAt;
+    const ageMin = Math.round(ageMs / 60_000);
+    const isStale = ageMin >= 10;
+    let label: string;
+    if (ageMin < 1) {
+      label = 'Updated just now';
+    } else if (ageMin === 1) {
+      label = 'Updated 1 min ago';
+    } else if (ageMin < 60) {
+      label = `Updated ${ageMin} min ago`;
+    } else {
+      label = `Updated as of ${new Date(latestFetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    }
+    return { label, isStale };
+  }, [latestFetchedAt, now]);
 
   const fetchParks = useCallback(async () => {
     try {
@@ -33,6 +60,7 @@ export default function ParksPage() {
 
       // Fetch shortest wait for each park from waitTimes subcollection
       const waits: Record<string, number | null> = {};
+      let maxTimestamp = 0;
       for (const park of data) {
         try {
           const waitData = await getCollection<WaitTimeEntry>(
@@ -42,11 +70,20 @@ export default function ParksPage() {
             .filter((w) => w.status === 'OPERATING' && w.waitMinutes !== null)
             .map((w) => w.waitMinutes as number);
           waits[park.id] = operatingWaits.length > 0 ? Math.min(...operatingWaits) : null;
+          // Track most recent fetchedAt
+          for (const w of waitData) {
+            if (w.fetchedAt) {
+              const t = new Date(w.fetchedAt).getTime();
+              if (!isNaN(t) && t > maxTimestamp) maxTimestamp = t;
+            }
+          }
         } catch {
           waits[park.id] = null;
         }
       }
       setShortestWaits(waits);
+      if (maxTimestamp > 0) setLatestFetchedAt(maxTimestamp);
+      setNow(Date.now());
     } catch (error) {
       console.error('Failed to fetch parks:', error);
     } finally {
@@ -96,6 +133,11 @@ export default function ParksPage() {
           {refreshing ? 'Refreshing...' : 'Refresh Data'}
         </button>
       </div>
+      {dataFreshness && (
+        <p className={`-mt-6 mb-6 text-right text-xs ${dataFreshness.isStale ? 'text-amber-600' : 'text-primary-400'}`}>
+          {dataFreshness.label}
+        </p>
+      )}
 
       {loading ? (
         <div className="space-y-10">
