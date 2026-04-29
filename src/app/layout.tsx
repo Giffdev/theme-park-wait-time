@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import Link from 'next/link';
+import { Providers } from './providers';
 import './globals.css';
 
 const inter = Inter({
@@ -79,7 +80,9 @@ export default function RootLayout({
         </header>
 
         {/* ── Main Content ── */}
-        <main className="flex-1">{children}</main>
+        <Providers>
+          <main className="flex-1">{children}</main>
+        </Providers>
 
         {/* ── Footer ── */}
         <footer className="border-t border-primary-100 bg-primary-950 text-primary-200">

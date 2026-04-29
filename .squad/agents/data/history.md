@@ -93,3 +93,12 @@ service cloud.firestore {
 - Firebase config wired into .env.local
 - TypeScript compilation clean
 - Ready for next phase (UI integration or testing)
+
+- **2026-04-29:** Wired Firebase Auth into sign-in, sign-up, and dashboard pages. Key patterns:
+  - `src/app/providers.tsx` — Client-side wrapper that injects `<AuthProvider>` (layout.tsx stays a server component for metadata export).
+  - Auth pages are `'use client'` — import `signIn`, `signUp`, `signInWithGoogle` from `src/lib/firebase/auth.ts`. No changes needed to auth.ts — it already had the right exports.
+  - Error handling uses `FirebaseError` codes mapped to user-friendly messages.
+  - Redirect-if-authenticated: auth pages check `useAuth().user` and call `router.replace('/dashboard')`.
+  - Dashboard shows user info (name, email, provider) when signed in, sign-in CTA when not.
+  - Loading states on all buttons during async auth calls. `disabled:opacity-50` for visual feedback.
+  - Pre-existing build error (500.html rename ENOENT) is unrelated to auth — likely needs a `pages/500.tsx` or Next.js config fix.
