@@ -28,7 +28,7 @@ export type {
   UserPreferences,
   TrustLevel,
 } from './user';
-export type { Trip, TripPark, RideLog } from './trip';
+export type { Trip, TripStats, TripStatus, TripCreateData, TripUpdateData } from './trip';
 export type {
   RideLog as RideLogEntry,
   RideLogCreateData,

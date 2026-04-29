@@ -1,0 +1,493 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e6]:
+      - link "ParkFlow" [ref=e7] [cursor=pointer]:
+        - /url: /
+        - img [ref=e9]
+        - generic [ref=e20]: ParkFlow
+      - navigation [ref=e21]:
+        - link "Home" [ref=e22] [cursor=pointer]:
+          - /url: /
+        - link "Calendar" [ref=e23] [cursor=pointer]:
+          - /url: /calendar
+        - link "My Trips" [ref=e32] [cursor=pointer]:
+          - /url: /my-logs
+        - link "About" [ref=e24] [cursor=pointer]:
+          - /url: /about
+      - generic [ref=e33]:
+        - paragraph [ref=e35]: Giffdev
+        - button [ref=e36]:
+          - img
+  - main [ref=e37]:
+    - generic [ref=e38]:
+      - heading "Smart Theme Park Planning" [level=1] [ref=e39]
+      - paragraph [ref=e40]: Real-time wait times and crowd insights for your perfect park day across major theme park destinations
+    - generic [ref=e42]:
+      - generic [ref=e43]:
+        - generic [ref=e45]:
+          - img [ref=e47]
+          - generic [ref=e49]: Log Your Trip
+        - generic [ref=e50]:
+          - paragraph [ref=e51]: Track wait times, rate attractions, and help the community with real-time insights
+          - button "Start Logging" [ref=e52]
+      - generic [ref=e53]:
+        - generic [ref=e55]:
+          - img [ref=e57]
+          - generic [ref=e59]: View Predictions
+        - generic [ref=e60]:
+          - paragraph [ref=e61]: See crowd forecasts and plan your perfect park day with our calendar
+          - button "View Calendar" [ref=e62]
+      - generic [ref=e63]:
+        - generic [ref=e65]:
+          - img [ref=e67]
+          - generic [ref=e69]: Explore Parks
+        - generic [ref=e70]:
+          - paragraph [ref=e71]: Browse all theme parks and check current wait times for attractions
+          - button "Browse Parks" [ref=e72]
+    - generic [ref=e74]:
+      - generic [ref=e75]:
+        - img [ref=e76]
+        - heading "Filter by park group" [level=3] [ref=e78]
+      - combobox [ref=e80]:
+        - generic: All Parks (10 groups)
+        - img
+    - generic [ref=e81]:
+      - generic [ref=e82]:
+        - generic [ref=e83]:
+          - heading "Walt Disney World Resort" [level=2] [ref=e84]
+          - generic [ref=e85]:
+            - img [ref=e86]
+            - generic [ref=e88]: Orlando, FL
+          - paragraph [ref=e89]: The most magical place on earth with four theme parks and two water parks
+        - generic [ref=e90]:
+          - generic [ref=e91] [cursor=pointer]:
+            - generic [ref=e94]:
+              - generic [ref=e95]: Magic Kingdom
+              - generic [ref=e96]:
+                - generic [ref=e97]: Theme Park
+                - generic [ref=e98]: Extreme
+            - generic [ref=e100]:
+              - generic [ref=e101]:
+                - button "Live Wait Times" [ref=e102]:
+                  - img [ref=e103]
+                  - generic [ref=e105]: Live Wait Times
+                - button "Crowd Calendar" [ref=e106]:
+                  - img [ref=e107]
+                  - generic [ref=e109]: Crowd Calendar
+              - button "View Magic Kingdom" [ref=e110]
+          - generic [ref=e111] [cursor=pointer]:
+            - generic [ref=e114]:
+              - generic [ref=e115]: EPCOT
+              - generic [ref=e116]:
+                - generic [ref=e117]: Theme Park
+                - generic [ref=e118]: High
+            - generic [ref=e120]:
+              - generic [ref=e121]:
+                - button "Live Wait Times" [ref=e122]:
+                  - img [ref=e123]
+                  - generic [ref=e125]: Live Wait Times
+                - button "Crowd Calendar" [ref=e126]:
+                  - img [ref=e127]
+                  - generic [ref=e129]: Crowd Calendar
+              - button "View EPCOT" [ref=e130]
+          - generic [ref=e131] [cursor=pointer]:
+            - generic [ref=e134]:
+              - generic [ref=e135]: Disney's Hollywood Studios
+              - generic [ref=e136]:
+                - generic [ref=e137]: Theme Park
+                - generic [ref=e138]: High
+            - generic [ref=e140]:
+              - generic [ref=e141]:
+                - button "Live Wait Times" [ref=e142]:
+                  - img [ref=e143]
+                  - generic [ref=e145]: Live Wait Times
+                - button "Crowd Calendar" [ref=e146]:
+                  - img [ref=e147]
+                  - generic [ref=e149]: Crowd Calendar
+              - button "View Hollywood Studios" [ref=e150]
+          - generic [ref=e151] [cursor=pointer]:
+            - generic [ref=e154]:
+              - generic [ref=e155]: Disney's Animal Kingdom
+              - generic [ref=e156]:
+                - generic [ref=e157]: Theme Park
+                - generic [ref=e158]: High
+            - generic [ref=e160]:
+              - generic [ref=e161]:
+                - button "Live Wait Times" [ref=e162]:
+                  - img [ref=e163]
+                  - generic [ref=e165]: Live Wait Times
+                - button "Crowd Calendar" [ref=e166]:
+                  - img [ref=e167]
+                  - generic [ref=e169]: Crowd Calendar
+              - button "View Animal Kingdom" [ref=e170]
+          - generic [ref=e171] [cursor=pointer]:
+            - generic [ref=e174]:
+              - generic [ref=e175]: Disney's Blizzard Beach
+              - generic [ref=e176]:
+                - generic [ref=e177]: Water Park
+                - generic [ref=e178]: High
+            - generic [ref=e180]:
+              - generic [ref=e181]:
+                - button "Live Wait Times" [ref=e182]:
+                  - img [ref=e183]
+                  - generic [ref=e185]: Live Wait Times
+                - button "Crowd Calendar" [ref=e186]:
+                  - img [ref=e187]
+                  - generic [ref=e189]: Crowd Calendar
+              - button "View Blizzard Beach" [ref=e190]
+          - generic [ref=e191] [cursor=pointer]:
+            - generic [ref=e194]:
+              - generic [ref=e195]: Disney's Typhoon Lagoon
+              - generic [ref=e196]:
+                - generic [ref=e197]: Water Park
+                - generic [ref=e198]: High
+            - generic [ref=e200]:
+              - generic [ref=e201]:
+                - button "Live Wait Times" [ref=e202]:
+                  - img [ref=e203]
+                  - generic [ref=e205]: Live Wait Times
+                - button "Crowd Calendar" [ref=e206]:
+                  - img [ref=e207]
+                  - generic [ref=e209]: Crowd Calendar
+              - button "View Typhoon Lagoon" [ref=e210]
+      - generic [ref=e211]:
+        - generic [ref=e212]:
+          - heading "Disneyland Resort" [level=2] [ref=e213]
+          - generic [ref=e214]:
+            - img [ref=e215]
+            - generic [ref=e217]: Anaheim, CA
+          - paragraph [ref=e218]: The original Disney theme park resort with two parks
+        - generic [ref=e219]:
+          - generic [ref=e220] [cursor=pointer]:
+            - generic [ref=e223]:
+              - generic [ref=e224]: Disneyland Park
+              - generic [ref=e225]:
+                - generic [ref=e226]: Theme Park
+                - generic [ref=e227]: High
+            - generic [ref=e229]:
+              - generic [ref=e230]:
+                - button "Live Wait Times" [ref=e231]:
+                  - img [ref=e232]
+                  - generic [ref=e234]: Live Wait Times
+                - button "Crowd Calendar" [ref=e235]:
+                  - img [ref=e236]
+                  - generic [ref=e238]: Crowd Calendar
+              - button "View Disneyland" [ref=e239]
+          - generic [ref=e240] [cursor=pointer]:
+            - generic [ref=e243]:
+              - generic [ref=e244]: Disney California Adventure
+              - generic [ref=e245]:
+                - generic [ref=e246]: Theme Park
+                - generic [ref=e247]: High
+            - generic [ref=e249]:
+              - generic [ref=e250]:
+                - button "Live Wait Times" [ref=e251]:
+                  - img [ref=e252]
+                  - generic [ref=e254]: Live Wait Times
+                - button "Crowd Calendar" [ref=e255]:
+                  - img [ref=e256]
+                  - generic [ref=e258]: Crowd Calendar
+              - button "View California Adventure" [ref=e259]
+      - generic [ref=e260]:
+        - generic [ref=e261]:
+          - heading "Universal Orlando Resort" [level=2] [ref=e262]
+          - generic [ref=e263]:
+            - img [ref=e264]
+            - generic [ref=e266]: Orlando, FL
+          - paragraph [ref=e267]: Movie magic comes to life with thrilling attractions and immersive experiences
+        - generic [ref=e268]:
+          - generic [ref=e269] [cursor=pointer]:
+            - generic [ref=e272]:
+              - generic [ref=e273]: Universal Studios Florida
+              - generic [ref=e274]:
+                - generic [ref=e275]: Theme Park
+                - generic [ref=e276]: Extreme
+            - generic [ref=e278]:
+              - generic [ref=e279]:
+                - button "Live Wait Times" [ref=e280]:
+                  - img [ref=e281]
+                  - generic [ref=e283]: Live Wait Times
+                - button "Crowd Calendar" [ref=e284]:
+                  - img [ref=e285]
+                  - generic [ref=e287]: Crowd Calendar
+              - button "View Universal Studios" [ref=e288]
+          - generic [ref=e289] [cursor=pointer]:
+            - generic [ref=e292]:
+              - generic [ref=e293]: Universal's Islands of Adventure
+              - generic [ref=e294]:
+                - generic [ref=e295]: Theme Park
+                - generic [ref=e296]: High
+            - generic [ref=e298]:
+              - generic [ref=e299]:
+                - button "Live Wait Times" [ref=e300]:
+                  - img [ref=e301]
+                  - generic [ref=e303]: Live Wait Times
+                - button "Crowd Calendar" [ref=e304]:
+                  - img [ref=e305]
+                  - generic [ref=e307]: Crowd Calendar
+              - button "View Islands of Adventure" [ref=e308]
+          - generic [ref=e309] [cursor=pointer]:
+            - generic [ref=e312]:
+              - generic [ref=e313]: Universal Epic Universe
+              - generic [ref=e314]:
+                - generic [ref=e315]: Theme Park
+                - generic [ref=e316]: High
+            - generic [ref=e318]:
+              - generic [ref=e319]:
+                - button "Live Wait Times" [ref=e320]:
+                  - img [ref=e321]
+                  - generic [ref=e323]: Live Wait Times
+                - button "Crowd Calendar" [ref=e324]:
+                  - img [ref=e325]
+                  - generic [ref=e327]: Crowd Calendar
+              - button "View Epic Universe" [ref=e328]
+          - generic [ref=e329] [cursor=pointer]:
+            - generic [ref=e332]:
+              - generic [ref=e333]: Universal's Volcano Bay
+              - generic [ref=e334]:
+                - generic [ref=e335]: Water Park
+                - generic [ref=e336]: High
+            - generic [ref=e338]:
+              - generic [ref=e339]:
+                - button "Live Wait Times" [ref=e340]:
+                  - img [ref=e341]
+                  - generic [ref=e343]: Live Wait Times
+                - button "Crowd Calendar" [ref=e344]:
+                  - img [ref=e345]
+                  - generic [ref=e347]: Crowd Calendar
+              - button "View Volcano Bay" [ref=e348]
+      - generic [ref=e349]:
+        - generic [ref=e350]:
+          - heading "Universal Studios Hollywood" [level=2] [ref=e351]
+          - generic [ref=e352]:
+            - img [ref=e353]
+            - generic [ref=e355]: Hollywood, CA
+          - paragraph [ref=e356]: The entertainment capital of LA with studio tours and movie-based attractions
+        - generic [ref=e358] [cursor=pointer]:
+          - generic [ref=e361]:
+            - generic [ref=e362]: Universal Studios Hollywood
+            - generic [ref=e363]:
+              - generic [ref=e364]: Theme Park
+              - generic [ref=e365]: Extreme
+          - generic [ref=e367]:
+            - generic [ref=e368]:
+              - button "Live Wait Times" [ref=e369]:
+                - img [ref=e370]
+                - generic [ref=e372]: Live Wait Times
+              - button "Crowd Calendar" [ref=e373]:
+                - img [ref=e374]
+                - generic [ref=e376]: Crowd Calendar
+            - button "View Universal Studios Hollywood" [ref=e377]
+      - generic [ref=e378]:
+        - generic [ref=e379]:
+          - heading "Six Flags Magic Mountain" [level=2] [ref=e380]
+          - generic [ref=e381]:
+            - img [ref=e382]
+            - generic [ref=e384]: Valencia, CA
+          - paragraph [ref=e385]: The thrill capital of the world with over 19 roller coasters
+        - generic [ref=e387] [cursor=pointer]:
+          - generic [ref=e390]:
+            - generic [ref=e391]: Six Flags Magic Mountain
+            - generic [ref=e392]:
+              - generic [ref=e393]: Theme Park
+              - generic [ref=e394]: High
+          - generic [ref=e396]:
+            - generic [ref=e397]:
+              - button "Live Wait Times" [ref=e398]:
+                - img [ref=e399]
+                - generic [ref=e401]: Live Wait Times
+              - button "Crowd Calendar" [ref=e402]:
+                - img [ref=e403]
+                - generic [ref=e405]: Crowd Calendar
+            - button "View Magic Mountain" [ref=e406]
+      - generic [ref=e407]:
+        - generic [ref=e408]:
+          - heading "Six Flags Great Adventure" [level=2] [ref=e409]
+          - generic [ref=e410]:
+            - img [ref=e411]
+            - generic [ref=e413]: Jackson, NJ
+          - paragraph [ref=e414]: East coast thrills with world-class roller coasters
+        - generic [ref=e415]:
+          - generic [ref=e416] [cursor=pointer]:
+            - generic [ref=e419]:
+              - generic [ref=e420]: Six Flags Great Adventure
+              - generic [ref=e421]:
+                - generic [ref=e422]: Theme Park
+                - generic [ref=e423]: High
+            - generic [ref=e425]:
+              - generic [ref=e426]:
+                - button "Live Wait Times" [ref=e427]:
+                  - img [ref=e428]
+                  - generic [ref=e430]: Live Wait Times
+                - button "Crowd Calendar" [ref=e431]:
+                  - img [ref=e432]
+                  - generic [ref=e434]: Crowd Calendar
+              - button "View Great Adventure" [ref=e435]
+          - generic [ref=e436] [cursor=pointer]:
+            - generic [ref=e439]:
+              - generic [ref=e440]: Six Flags Hurricane Harbor
+              - generic [ref=e441]:
+                - generic [ref=e442]: Water Park
+                - generic [ref=e443]: High
+            - generic [ref=e445]:
+              - generic [ref=e446]:
+                - button "Live Wait Times" [ref=e447]:
+                  - img [ref=e448]
+                  - generic [ref=e450]: Live Wait Times
+                - button "Crowd Calendar" [ref=e451]:
+                  - img [ref=e452]
+                  - generic [ref=e454]: Crowd Calendar
+              - button "View Hurricane Harbor" [ref=e455]
+      - generic [ref=e456]:
+        - generic [ref=e457]:
+          - heading "Cedar Point" [level=2] [ref=e458]
+          - generic [ref=e459]:
+            - img [ref=e460]
+            - generic [ref=e462]: Sandusky, OH
+          - paragraph [ref=e463]: America's roller coast with record-breaking coasters
+        - generic [ref=e464]:
+          - generic [ref=e465] [cursor=pointer]:
+            - generic [ref=e468]:
+              - generic [ref=e469]: Cedar Point
+              - generic [ref=e470]:
+                - generic [ref=e471]: Theme Park
+                - generic [ref=e472]: High
+            - generic [ref=e474]:
+              - generic [ref=e475]:
+                - button "Live Wait Times" [ref=e476]:
+                  - img [ref=e477]
+                  - generic [ref=e479]: Live Wait Times
+                - button "Crowd Calendar" [ref=e480]:
+                  - img [ref=e481]
+                  - generic [ref=e483]: Crowd Calendar
+              - button "View Cedar Point" [ref=e484]
+          - generic [ref=e485] [cursor=pointer]:
+            - generic [ref=e488]:
+              - generic [ref=e489]: Cedar Point Shores
+              - generic [ref=e490]:
+                - generic [ref=e491]: Water Park
+                - generic [ref=e492]: High
+            - generic [ref=e494]:
+              - generic [ref=e495]:
+                - button "Live Wait Times" [ref=e496]:
+                  - img [ref=e497]
+                  - generic [ref=e499]: Live Wait Times
+                - button "Crowd Calendar" [ref=e500]:
+                  - img [ref=e501]
+                  - generic [ref=e503]: Crowd Calendar
+              - button "View Cedar Point Shores" [ref=e504]
+      - generic [ref=e505]:
+        - generic [ref=e506]:
+          - heading "Knott's Berry Farm" [level=2] [ref=e507]
+          - generic [ref=e508]:
+            - img [ref=e509]
+            - generic [ref=e511]: Buena Park, CA
+          - paragraph [ref=e512]: America's first theme park with classic attractions and seasonal events
+        - generic [ref=e513]:
+          - generic [ref=e514] [cursor=pointer]:
+            - generic [ref=e517]:
+              - generic [ref=e518]: Knott's Berry Farm
+              - generic [ref=e519]:
+                - generic [ref=e520]: Theme Park
+                - generic [ref=e521]: High
+            - generic [ref=e523]:
+              - generic [ref=e524]:
+                - button "Live Wait Times" [ref=e525]:
+                  - img [ref=e526]
+                  - generic [ref=e528]: Live Wait Times
+                - button "Crowd Calendar" [ref=e529]:
+                  - img [ref=e530]
+                  - generic [ref=e532]: Crowd Calendar
+              - button "View Knott's Berry Farm" [ref=e533]
+          - generic [ref=e534] [cursor=pointer]:
+            - generic [ref=e537]:
+              - generic [ref=e538]: Knott's Soak City
+              - generic [ref=e539]:
+                - generic [ref=e540]: Water Park
+                - generic [ref=e541]: High
+            - generic [ref=e543]:
+              - generic [ref=e544]:
+                - button "Live Wait Times" [ref=e545]:
+                  - img [ref=e546]
+                  - generic [ref=e548]: Live Wait Times
+                - button "Crowd Calendar" [ref=e549]:
+                  - img [ref=e550]
+                  - generic [ref=e552]: Crowd Calendar
+              - button "View Soak City" [ref=e553]
+      - generic [ref=e554]:
+        - generic [ref=e555]:
+          - heading "Worlds of Fun & Oceans of Fun" [level=2] [ref=e556]
+          - generic [ref=e557]:
+            - img [ref=e558]
+            - generic [ref=e560]: Kansas City, MO
+          - paragraph [ref=e561]: Midwest thrills with world-class roller coasters and a tropical water park
+        - generic [ref=e562]:
+          - generic [ref=e563] [cursor=pointer]:
+            - generic [ref=e566]:
+              - generic [ref=e567]: Worlds of Fun
+              - generic [ref=e568]:
+                - generic [ref=e569]: Theme Park
+                - generic [ref=e570]: High
+            - generic [ref=e572]:
+              - generic [ref=e573]:
+                - button "Live Wait Times" [ref=e574]:
+                  - img [ref=e575]
+                  - generic [ref=e577]: Live Wait Times
+                - button "Crowd Calendar" [ref=e578]:
+                  - img [ref=e579]
+                  - generic [ref=e581]: Crowd Calendar
+              - button "View Worlds of Fun" [ref=e582]
+          - generic [ref=e583] [cursor=pointer]:
+            - generic [ref=e586]:
+              - generic [ref=e587]: Oceans of Fun
+              - generic [ref=e588]:
+                - generic [ref=e589]: Water Park
+                - generic [ref=e590]: High
+            - generic [ref=e592]:
+              - generic [ref=e593]:
+                - button "Live Wait Times" [ref=e594]:
+                  - img [ref=e595]
+                  - generic [ref=e597]: Live Wait Times
+                - button "Crowd Calendar" [ref=e598]:
+                  - img [ref=e599]
+                  - generic [ref=e601]: Crowd Calendar
+              - button "View Oceans of Fun" [ref=e602]
+      - generic [ref=e603]:
+        - generic [ref=e604]:
+          - heading "Silverwood Theme Park" [level=2] [ref=e605]
+          - generic [ref=e606]:
+            - img [ref=e607]
+            - generic [ref=e609]: Athol, ID
+          - paragraph [ref=e610]: Pacific Northwest's largest theme park featuring thrilling coasters and a vintage atmosphere
+        - generic [ref=e611]:
+          - generic [ref=e612] [cursor=pointer]:
+            - generic [ref=e615]:
+              - generic [ref=e616]: Silverwood Theme Park
+              - generic [ref=e617]:
+                - generic [ref=e618]: Theme Park
+                - generic [ref=e619]: High
+            - generic [ref=e621]:
+              - generic [ref=e622]:
+                - button "Live Wait Times" [ref=e623]:
+                  - img [ref=e624]
+                  - generic [ref=e626]: Live Wait Times
+                - button "Crowd Calendar" [ref=e627]:
+                  - img [ref=e628]
+                  - generic [ref=e630]: Crowd Calendar
+              - button "View Silverwood" [ref=e631]
+          - generic [ref=e632] [cursor=pointer]:
+            - generic [ref=e635]:
+              - generic [ref=e636]: Boulder Beach Water Park
+              - generic [ref=e637]:
+                - generic [ref=e638]: Water Park
+                - generic [ref=e639]: High
+            - generic [ref=e641]:
+              - generic [ref=e642]:
+                - button "Live Wait Times" [ref=e643]:
+                  - img [ref=e644]
+                  - generic [ref=e646]: Live Wait Times
+                - button "Crowd Calendar" [ref=e647]:
+                  - img [ref=e648]
+                  - generic [ref=e650]: Crowd Calendar
+              - button "View Boulder Beach" [ref=e651]
+  - region "Notifications alt+T"

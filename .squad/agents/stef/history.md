@@ -96,3 +96,24 @@
 - **2026-04-29:** CrowdBadge returns `null` when `estimateMinutes === null || reportCount === 0` — test both cases separately.
 - **2026-04-29:** ConfidenceIndicator takes `confidence` + `reportCount` props (not `level`). Uses `span.inline-block` dots with `bg-primary-500` (filled) vs `bg-primary-200` (empty).
 - **2026-04-29:** ManualLogForm fetches parks/attractions via `getCollection` on mount. Must mock `@/lib/firebase/firestore` at module level to prevent Firebase init errors.
+- **2026-04-29:** Trip service uses `setDocument` for the `sharedTrips` index collection — must mock it alongside the usual CRUD helpers.
+- **2026-04-29:** `generateShareId()` is a pure function (no params, no Firestore call). Uses `crypto.getRandomValues` + URL-safe base64.
+- **2026-04-29:** `activateTrip` sets old active trip to `'completed'` (not `'planning'`). Design decision — activating a new trip implies the old one is done.
+- **2026-04-29:** `getTrips` sorts by `createdAt` desc (not `updatedAt`). Accepts optional `{ status, limit }` options.
+- **2026-04-29:** `addRideLog` takes `tripId` as 3rd arg (or from `data.tripId`). The service does NOT auto-lookup active trip — the caller (UI/hook) must resolve it.
+- **2026-04-29:** `completeTrip` calls `updateTripStats` first (writes stats), then writes `{ status: 'completed' }` as a separate update. Two `updateDocument` calls.
+- **2026-04-29:** AttractionFilterChips test is a contract test — component doesn't exist yet. Will light up when Mouth builds `src/components/park/AttractionFilterChips.tsx`.
+
+## Scribe Batch Update (2026-04-29 10:59:18Z)
+
+**Test Status:**
+- 265 total tests passing
+- 49 new tests for trip service + filter components
+- Coverage: 80% lines/functions, 75% branches (maintained)
+
+**Decision inbox processed:**
+- Ride logging architecture tests validate queue-report API
+- Trip planner tests ready for UI integration
+- Inbox cleared
+
+**Status:** Test suite complete for Phase 1 + Phase 2 features. AttractionFilterChips contract test now active. Ready for Phase 2 integration testing.

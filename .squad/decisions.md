@@ -105,6 +105,351 @@ Both parks pages are `'use client'` components that fetch directly from Firestor
 
 ---
 
+### 5. Trip Sharing via Index Collection
+
+**Author:** Data  
+**Date:** 2026-04-29  
+**Status:** Proposed
+
+#### Context
+Trips live at `users/{userId}/trips/{tripId}` (private). Sharing requires public-read access without exposing the full user path.
+
+#### Decision
+Use a `sharedTrips/{shareId}` collection as a public-read lookup index. Each doc contains `{ userId, tripId }`. The share endpoint reads the index, then reads the trip from the user's private subcollection using Admin SDK (or relaxed security rules for that path).
+
+#### Rationale
+1. **Minimal schema change** — trips stay private by default; sharing is opt-in via a pointer doc.
+2. **URL-safe IDs** — 128-bit crypto-random, base64url-encoded (22 chars). Unguessable.
+3. **One active trip rule** — `activateTrip()` auto-completes any currently active trip. Enforced at service layer, not rules (simpler).
+4. **Stats recomputation** — `updateTripStats()` queries all ride logs with matching tripId and recomputes. Called on `completeTrip()` and available on-demand.
+
+#### Security Note
+The `getSharedTrip()` function needs either:
+- A relaxed Firestore rule for `sharedTrips` (public read) + Admin SDK for the trip read, OR
+- An API route that uses Admin SDK for both reads
+
+Recommend: API route at `/api/trips/shared/[shareId]` using Admin SDK. Keeps security rules tight.
+
+#### Impact
+- New Firestore collection: `sharedTrips`
+- New composite index needed: `rideLogs` where `tripId == X` ordered by `rodeAt desc`
+- Frontend needs: share toggle UI, copy-link button, public trip view page
+
+---
+
+### 6. Vercel Deployment Configuration
+
+**Author:** Data  
+**Date:** 2026-04-29  
+**Status:** Implemented
+
+#### Context
+
+ParkPulse needs to deploy to Vercel with Firebase backend in `us-east1`.
+
+#### Decision
+
+- **Region:** `iad1` (US East Virginia) — matches Firebase `us-east1` for minimal latency
+- **Framework:** Next.js (auto-detected, explicitly set in vercel.json)
+- **API caching:** Disabled (`s-maxage=0, stale-while-revalidate`) for real-time wait-time endpoints
+- **Service account:** Passed as `FIREBASE_SERVICE_ACCOUNT` env var (JSON string), never committed to repo
+
+#### Environment Variables Required in Vercel Dashboard
+
+##### Client-side (NEXT_PUBLIC_ prefix)
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase Web API key |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | `theme-park-log-and-wait-time.firebaseapp.com` |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | `theme-park-log-and-wait-time` |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | `theme-park-log-and-wait-time.firebasestorage.app` |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Messaging sender ID |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase App ID |
+| `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | `G-774BVGWH68` |
+
+##### Server-side (secret)
+| Variable | Description |
+|----------|-------------|
+| `FIREBASE_SERVICE_ACCOUNT` | Full service-account.json contents as a single-line JSON string |
+
+#### Deployment Steps
+
+```bash
+# 1. Install Vercel CLI (if needed)
+npm i -g vercel
+
+# 2. Login
+vercel login
+
+# 3. Link project (first time)
+vercel link
+
+# 4. Set environment variables
+vercel env add NEXT_PUBLIC_FIREBASE_API_KEY
+vercel env add NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+vercel env add NEXT_PUBLIC_FIREBASE_PROJECT_ID
+vercel env add NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+vercel env add NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+vercel env add NEXT_PUBLIC_FIREBASE_APP_ID
+vercel env add NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+vercel env add FIREBASE_SERVICE_ACCOUNT  # paste minified JSON
+
+# 5. Deploy
+vercel --prod
+```
+
+#### Impact
+
+- All API routes (queue-report, wait-times, crowd-reports) use firebase-admin via `FIREBASE_SERVICE_ACCOUNT`
+- Client-side Firebase SDK reads public collections directly
+- No service-account.json file needed on Vercel (env var only)
+
+---
+
+### 7. Ride Logging & Crowdsourced Wait Times Architecture
+
+**Author:** Mikey (Lead/Architect)  
+**Date:** 2026-04-29  
+**Status:** Proposed  
+**Priority:** High — this is ParkPulse's differentiator
+
+#### Overview
+
+Three interlocking features:
+1. **Ride Log** — personal ride history per user
+2. **Queue Timer** — stopwatch for actual wait time measurement  
+3. **Crowdsourced Wait Times** — aggregated timer data producing community estimates
+
+Design principle: **Write privately, aggregate anonymously, read publicly.**
+
+#### Firestore Schema
+
+##### RideLog: `users/{userId}/rideLogs/{logId}` (subcollection)
+
+Personal ride history. Private to the user.
+
+```typescript
+interface RideLog {
+  id: string;
+  parkId: string;
+  attractionId: string;
+  parkName: string;
+  attractionName: string;
+  rodeAt: Timestamp;
+  waitTimeMinutes: number | null;
+  source: 'timer' | 'manual';
+  rating: number | null;
+  notes: string;
+  tripId: string | null;  // link to trip (added in decision 8)
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+```
+
+##### Active Timer: `users/{userId}/activeTimer`
+
+One active timer per user, max. Ephemeral — deleted when timer completes or is abandoned.
+
+```typescript
+interface ActiveTimer {
+  parkId: string;
+  attractionId: string;
+  parkName: string;
+  attractionName: string;
+  startedAt: Timestamp;
+  clientStartedAt: number;
+  status: 'active' | 'completed' | 'abandoned';
+  updatedAt: Timestamp;
+}
+```
+
+##### Crowd Reports: `crowdsourcedWaitTimes/{parkId}/reports/{reportId}`
+
+Individual anonymized timer reports. Source of truth for aggregation.
+
+```typescript
+interface CrowdReport {
+  id: string;
+  attractionId: string;
+  waitTimeMinutes: number;
+  reportedAt: Timestamp;
+  dayOfWeek: number;
+  hourOfDay: number;
+  createdAt: Timestamp;
+}
+```
+
+##### Crowd Aggregates: `crowdsourcedWaitTimes/{parkId}/aggregates/{attractionId}`
+
+Pre-computed aggregates. Updated by API route on each new report.
+
+```typescript
+interface CrowdAggregate {
+  attractionId: string;
+  parkId: string;
+  currentEstimateMinutes: number | null;
+  reportCount: number;
+  lastReportedAt: Timestamp | null;
+  confidence: 'low' | 'medium' | 'high';
+  updatedAt: Timestamp;
+}
+```
+
+#### Security Rules
+
+- Ride logs: read/write private to user
+- Active timer: read/write private to user
+- Crowd reports: write via API only (Admin SDK)
+- Crowd aggregates: write via API only (Admin SDK)
+
+#### Aggregation Strategy
+
+- **Time-Weighted Moving Average:** Recent reports weighted more heavily
+- **Outlier Detection:** Statistical filtering + velocity checks
+- **Confidence Levels:** Based on report count in last 60 minutes
+- **Minimum valid duration:** 2–180 minutes
+
+#### Build Order
+
+1. Types + Services (Data)
+2. Aggregation Logic (Chunk)
+3. API Route (Data + Chunk)
+4. UI Components (Mouth)
+5. Integration (All)
+
+---
+
+### 8. Trip Planner & Ride Type Filters Architecture
+
+**Author:** Mikey (Lead / Architect)  
+**Date:** 2026-04-29  
+**Status:** Proposed  
+**Requested by:** Devin Sinha
+
+#### Overview
+
+Two features:
+1. **Trip Planner & Trip Logs** — Users create multi-day trips, associate ride logs with them, and review stats after.
+2. **Ride Type Filters** — Filter park attractions by type (thrill, family, show, etc.) on the park detail page.
+
+#### Feature 1: Trip Planner & Trip Logs
+
+##### Trip Schema
+
+```typescript
+interface Trip {
+  id: string;
+  name: string;
+  startDate: string;              // ISO date
+  endDate: string;                // ISO date
+  parkIds: string[];
+  parkNames: Record<string, string>;
+  status: 'planning' | 'active' | 'completed';
+  stats: {
+    totalRides: number;
+    totalWaitMinutes: number;
+    parksVisited: number;
+    uniqueAttractions: number;
+    favoriteAttraction: string | null;
+  };
+  notes: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+```
+
+##### Changes to RideLog
+
+```typescript
+// In ride-log type — add:
+tripId: string | null;  // null = not associated with any trip
+```
+
+##### Key Design Decisions
+
+1. Trips are a user subcollection (owner-only read/write)
+2. Ride logs get optional `tripId` field
+3. Stats are denormalized on Trip doc
+4. Only ONE trip can be active at a time
+5. When trip's date range includes today, new logs auto-associate
+
+##### Routes
+
+```
+/trips                    → Trip list
+/trips/new                → Create trip form
+/trips/[tripId]           → Trip detail / log view
+/trips/[tripId]/edit      → Edit trip
+```
+
+##### UI Components
+
+```
+TripCard.tsx              — Card for trip list
+TripForm.tsx             — Create/edit form
+TripStats.tsx            — Stats banner
+TripTimeline.tsx         — Day-by-day timeline
+TripStatusBadge.tsx      — planning/active/completed
+ActiveTripBanner.tsx     — Shown when trip is active
+```
+
+#### Feature 2: Ride Type Filters
+
+##### Available Data
+
+From Firestore `attractions`: `entityType` (ATTRACTION, SHOW, RESTAURANT, MERCHANDISE)
+
+From our taxonomy: `AttractionType` (thrill, family, show, experience, parade, character-meet, dining-experience)
+
+##### Two-Tier Filtering Approach
+
+**Tier 1 (immediate):** Filter by `entityType` (ATTRACTION vs SHOW vs other)
+
+**Tier 2 (enrichment):** Assign `AttractionType` via script + manual overrides
+
+##### Filter UI
+
+Horizontal scrollable chip bar on park page. "All" selected by default. Multiple selection allowed.
+
+```
+[All] [Rides] [Shows] [Thrill] [Family] [Other]
+```
+
+##### Components
+
+```
+AttractionFilterChips.tsx    — Chip bar
+AttractionFilterChip.tsx     — Individual chip
+```
+
+#### Integration Points
+
+1. Timer completion → check for active trip → stamp `tripId` on ride log
+2. Manual log → check for active trip → stamp `tripId`
+3. Dashboard → show `ActiveTripBanner` if user has active trip
+4. Park detail page → show filter chips + active trip indicator
+
+#### Build Order
+
+| Priority | Feature | Depends On |
+|---|---|---|
+| 1 | Ride type filter chips | Nothing — ship immediately |
+| 2 | Trip types + service | Nothing |
+| 3 | Trip pages + UI | Trip service |
+| 4 | Timer/log → trip integration | Trip service |
+| 5 | Trip stats computation | Integration |
+| 6 | AttractionType enrichment | Can run anytime |
+
+#### Decisions Needing Devin's Input
+
+1. **Trip sharing** — Shareable via link (public read), or strictly private?
+2. **Trip export** — PDF/image for social sharing, or just in-app view?
+3. **Multi-trip overlap** — If two trips overlap, what happens? (Recommend: one active trip at a time)
+4. **Park page filter default** — Hide non-rides by default on wait times view?
+5. **Ride type enrichment priority** — Basic ATTRACTION/SHOW split sufficient for v1, or thrill/family from day one?
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus

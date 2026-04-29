@@ -113,3 +113,12 @@
 - Filter chips use two tiers: Tier 1 (entityType) for broad categories, Tier 2 (attractionType) for ride sub-types. Default state hides RESTAURANT and MERCHANDISE by initializing entityTypes to `Set(['ATTRACTION', 'SHOW'])`.
 - `scrollbar-hide` utility class in globals.css handles horizontal chip scrolling on mobile without visible scrollbars (webkit + Firefox).
 - Records with null/undefined `attractionType` still pass Tier 2 filters — only enriched records get filtered out. This supports gradual enrichment rollout.
+
+## Scribe Batch Update (2026-04-29 10:59:18Z)
+
+**Decision inbox processed:**
+- Trip Planner & Ride Type Filters decision filed (with full UI component specs)
+- Ride Logging architecture decision integrated
+- Inbox cleared
+
+**Status:** AttractionFilterChips component built + tested. 49 new tests written (265 total). Trip filters shipped and ready. Trip Planner pages (TripCard, TripForm, TripTimeline components) next in Phase 2.

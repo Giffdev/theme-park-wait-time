@@ -1,34 +1,43 @@
-/** A park visited during a trip. */
-export interface TripPark {
-  parkId: string;
-  parkName: string;
-  rideCount: number;
+/**
+ * Trip types for the trip planning and tracking feature.
+ * Stored at: users/{userId}/trips/{tripId}
+ * Shared trips indexed at: sharedTrips/{shareId}
+ */
+
+/** Computed statistics for a trip. */
+export interface TripStats {
+  totalRides: number;
+  totalWaitMinutes: number;
+  parksVisited: number;
+  uniqueAttractions: number;
+  favoriteAttraction: string | null;
 }
 
-/** A multi-day trip. */
+/** Trip status lifecycle. */
+export type TripStatus = 'planning' | 'active' | 'completed';
+
+/** A multi-day theme park trip. */
 export interface Trip {
   id: string;
-  startDate: string;
-  endDate: string;
-  parks: TripPark[];
-  totalRides: number;
-  notes?: string;
+  name: string;
+  startDate: string; // ISO date (YYYY-MM-DD)
+  endDate: string; // ISO date (YYYY-MM-DD)
+  parkIds: string[];
+  parkNames: Record<string, string>; // parkId → display name
+  status: TripStatus;
+  shareId: string | null; // unique URL-safe ID for public sharing
+  stats: TripStats;
+  notes: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-/** A single ride log entry within a trip. */
-export interface RideLog {
-  id: string;
-  parkId: string;
-  attractionId: string;
-  attractionName: string;
-  date: string;
-  time?: string;
-  waitTime?: number;
-  rideCount: number;
-  trackVariant?: string;
-  rating?: number;
-  notes?: string;
-  loggedAt: Date;
-}
+/** Data required to create a new trip (id + timestamps + stats added automatically). */
+export type TripCreateData = Omit<Trip, 'id' | 'createdAt' | 'updatedAt' | 'stats' | 'shareId'> & {
+  shareId?: string | null;
+};
+
+/** Fields that can be updated on an existing trip. */
+export type TripUpdateData = Partial<
+  Pick<Trip, 'name' | 'startDate' | 'endDate' | 'parkIds' | 'parkNames' | 'notes' | 'status' | 'shareId'>
+>;

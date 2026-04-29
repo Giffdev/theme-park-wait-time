@@ -1,0 +1,21 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e6]:
+      - link "ParkFlow" [ref=e7] [cursor=pointer]:
+        - /url: /
+        - img [ref=e9]
+        - generic [ref=e20]: ParkFlow
+      - navigation [ref=e21]:
+        - link "Home" [ref=e22] [cursor=pointer]:
+          - /url: /
+        - link "Calendar" [ref=e23] [cursor=pointer]:
+          - /url: /calendar
+        - link "About" [ref=e24] [cursor=pointer]:
+          - /url: /about
+      - button "Sign In" [ref=e26]:
+        - img
+        - text: Sign In
+  - generic [ref=e28]:
+    - paragraph [ref=e30]: Loading theme park data...
+    - paragraph [ref=e31]: Setting up attractions for Magic Kingdom, EPCOT, and more...
+  - region "Notifications alt+T"

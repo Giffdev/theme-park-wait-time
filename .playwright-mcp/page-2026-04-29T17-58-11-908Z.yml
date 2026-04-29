@@ -1,0 +1,106 @@
+- generic:
+  - generic:
+    - generic:
+      - banner:
+        - generic:
+          - generic:
+            - link:
+              - /url: /
+              - generic:
+                - img
+              - generic: ParkFlow
+            - navigation:
+              - link:
+                - /url: /
+                - text: Home
+              - link:
+                - /url: /calendar
+                - text: Calendar
+              - link:
+                - /url: /my-logs
+                - text: My Trips
+              - link:
+                - /url: /about
+                - text: About
+            - generic:
+              - generic:
+                - generic:
+                  - paragraph: Giffdev
+                - button:
+                  - img
+      - generic:
+        - generic:
+          - generic:
+            - link:
+              - /url: /
+              - img
+              - text: Back to Home
+            - generic:
+              - heading [level=1]: Log Your Park Trip
+              - paragraph: Track your rides across multiple parks in a single trip
+          - generic:
+            - generic:
+              - generic:
+                - img
+                - text: Plan Your Trip
+              - generic: Choose between a single-day visit or a multi-day trip across different parks
+            - generic:
+              - generic:
+                - tablist:
+                  - tab: Single Day
+                  - tab [selected]: Multi-Day Trip
+                - tabpanel:
+                  - generic:
+                    - generic:
+                      - heading [level=3]:
+                        - img
+                        - text: Multi-Day Trip Planner
+                      - paragraph: Plan your trip across multiple days and parks. Add each day separately, selecting which park(s) you visited on that date.
+                    - generic:
+                      - generic:
+                        - generic:
+                          - img
+                          - text: Add a Day to Your Trip
+                        - generic: Select the date and park(s) you visited
+                      - generic:
+                        - generic:
+                          - generic: Date
+                          - generic:
+                            - button:
+                              - img
+                              - text: April 29th, 2026
+                          - paragraph: You can plan future trips, but can only log rides for today and past dates
+                        - generic:
+                          - generic: Resort Group
+                          - combobox [expanded]:
+                            - generic: Select a resort group...
+                            - img
+                        - button [disabled]:
+                          - img
+                          - text: Add This Day to Trip
+      - region "Notifications alt+T"
+  - listbox [ref=e706]:
+    - option "Select a resort group..." [active] [selected] [ref=e707]:
+      - generic [ref=e709]:
+        - img
+      - generic [ref=e710]: Select a resort group...
+    - option "Cedar Point (2 parks)" [ref=e711]:
+      - generic [ref=e713]: Cedar Point (2 parks)
+    - option "Disneyland Resort (2 parks)" [ref=e714]:
+      - generic [ref=e716]: Disneyland Resort (2 parks)
+    - option "Knott's Berry Farm (2 parks)" [ref=e717]:
+      - generic [ref=e719]: Knott's Berry Farm (2 parks)
+    - option "Silverwood Theme Park (2 parks)" [ref=e720]:
+      - generic [ref=e722]: Silverwood Theme Park (2 parks)
+    - option "Six Flags Great Adventure (2 parks)" [ref=e723]:
+      - generic [ref=e725]: Six Flags Great Adventure (2 parks)
+    - option "Six Flags Magic Mountain (1 parks)" [ref=e726]:
+      - generic [ref=e728]: Six Flags Magic Mountain (1 parks)
+    - option "Universal Orlando Resort (4 parks)" [ref=e729]:
+      - generic [ref=e731]: Universal Orlando Resort (4 parks)
+    - option "Universal Studios Hollywood (1 parks)" [ref=e732]:
+      - generic [ref=e734]: Universal Studios Hollywood (1 parks)
+    - option "Walt Disney World Resort (6 parks)" [ref=e735]:
+      - generic [ref=e737]: Walt Disney World Resort (6 parks)
+    - option "Worlds of Fun & Oceans of Fun (2 parks)" [ref=e738]:
+      - generic [ref=e740]: Worlds of Fun & Oceans of Fun (2 parks)

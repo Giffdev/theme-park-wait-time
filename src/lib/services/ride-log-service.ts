@@ -9,6 +9,7 @@ import {
   limitConstraint,
   dateToTimestamp,
 } from '@/lib/firebase/firestore';
+import { getActiveTrip, updateTripStats } from '@/lib/services/trip-service';
 import type { RideLog, RideLogCreateData, RideLogUpdateData } from '@/types/ride-log';
 import type { QueryConstraint } from 'firebase/firestore';
 
@@ -30,15 +31,40 @@ export interface GetRideLogsOptions {
   limit?: number;
 }
 
-/** Create a new ride log entry for the user. Returns the new document ID. */
+/**
+ * Create a new ride log entry for the user. Returns the new document ID.
+ * Automatically associates with the user's active trip if one exists.
+ * Pass explicit tripId to override, or null to skip trip association.
+ */
 export async function addRideLog(
   userId: string,
   data: RideLogCreateData,
+  tripId?: string | null,
 ): Promise<string> {
+  // Resolve trip: explicit param > data field > auto-detect from active trip
+  let resolvedTripId: string | null = null;
+
+  if (tripId !== undefined) {
+    resolvedTripId = tripId;
+  } else if (data.tripId !== undefined) {
+    resolvedTripId = data.tripId ?? null;
+  } else {
+    // Auto-associate with active trip
+    const activeTrip = await getActiveTrip(userId);
+    resolvedTripId = activeTrip?.id ?? null;
+  }
+
   const ref = await addDocument(rideLogsPath(userId), {
     ...data,
     rodeAt: dateToTimestamp(data.rodeAt),
+    tripId: resolvedTripId,
   });
+
+  // Recompute denormalized trip stats after adding the log
+  if (resolvedTripId) {
+    await updateTripStats(userId, resolvedTripId);
+  }
+
   return ref.id;
 }
 

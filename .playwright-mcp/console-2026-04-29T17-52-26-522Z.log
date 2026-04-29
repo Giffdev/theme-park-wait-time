@@ -1,0 +1,95 @@
+[    1058ms] [LOG] 🔍 ParkDataService imported sampleAttractions: {keys: Array(10), totalCount: 24, hasMagicKingdom: true, hasEpcot: true} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    1079ms] [LOG] 🚀 App initializing sample data @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:217
+[    1079ms] [LOG] ✅ Spark KV available @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:217
+[    1079ms] [LOG] 🚀 ParkDataService initializing 24 parks @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    2446ms] [LOG] ✅ universal-studios-orlando already initialized (17 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    3259ms] [LOG] ✅ islands-of-adventure already initialized (19 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    3798ms] [LOG] ✅ epic-universe already initialized (14 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    4569ms] [LOG] ✅ hollywood-studios already initialized (18 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    5377ms] [LOG] ✅ animal-kingdom already initialized (18 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    5872ms] [LOG] ✅ magic-kingdom already initialized (24 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6081ms] [WARNING] ⏰ Timeout reached, allowing app to load anyway @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:217
+[    6083ms] [LOG] Magic Kingdom busy level: {level: 93, label: Extreme, colorClass: bg-destructive text-destructive-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6083ms] [LOG] EPCOT busy level: {level: 63, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6083ms] [LOG] Disney's Hollywood Studios busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6084ms] [LOG] Disney's Animal Kingdom busy level: {level: 68, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6084ms] [LOG] Disney's Blizzard Beach busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6084ms] [LOG] Disney's Typhoon Lagoon busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6084ms] [LOG] Disneyland Park busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6084ms] [LOG] Disney California Adventure busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6084ms] [LOG] Universal Studios Florida busy level: {level: 83, label: Extreme, colorClass: bg-destructive text-destructive-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6084ms] [LOG] Universal's Islands of Adventure busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6085ms] [LOG] Universal Epic Universe busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6085ms] [LOG] Universal's Volcano Bay busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6085ms] [LOG] Universal Studios Hollywood busy level: {level: 83, label: Extreme, colorClass: bg-destructive text-destructive-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6085ms] [LOG] Six Flags Magic Mountain busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6085ms] [LOG] Six Flags Great Adventure busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6085ms] [LOG] Six Flags Hurricane Harbor busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6085ms] [LOG] Cedar Point busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6085ms] [LOG] Cedar Point Shores busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6085ms] [LOG] Knott's Berry Farm busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6086ms] [LOG] Knott's Soak City busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6086ms] [LOG] Worlds of Fun busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6086ms] [LOG] Oceans of Fun busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6086ms] [LOG] Silverwood Theme Park busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6086ms] [LOG] Boulder Beach Water Park busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    6791ms] [LOG] ✅ epcot already initialized (20 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    7583ms] [LOG] ✅ disneyland already initialized (37 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    8116ms] [LOG] ✅ disney-california-adventure already initialized (19 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    8846ms] [LOG] ✅ universal-studios-hollywood already initialized (15 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[    9559ms] [LOG] ✅ six-flags-magic-mountain already initialized (22 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   10025ms] [LOG] ✅ six-flags-great-adventure already initialized (19 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   10869ms] [LOG] ✅ cedar-point already initialized (20 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   11668ms] [LOG] ✅ knotts-berry-farm already initialized (18 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   12416ms] [LOG] ✅ blizzard-beach already initialized (11 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   13183ms] [LOG] ✅ typhoon-lagoon already initialized (10 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   13946ms] [LOG] ✅ volcano-bay already initialized (12 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   14548ms] [LOG] ✅ six-flags-hurricane-harbor-nj already initialized (7 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   15368ms] [LOG] ✅ cedar-point-shores already initialized (8 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   16140ms] [LOG] ✅ knotts-soak-city already initialized (6 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   16687ms] [LOG] ✅ worlds-of-fun already initialized (22 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   17391ms] [LOG] ✅ oceans-of-fun already initialized (16 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   18482ms] [LOG] ✅ silverwood already initialized (17 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   19412ms] [LOG] ✅ boulder-beach already initialized (10 attractions) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   19412ms] [LOG] 🎉 ParkDataService initialization complete: 24/24 parks @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[   19412ms] [LOG] ✅ Data initialized successfully @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:217
+[  259591ms] [LOG] 🔄 Loading trips for user: user-372b032d52b2c5a608365e9b67e372a9 @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:217
+[  262285ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://theme-park-wait-time--giffdev.github.app/_spark/kv:0
+[  262286ms] [ERROR] ❌ Failed to load user trips: Error: Failed to fetch KV keys: 
+    at nu.getKeys (https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:49:35904)
+    at async w (https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:218:8099) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:217
+[  285893ms] [LOG] 🔍 ParkDataService.getAvailableParks() called, found parks: [universal-studios-orlando, islands-of-adventure, epic-universe, hollywood-studios, animal-kingdom, magic-kingdom, epcot, disneyland, disney-california-adventure, universal-studios-hollywood] ... (total: 24 ) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  285894ms] [LOG] 🖥️ RideLogPage render: {currentTrip: null, showContinuationPrompt: false, shouldShowSetup: true, shouldShowLogging: false, selectedParks: 0} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:211
+[  285906ms] [LOG] 🔍 ParkDataService.getAvailableParks() called, found parks: [universal-studios-orlando, islands-of-adventure, epic-universe, hollywood-studios, animal-kingdom, magic-kingdom, epcot, disneyland, disney-california-adventure, universal-studios-hollywood] ... (total: 24 ) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  285907ms] [LOG] 🚀 Initializing RideLogPage: {parkId: undefined, currentTrip: undefined, selectedParks: 0, justCreatedTrip: false} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:211
+[  285907ms] [LOG] 🔍 ParkDataService.getAvailableParks() called, found parks: [universal-studios-orlando, islands-of-adventure, epic-universe, hollywood-studios, animal-kingdom, magic-kingdom, epcot, disneyland, disney-california-adventure, universal-studios-hollywood] ... (total: 24 ) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  285908ms] [LOG] 🖥️ RideLogPage render: {currentTrip: null, showContinuationPrompt: false, shouldShowSetup: true, shouldShowLogging: false, selectedParks: 0} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:211
+[  450113ms] [LOG] 🔄 Loading trips for user: user-372b032d52b2c5a608365e9b67e372a9 @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:217
+[  452746ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://theme-park-wait-time--giffdev.github.app/_spark/kv:0
+[  452746ms] [ERROR] ❌ Failed to load user trips: Error: Failed to fetch KV keys: 
+    at nu.getKeys (https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:49:35904)
+    at async w (https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:218:8099) @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:217
+[  472395ms] [LOG] Magic Kingdom busy level: {level: 93, label: Extreme, colorClass: bg-destructive text-destructive-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472395ms] [LOG] EPCOT busy level: {level: 63, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472395ms] [LOG] Disney's Hollywood Studios busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472395ms] [LOG] Disney's Animal Kingdom busy level: {level: 68, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472396ms] [LOG] Disney's Blizzard Beach busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472396ms] [LOG] Disney's Typhoon Lagoon busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472396ms] [LOG] Disneyland Park busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472396ms] [LOG] Disney California Adventure busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472396ms] [LOG] Universal Studios Florida busy level: {level: 83, label: Extreme, colorClass: bg-destructive text-destructive-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472396ms] [LOG] Universal's Islands of Adventure busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472396ms] [LOG] Universal Epic Universe busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472396ms] [LOG] Universal's Volcano Bay busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472396ms] [LOG] Universal Studios Hollywood busy level: {level: 83, label: Extreme, colorClass: bg-destructive text-destructive-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472396ms] [LOG] Six Flags Magic Mountain busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472397ms] [LOG] Six Flags Great Adventure busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472397ms] [LOG] Six Flags Hurricane Harbor busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472397ms] [LOG] Cedar Point busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472397ms] [LOG] Cedar Point Shores busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472397ms] [LOG] Knott's Berry Farm busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472397ms] [LOG] Knott's Soak City busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472397ms] [LOG] Worlds of Fun busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472397ms] [LOG] Oceans of Fun busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472397ms] [LOG] Silverwood Theme Park busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143
+[  472398ms] [LOG] Boulder Beach Water Park busy level: {level: 73, label: High, colorClass: bg-secondary text-secondary-foreground} @ https://theme-park-wait-time--giffdev.github.app/assets/index-XO1Fqajg.js:143

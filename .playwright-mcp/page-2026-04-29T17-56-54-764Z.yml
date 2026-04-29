@@ -1,0 +1,38 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e6]:
+      - link "ParkFlow" [ref=e7] [cursor=pointer]:
+        - /url: /
+        - img [ref=e9]
+        - generic [ref=e20]: ParkFlow
+      - navigation [ref=e21]:
+        - link "Home" [ref=e22] [cursor=pointer]:
+          - /url: /
+        - link "Calendar" [ref=e23] [cursor=pointer]:
+          - /url: /calendar
+        - link "My Trips" [ref=e32] [cursor=pointer]:
+          - /url: /my-logs
+        - link "About" [ref=e24] [cursor=pointer]:
+          - /url: /about
+      - generic [ref=e33]:
+        - paragraph [ref=e35]: Giffdev
+        - button [ref=e36]:
+          - img
+  - generic [ref=e652]:
+    - generic [ref=e653]:
+      - generic [ref=e654]:
+        - heading "My Park Trips" [level=1] [ref=e655]
+        - paragraph [ref=e656]: Your complete theme park experience history
+      - generic [ref=e657]:
+        - button "Refresh" [ref=e658]
+        - link "Log New Trip" [ref=e659] [cursor=pointer]:
+          - /url: /log
+          - img
+          - text: Log New Trip
+    - generic [ref=e661]:
+      - img [ref=e662]
+      - generic [ref=e664]: No Trips Logged Yet
+      - generic [ref=e665]: Start logging your theme park trips to build your experience history
+      - link "Start Logging Trips" [ref=e666] [cursor=pointer]:
+        - /url: /log
+  - region "Notifications alt+T"

@@ -92,6 +92,14 @@ service cloud.firestore {
       }
     }
 
+    // ── SHARED TRIPS (public read, authenticated create) ──
+    match /sharedTrips/{shareId} {
+      allow read: if true; // Anyone with the link can read
+      allow create: if request.auth != null; // Authenticated users can create share entries
+      allow update, delete: if request.auth != null
+                            && resource.data.userId == request.auth.uid; // Only owner can modify/delete
+    }
+
     // ── CROWDSOURCED WAIT TIMES (anonymized — public read, server write) ──
     match /crowdsourcedWaitTimes/{parkId}/reports/{reportId} {
       allow read: if true;

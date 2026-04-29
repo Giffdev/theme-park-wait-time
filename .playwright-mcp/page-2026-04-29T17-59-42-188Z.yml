@@ -1,0 +1,89 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e6]:
+      - link "ParkFlow" [ref=e7] [cursor=pointer]:
+        - /url: /
+        - img [ref=e9]
+        - generic [ref=e20]: ParkFlow
+      - navigation [ref=e21]:
+        - link "Home" [ref=e22] [cursor=pointer]:
+          - /url: /
+        - link "Calendar" [ref=e23] [cursor=pointer]:
+          - /url: /calendar
+        - link "My Trips" [ref=e32] [cursor=pointer]:
+          - /url: /my-logs
+        - link "About" [ref=e24] [cursor=pointer]:
+          - /url: /about
+      - generic [ref=e33]:
+        - paragraph [ref=e35]: Giffdev
+        - button [ref=e36]:
+          - img
+  - generic [ref=e667]:
+    - generic [ref=e668]:
+      - link "Back to Home" [ref=e669] [cursor=pointer]:
+        - /url: /
+        - img
+        - text: Back to Home
+      - generic [ref=e670]:
+        - heading "Log Your Park Trip" [level=1] [ref=e671]
+        - paragraph [ref=e672]: Track your rides across multiple parks in a single trip
+    - generic [ref=e673]:
+      - generic [ref=e674]:
+        - generic [ref=e675]:
+          - img [ref=e676]
+          - text: Plan Your Trip
+        - generic [ref=e678]: Choose between a single-day visit or a multi-day trip across different parks
+      - generic [ref=e680]:
+        - tablist [ref=e681]:
+          - tab "Single Day" [ref=e682]
+          - tab "Multi-Day Trip" [selected] [ref=e683]
+        - tabpanel "Multi-Day Trip" [ref=e684]:
+          - generic [ref=e685]:
+            - generic [ref=e686]:
+              - heading "Multi-Day Trip Planner" [level=3] [ref=e687]:
+                - img [ref=e688]
+                - text: Multi-Day Trip Planner
+              - paragraph [ref=e690]: Plan your trip across multiple days and parks. Add each day separately, selecting which park(s) you visited on that date.
+            - generic [ref=e691]:
+              - generic [ref=e692]:
+                - generic [ref=e693]:
+                  - img [ref=e694]
+                  - text: Add a Day to Your Trip
+                - generic [ref=e696]: Select the date and park(s) you visited
+              - generic [ref=e697]:
+                - generic [ref=e698]:
+                  - generic [ref=e699]: Date
+                  - button "April 29th, 2026" [ref=e701]:
+                    - img
+                    - text: April 29th, 2026
+                  - paragraph [ref=e702]: You can plan future trips, but can only log rides for today and past dates
+                - generic [ref=e703]:
+                  - generic [ref=e704]: Resort Group
+                  - combobox [active] [ref=e705]:
+                    - generic: Walt Disney World Resort (6 parks)
+                    - img
+                - generic [ref=e741]:
+                  - generic [ref=e742]: Parks Visited This Day
+                  - generic [ref=e743]:
+                    - generic [ref=e744]:
+                      - checkbox "Magic Kingdom" [ref=e745]
+                      - generic [ref=e746] [cursor=pointer]: Magic Kingdom
+                    - generic [ref=e747]:
+                      - checkbox "EPCOT" [ref=e748]
+                      - generic [ref=e749] [cursor=pointer]: EPCOT
+                    - generic [ref=e750]:
+                      - checkbox "Disney's Hollywood Studios" [ref=e751]
+                      - generic [ref=e752] [cursor=pointer]: Disney's Hollywood Studios
+                    - generic [ref=e753]:
+                      - checkbox "Disney's Animal Kingdom" [ref=e754]
+                      - generic [ref=e755] [cursor=pointer]: Disney's Animal Kingdom
+                    - generic [ref=e756]:
+                      - checkbox "Disney's Blizzard Beach" [ref=e757]
+                      - generic [ref=e758] [cursor=pointer]: Disney's Blizzard Beach
+                    - generic [ref=e759]:
+                      - checkbox "Disney's Typhoon Lagoon" [ref=e760]
+                      - generic [ref=e761] [cursor=pointer]: Disney's Typhoon Lagoon
+                - button "Add This Day to Trip" [disabled]:
+                  - img
+                  - text: Add This Day to Trip
+  - region "Notifications alt+T"

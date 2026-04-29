@@ -36,3 +36,53 @@
 - ThemeParks.wiki: ~2,880 requests/day for 10 parks (well under 432,000/day limit)
 - Firestore: minimal at launch scale
 - Cloud Functions: ~288 invocations/day (free tier)
+
+### 2026-04-29 — Aggregation Algorithms Implemented
+
+Built pure-function aggregation pipeline for crowdsourced wait times (Phase 2 of ride-logging architecture):
+
+**Files Created:**
+- `src/types/ride-log.ts` — CrowdReport, CrowdAggregate, RideLog, ActiveTimer interfaces (Date-based for testability)
+- `src/lib/aggregation/weighted-average.ts` — Time-weighted moving average with configurable halfLife (30 min default) and maxAge (120 min)
+- `src/lib/aggregation/outlier-detection.ts` — 3-stage filter: hard bounds [2,180], statistical (2σ with ≥5 samples), velocity check (0.5x penalty for >60 min jumps)
+- `src/lib/aggregation/confidence.ts` — Window-based confidence: none/low/medium/high based on report count in last 60 min
+- `src/lib/aggregation/index.ts` — Barrel exports + `aggregateWaitTime()` pipeline function that chains all three stages
+
+**Design Decisions:**
+- All functions are pure — zero Firebase imports, zero side effects. Can run in any environment.
+- Used Date objects (not Timestamps) throughout for test portability. Firestore layer will convert.
+- `filterOutliers()` returns `FilteredReport` with `weightModifier` field so the aggregator can apply velocity penalties without losing the report entirely.
+- `aggregateWaitTime()` returns a partial aggregate (omits attractionId/parkId/updatedAt) — the calling API route fills those in.
+- Rounded estimates to 1 decimal place for display precision.
+
+**Tests:** 51 tests across 4 test files, all passing. Covers edge cases: empty data, boundary values, same-day filtering, future reports, stdDev=0, custom options.
+
+### 2026-04-29 — Attraction Type Enrichment Script
+
+Created `scripts/enrich-attraction-types.ts` and `scripts/attraction-overrides.ts` to classify all 533 attractions with the `AttractionType` taxonomy (thrill | family | show | experience | parade | character-meet | dining-experience).
+
+**Classification Pipeline (precedence order):**
+1. Manual overrides map (~80 well-known attractions across Disney, Universal, Six Flags, SeaWorld)
+2. Keyword matching on attraction name (coaster→thrill, meet→character-meet, parade→parade, show→show, tour→experience)
+3. entityType mapping (SHOW→show, RESTAURANT→dining-experience, MERCHANDISE→skip)
+4. Default: ATTRACTION without keywords → family
+
+**Design Choices:**
+- Idempotent: uses `batch.update()` with just the `attractionType` field — safe to re-run
+- Batched writes (499 per batch, Firestore limit is 500)
+- MERCHANDISE entities are skipped (not classified)
+- `AttractionType` is exported from the enrichment script; the overrides file imports it to stay in sync
+- npm script: `npm run enrich-types`
+
+**Files:**
+- `scripts/enrich-attraction-types.ts` — main enrichment logic
+- `scripts/attraction-overrides.ts` — hardcoded map of ~80 well-known attractions
+
+## Scribe Batch Update (2026-04-29 10:59:18Z)
+
+**Decision inbox processed:**
+- 4 decisions merged into main decisions.md
+- Trip sharing, Vercel deployment, ride logging, trip planner + filters archived
+- Inbox cleared
+
+**Status:** Attraction enrichment complete. Ready for Phase 2 UI integration (Mouth). Trip filters shipped; attraction type taxonomy available for future refinement.

@@ -20,12 +20,15 @@ export interface RideLog {
   source: 'timer' | 'manual';
   rating: number | null;
   notes: string;
+  tripId: string | null; // optional link to a trip
   createdAt: Date;
   updatedAt: Date;
 }
 
 /** Data required to create a new ride log (id + timestamps added server-side). */
-export type RideLogCreateData = Omit<RideLog, 'id' | 'createdAt' | 'updatedAt'>;
+export type RideLogCreateData = Omit<RideLog, 'id' | 'createdAt' | 'updatedAt' | 'tripId'> & {
+  tripId?: string | null;
+};
 
 /** Fields that can be updated on an existing ride log. */
 export type RideLogUpdateData = Partial<

@@ -121,3 +121,39 @@ service cloud.firestore {
   - Fixed existing TS error in TimerCompleteSheet (removed stale `rodeAt` param from submitCrowdReport call).
   - Aligned CrowdAggregate.confidence type with Chunk's aggregation module (includes 'none' for 0-report case).
   - TypeScript compiles clean (zero errors).
+
+- **2026-04-29:** Vercel deployment prep complete. Key findings:
+  - `vercel.json` already existed (created during Phase 1) with `iad1` region + API no-cache headers — no changes needed.
+  - `npm run build` passes clean — all pages compile (static + dynamic).
+  - Vercel CLI v52.0.0 is available locally but project not yet linked (needs `vercel login` + `vercel link`).
+  - `src/lib/firebase/admin.ts` reads `FIREBASE_SERVICE_ACCOUNT` env var (JSON string) with fallback to local `service-account.json`.
+  - 8 env vars total needed in Vercel dashboard: 7 client-side `NEXT_PUBLIC_FIREBASE_*` + 1 server-side `FIREBASE_SERVICE_ACCOUNT`.
+  - Filed deployment decision to `.squad/decisions/inbox/data-vercel-deploy.md` with full env var table and CLI steps.
+
+- **2026-04-29:** Built Trip service layer per Mikey's architecture decision. Deliverables:
+  - `src/types/trip.ts` — Replaced old prototype types with new Trip, TripStats, TripStatus, TripCreateData, TripUpdateData interfaces. Clean separation of concerns.
+  - `src/types/ride-log.ts` — Added `tripId: string | null` to RideLog interface. Made it optional in RideLogCreateData so existing callers aren't broken.
+  - `src/lib/services/trip-service.ts` — Full CRUD (createTrip, getTrips, getTrip, updateTrip, deleteTrip) + status management (getActiveTrip, activateTrip, completeTrip) + stats (updateTripStats, getTripRideLogs) + sharing (getSharedTrip, generateShareId). Uses `sharedTrips/{shareId}` collection as public-read index pointing to owner's private trip doc.
+  - `src/lib/services/ride-log-service.ts` — addRideLog now accepts optional `tripId` parameter. Backward-compatible (defaults to null).
+  - `src/types/index.ts` — Updated exports to match new trip types.
+  - TypeScript compiles clean (zero errors). Existing code unbroken.
+  - Key pattern: `generateShareId()` uses `crypto.getRandomValues` + URL-safe base64 (22 chars, 128 bits entropy). Share lookup is two reads: sharedTrips index → user's trip doc.
+
+- **2026-04-29:** Wired trip integration into ride logging + created sharing API route. Deliverables:
+  - `src/lib/services/ride-log-service.ts` — `addRideLog` now auto-detects active trip via `getActiveTrip(userId)` when no explicit tripId is passed. After logging, calls `updateTripStats()` to recompute denormalized stats. Backward-compatible: explicit `tripId` param or `null` overrides auto-detection.
+  - `src/lib/services/trip-service.ts` — Added `generateShareLink(userId, tripId)` which generates shareId, writes to trip doc + sharedTrips index, returns URL path. Idempotent (reuses existing shareId).
+  - `src/app/api/trips/[shareId]/route.ts` — Public GET endpoint using firebase-admin. Reads sharedTrips index → user's trip + ride logs. Returns sanitized JSON (no userId exposed). In-memory rate limiting (60 req/min per IP).
+  - `firestore.rules` — Added `sharedTrips/{shareId}`: public read, authenticated create, owner-only update/delete.
+  - TypeScript compiles clean. Next.js build passes.
+  - Design choice: Rate limiting is in-memory (resets on cold start). Acceptable for v1; upgrade to Redis/KV if abuse occurs.
+  - Design choice: sharedTrips rules allow client-side writes (not admin-only) because trip-service runs client-side. Secured by auth + owner check on mutations.
+
+## Scribe Batch Update (2026-04-29 10:59:18Z)
+
+**Decision inbox processed:**
+- Trip Sharing, Vercel Deployment decisions archived with full details
+- Ride Logging & Crowdsourced Wait Times decision integrated
+- Trip Planner & Ride Type Filters decision filed
+- Inbox cleared
+
+**Status:** Trip service layer complete. 12 functions tested. Vercel deployment decision documented (iad1 region, env var strategy). Ready for Phase 2 (API integration, trip pages UI).
