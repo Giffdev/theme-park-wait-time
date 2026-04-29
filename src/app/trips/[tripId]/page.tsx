@@ -51,6 +51,7 @@ export default function TripDetailPage() {
   const [rideLogs, setRideLogs] = useState<(RideLog & { id: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -78,11 +79,13 @@ export default function TripDetailPage() {
   const handleComplete = async () => {
     if (!user || !tripId) return;
     setCompleting(true);
+    setCompleteError(null);
     try {
       await completeTrip(user.uid, tripId);
       await fetchData();
     } catch (err) {
       console.error('Failed to complete trip:', err);
+      setCompleteError('Failed to complete trip. Please try again.');
     } finally {
       setCompleting(false);
     }
@@ -214,6 +217,9 @@ export default function TripDetailPage() {
               >
                 {completing ? 'Completing...' : 'Complete Trip'}
               </button>
+              {completeError && (
+                <p className="text-xs text-red-600 mt-1">{completeError}</p>
+              )}
             </>
           )}
         </div>

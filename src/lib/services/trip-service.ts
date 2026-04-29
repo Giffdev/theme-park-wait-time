@@ -206,7 +206,12 @@ export async function activateTrip(userId: string, tripId: string): Promise<void
 
 /** Complete a trip and compute final stats from ride logs. */
 export async function completeTrip(userId: string, tripId: string): Promise<void> {
-  await updateTripStats(userId, tripId);
+  try {
+    await updateTripStats(userId, tripId);
+  } catch (error) {
+    // Stats are nice-to-have; trip completion is the critical operation
+    console.warn('[completeTrip] Stats update failed, completing trip anyway:', error);
+  }
   await updateDocument(tripsPath(userId), tripId, { status: 'completed' });
 }
 
@@ -223,7 +228,21 @@ export async function getTripRideLogs(
     whereConstraint('tripId', '==', tripId),
     orderByConstraint('rodeAt', 'desc'),
   ];
-  return getCollection<RideLog>(rideLogsPath(userId), constraints);
+
+  try {
+    return await getCollection<RideLog>(rideLogsPath(userId), constraints);
+  } catch (error) {
+    // Fallback: if composite index isn't deployed yet, fetch without ordering and sort client-side
+    console.warn('[getTripRideLogs] Query failed (missing index?), falling back to client-side sort:', error);
+    const logs = await getCollection<RideLog>(rideLogsPath(userId), [
+      whereConstraint('tripId', '==', tripId),
+    ]);
+    return logs.sort((a, b) => {
+      const aTime = a.rodeAt instanceof Date ? a.rodeAt.getTime() : new Date(a.rodeAt).getTime();
+      const bTime = b.rodeAt instanceof Date ? b.rodeAt.getTime() : new Date(b.rodeAt).getTime();
+      return bTime - aTime;
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -232,7 +251,13 @@ export async function getTripRideLogs(
 
 /** Recompute and persist trip stats from its ride logs. */
 export async function updateTripStats(userId: string, tripId: string): Promise<void> {
-  const logs = await getTripRideLogs(userId, tripId);
+  let logs: (RideLog & { id: string })[];
+  try {
+    logs = await getTripRideLogs(userId, tripId);
+  } catch (error) {
+    console.warn('[updateTripStats] Failed to fetch ride logs, using empty stats:', error);
+    logs = [];
+  }
 
   const parks = new Set<string>();
   const attractions = new Set<string>();
