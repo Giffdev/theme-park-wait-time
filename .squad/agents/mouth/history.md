@@ -110,3 +110,6 @@
 - Active timer lives at `users/{userId}/activeTimer/current` (single doc pattern). `onSnapshot` gives instant real-time updates without polling.
 - The `clientStartedAt` (epoch ms) field is critical for offline resilience — elapsed time is always `now - clientStartedAt`, not dependent on server Timestamp resolution.
 - `animate-slide-up` CSS keyframe with `cubic-bezier(0.16, 1, 0.3, 1)` gives a satisfying spring-like entrance for bottom sheets.
+- Filter chips use two tiers: Tier 1 (entityType) for broad categories, Tier 2 (attractionType) for ride sub-types. Default state hides RESTAURANT and MERCHANDISE by initializing entityTypes to `Set(['ATTRACTION', 'SHOW'])`.
+- `scrollbar-hide` utility class in globals.css handles horizontal chip scrolling on mobile without visible scrollbars (webkit + Firefox).
+- Records with null/undefined `attractionType` still pass Tier 2 filters — only enriched records get filtered out. This supports gradual enrichment rollout.

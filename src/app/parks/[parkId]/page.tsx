@@ -6,6 +6,11 @@ import Link from 'next/link';
 import { RefreshCw, ArrowUpDown, TrendingUp, Clock, AlertCircle } from 'lucide-react';
 import { getDocument, getCollection, whereConstraint } from '@/lib/firebase/firestore';
 import AttractionRow from '@/components/AttractionRow';
+import AttractionFilterChips, {
+  type FilterState,
+  type EntityType,
+} from '@/components/parks/AttractionFilterChips';
+import type { AttractionType } from '@/types/attraction';
 
 interface Park {
   id: string;
@@ -21,6 +26,7 @@ interface Attraction {
   parkId: string;
   parkName: string;
   entityType: string;
+  attractionType?: AttractionType | null;
   slug: string;
 }
 
@@ -42,6 +48,10 @@ export default function ParkDetailPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sortAsc, setSortAsc] = useState(true);
+  const [filters, setFilters] = useState<FilterState>({
+    entityTypes: new Set<EntityType>(['ATTRACTION', 'SHOW']),
+    attractionTypes: new Set<AttractionType>(),
+  });
 
   const fetchData = useCallback(async () => {
     if (!parkId) return;
@@ -89,15 +99,31 @@ export default function ParkDetailPage() {
     };
   });
 
+  // Apply entity type + attraction type filters
+  const filteredAttractions = mergedAttractions.filter((a) => {
+    // Tier 1: entity type filter (empty set = show all rides+shows by default behavior handled by initial state)
+    if (filters.entityTypes.size > 0) {
+      if (!filters.entityTypes.has(a.entityType as EntityType)) return false;
+    }
+
+    // Tier 2: attraction sub-type filter (only applies to ATTRACTION entity type)
+    if (filters.attractionTypes.size > 0 && a.entityType === 'ATTRACTION') {
+      // If attractionType is null/undefined, still show it (don't filter out un-enriched records)
+      if (a.attractionType && !filters.attractionTypes.has(a.attractionType)) return false;
+    }
+
+    return true;
+  });
+
   // Split into operating and not operating
-  const operating = mergedAttractions
+  const operating = filteredAttractions
     .filter((a) => a.status === 'OPERATING')
     .sort((a, b) => {
       const aWait = a.waitMinutes ?? 999;
       const bWait = b.waitMinutes ?? 999;
       return sortAsc ? aWait - bWait : bWait - aWait;
     });
-  const notOperating = mergedAttractions.filter((a) => a.status !== 'OPERATING');
+  const notOperating = filteredAttractions.filter((a) => a.status !== 'OPERATING');
 
   // Stats
   const operatingCount = operating.length;
@@ -187,6 +213,9 @@ export default function ParkDetailPage() {
           </p>
         </div>
       </div>
+
+      {/* Filter Chips */}
+      <AttractionFilterChips filters={filters} onChange={setFilters} />
 
       {/* Operating Attractions */}
       <section className="mb-10">
