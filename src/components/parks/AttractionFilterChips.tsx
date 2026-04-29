@@ -4,7 +4,7 @@ import AttractionFilterChip from './AttractionFilterChip';
 import type { AttractionType } from '@/types/attraction';
 
 /** Entity types from the API */
-export type EntityType = 'ATTRACTION' | 'SHOW' | 'RESTAURANT' | 'MERCHANDISE';
+export type EntityType = 'ATTRACTION' | 'SHOW' | 'RESTAURANT';
 
 export interface FilterState {
   entityTypes: Set<EntityType>;
@@ -16,7 +16,6 @@ const ENTITY_TYPE_CHIPS: { value: EntityType; label: string; color: 'coral' | 'b
   { value: 'ATTRACTION', label: 'All Rides', color: 'coral' },
   { value: 'SHOW', label: 'Shows', color: 'blue' },
   { value: 'RESTAURANT', label: 'Dining', color: 'green' },
-  { value: 'MERCHANDISE', label: 'Shops', color: 'amber' },
 ];
 
 /** Tier 2: attraction sub-types (only when ATTRACTION is selected) */

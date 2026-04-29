@@ -10,6 +10,7 @@ import AttractionFilterChips, {
   type FilterState,
   type EntityType,
 } from '@/components/parks/AttractionFilterChips';
+import RideDetailPanel from '@/components/parks/RideDetailPanel';
 import type { AttractionType } from '@/types/attraction';
 
 interface Park {
@@ -47,11 +48,17 @@ export default function ParkDetailPage() {
   const [waitTimes, setWaitTimes] = useState<WaitTimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [sortAsc, setSortAsc] = useState(true);
+  const [sortAsc, setSortAsc] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     entityTypes: new Set<EntityType>(['ATTRACTION', 'SHOW']),
     attractionTypes: new Set<AttractionType>(),
   });
+  const [selectedRide, setSelectedRide] = useState<{
+    name: string;
+    entityType: string;
+    status: string;
+    waitMinutes: number | null;
+  } | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!parkId) return;
@@ -101,6 +108,9 @@ export default function ParkDetailPage() {
 
   // Apply entity type + attraction type filters
   const filteredAttractions = mergedAttractions.filter((a) => {
+    // Never show merchandise
+    if (a.entityType === 'MERCHANDISE') return false;
+
     // Tier 1: entity type filter (empty set = show all rides+shows by default behavior handled by initial state)
     if (filters.entityTypes.size > 0) {
       if (!filters.entityTypes.has(a.entityType as EntityType)) return false;
@@ -119,8 +129,12 @@ export default function ParkDetailPage() {
   const operating = filteredAttractions
     .filter((a) => a.status === 'OPERATING')
     .sort((a, b) => {
-      const aWait = a.waitMinutes ?? 999;
-      const bWait = b.waitMinutes ?? 999;
+      const aWait = a.waitMinutes;
+      const bWait = b.waitMinutes;
+      // n/a always at bottom regardless of sort direction
+      if (aWait === null && bWait === null) return 0;
+      if (aWait === null) return 1;
+      if (bWait === null) return -1;
       return sortAsc ? aWait - bWait : bWait - aWait;
     });
   const notOperating = filteredAttractions.filter((a) => a.status !== 'OPERATING');
@@ -200,7 +214,7 @@ export default function ParkDetailPage() {
             <span>Avg Wait</span>
           </div>
           <p className="mt-1 text-2xl font-bold text-primary-800">
-            {avgWait}<span className="ml-1 text-sm font-normal text-primary-400">min</span>
+            {operatingWithWaits.length > 0 ? avgWait : '—'}<span className="ml-1 text-sm font-normal text-primary-400">{operatingWithWaits.length > 0 ? 'min' : ''}</span>
           </p>
         </div>
         <div className="rounded-xl border border-primary-100 bg-white p-4">
@@ -209,7 +223,7 @@ export default function ParkDetailPage() {
             <span>Longest Wait</span>
           </div>
           <p className="mt-1 text-2xl font-bold text-red-600">
-            {longestWait}<span className="ml-1 text-sm font-normal text-primary-400">min</span>
+            {operatingWithWaits.length > 0 ? longestWait : '—'}<span className="ml-1 text-sm font-normal text-primary-400">{operatingWithWaits.length > 0 ? 'min' : ''}</span>
           </p>
         </div>
       </div>
@@ -219,7 +233,7 @@ export default function ParkDetailPage() {
 
       {/* Operating Attractions */}
       <section className="mb-10">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-primary-800">
             Operating ({operating.length})
           </h2>
@@ -228,10 +242,10 @@ export default function ParkDetailPage() {
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary-500 transition-colors hover:bg-primary-50 hover:text-primary-700"
           >
             <ArrowUpDown className="h-3 w-3" />
-            {sortAsc ? 'Shortest first' : 'Longest first'}
+            {sortAsc ? '↓ Longest first' : '↑ Shortest first'}
           </button>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="divide-y divide-primary-50 rounded-xl border border-primary-100 bg-white">
           {operating.map((a) => (
             <AttractionRow
               key={a.id}
@@ -239,10 +253,11 @@ export default function ParkDetailPage() {
               entityType={a.entityType}
               status={a.status}
               waitMinutes={a.waitMinutes}
+              onClick={() => setSelectedRide({ name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes })}
             />
           ))}
           {operating.length === 0 && (
-            <p className="col-span-full text-center text-sm text-primary-400 py-8">
+            <p className="text-center text-sm text-primary-400 py-8">
               No attractions currently operating.
             </p>
           )}
@@ -252,10 +267,10 @@ export default function ParkDetailPage() {
       {/* Closed / Not Operating */}
       {notOperating.length > 0 && (
         <section>
-          <h2 className="mb-4 text-lg font-semibold text-primary-800">
+          <h2 className="mb-3 text-lg font-semibold text-primary-800">
             Closed / Not Operating ({notOperating.length})
           </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="divide-y divide-primary-50 rounded-xl border border-primary-100 bg-white">
             {notOperating.map((a) => (
               <AttractionRow
                 key={a.id}
@@ -263,10 +278,22 @@ export default function ParkDetailPage() {
                 entityType={a.entityType}
                 status={a.status}
                 waitMinutes={a.waitMinutes}
+                onClick={() => setSelectedRide({ name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes })}
               />
             ))}
           </div>
         </section>
+      )}
+
+      {/* Ride Detail Panel */}
+      {selectedRide && (
+        <RideDetailPanel
+          name={selectedRide.name}
+          entityType={selectedRide.entityType}
+          status={selectedRide.status}
+          waitMinutes={selectedRide.waitMinutes}
+          onClose={() => setSelectedRide(null)}
+        />
       )}
     </div>
   );

@@ -146,3 +146,37 @@
 - The `getCollection<T>('parks', [])` call with empty constraints returns all parks — useful for dropdowns
 - ActiveTripBanner placed above QueueTimerBanner in Providers to give trip context visual priority
 - **Auth redirect pattern for protected pages:** Use `useAuth()` hook → `useEffect` that calls `router.replace('/auth/signin')` when `!authLoading && !user` → render spinner while `authLoading || !user`. Applied to all 4 trip routes (`/trips`, `/trips/new`, `/trips/[tripId]`, `/trips/[tripId]/edit`). This prevents content flash and gives a clean redirect.
+
+## UX Refinements (2026-04-29)
+
+- **Default sort busiest-first** on park detail page (`sortAsc: false`). Users care more about "what has the longest wait" when planning — flip to shortest-first when looking for quick rides.
+- **Crowd Calendar multi-month view**: Converted to client component with `useState` for month offset navigation. Shows 3 months side-by-side on desktop (flex-row), stacked on mobile (flex-col). Metadata moved to `layout.tsx`.
+- **Temperature indicators**: Each calendar day cell shows historical high°/low° (°F) in 9px text with Lucide Thermometer icon. Data generated deterministically from Florida monthly averages (Orlando). Kept subtle with `opacity-70` so crowd level number stays primary visual.
+- Pattern: When converting a server component to client (`'use client'`), extract `export const metadata` into a sibling `layout.tsx` to preserve SEO metadata.
+
+## Park Detail Redesign (2026-04-29)
+
+- **Sort bug fix:** Replaced `?? 999` with explicit null checks so n/a rides always sort to bottom regardless of direction.
+- **Compact list layout:** Replaced 3-column card grid with single-column `divide-y` list. Each ride is a clickable row with name, type badge, sparkline, and wait badge — dense and scannable like a leaderboard.
+- **WaitTimeSparkline** (`src/components/parks/WaitTimeSparkline.tsx`): Inline SVG polyline, 60×18px, color-coded green/yellow/red. Uses placeholder data (7 points trending toward current wait).
+- **RideDetailPanel** (`src/components/parks/RideDetailPanel.tsx`): Click-to-open sidebar (desktop) / bottom sheet (mobile) with large wait badge, hourly SVG area chart, and "Best time to ride" suggestion. Uses `animate-slide-up` on mobile.
+- **AttractionRow** now accepts `onClick` prop and renders as a `<button>` for accessibility.
+- Build clean at 231kB first-load JS for park detail page.
+
+## Learnings
+
+- For sort comparators with nullable values, explicit null guards (`if (a === null) return 1`) are clearer and more correct than fallback values like `?? 999`.
+- Inline SVG sparklines (no charting library) keep bundle tiny. A simple `<polyline>` with computed points is all you need for micro-charts.
+- Bottom sheet pattern: `animate-slide-up` + `md:animate-none` gives mobile sheet behavior while keeping desktop as a static sidebar panel.
+
+## QA Fixes — Stef's Review (2026-04-29)
+
+- **Seeded PRNG for sparklines and hourly charts:** Replaced `Math.random()` with a deterministic `seededRandom(rideName, index)` function so placeholder data is stable across re-renders for the same ride.
+- **WaitTimeSparkline** now requires `rideName` prop as PRNG seed. AttractionRow passes `name`.
+- **RideDetailPanel accessibility:** Added `role="dialog" aria-modal="true" aria-labelledby="ride-detail-title"`, auto-focus on mount, `tabIndex={-1}`, and `outline-none` for focus trap pattern.
+- **Backdrop click fix:** Moved `onClick={onClose}` directly onto the backdrop overlay div, added `e.stopPropagation()` on panel content to prevent misfire.
+- **Sort button label:** Now shows the action (what clicking will do) instead of current state.
+- **Stats "0 min" fix:** Shows "—" when no rides have wait data instead of misleading "0 min".
+- **Dead code removed:** Unused `areaPath` variable deleted from DayChart.
+- **Disclaimer label:** Added "Based on historical averages" below Best Time suggestion.
+- Build clean at 232kB first-load JS for park detail page.
