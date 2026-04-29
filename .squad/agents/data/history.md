@@ -109,3 +109,15 @@ service cloud.firestore {
 - **Orchestration Logs:** Data, Mouth, and Stef orchestration logs written.
 - **Session Log:** Orchestration completion logged.
 - **Status:** All Phase 1 deliverables complete. Firebase Auth wired, parks dashboard live, 99 tests passing. Ready for Phase 2 (seeding, scheduling, analytics).
+
+- **2026-04-29:** Built ride logging + crowdsourced timer backend per Mikey's architecture decision. Deliverables:
+  - `src/types/ride-log.ts` — Full type definitions: RideLog, RideLogCreateData, RideLogUpdateData, ActiveTimer, TimerStartData, CrowdReport, CrowdAggregate, QueueReportRequest.
+  - `src/lib/services/ride-log-service.ts` — Complete CRUD (addRideLog, getRideLogs with filtering by parkId/attractionId, getRideLog, updateRideLog, deleteRideLog) + client-side submitCrowdReport helper.
+  - `src/lib/services/timer-service.ts` — startTimer, stopTimer, getActiveTimer, abandonTimer, subscribeToActiveTimer (realtime), checkForAbandonedTimer (4h threshold). Uses client SDK directly for low-latency timer ops.
+  - `src/lib/services/crowd-service.ts` — Server-side (Admin SDK): getCrowdAggregate, getCrowdAggregatesForPark, submitCrowdReport (writes anonymized report + re-aggregates with simple average placeholder).
+  - `src/app/api/queue-report/route.ts` — POST endpoint: verifies Firebase ID token, validates bounds (2-180 min), anonymizes (no userId passed), writes report, re-aggregates.
+  - `firestore.rules` — Added: users/{uid}/rideLogs/{logId}, users/{uid}/activeTimer/{docId} (owner only), crowdsourcedWaitTimes/{parkId}/reports + aggregates (public read, server write only).
+  - `firestore.indexes.json` — Added: rideLogs parkId+rodeAt DESC, rideLogs attractionId+rodeAt DESC, crowdsourced reports attractionId+reportedAt DESC.
+  - Fixed existing TS error in TimerCompleteSheet (removed stale `rodeAt` param from submitCrowdReport call).
+  - Aligned CrowdAggregate.confidence type with Chunk's aggregation module (includes 'none' for 0-report case).
+  - TypeScript compiles clean (zero errors).

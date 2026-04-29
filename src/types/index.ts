@@ -29,3 +29,13 @@ export type {
   TrustLevel,
 } from './user';
 export type { Trip, TripPark, RideLog } from './trip';
+export type {
+  RideLog as RideLogEntry,
+  RideLogCreateData,
+  RideLogUpdateData,
+  ActiveTimer,
+  TimerStartData,
+  CrowdReport as CrowdTimerReport,
+  CrowdAggregate,
+  QueueReportRequest,
+} from './ride-log';

@@ -28,10 +28,26 @@
     },
     {
       "collectionGroup": "rideLogs",
-      "queryScope": "COLLECTION_GROUP",
+      "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "parkId", "order": "ASCENDING" },
-        { "fieldPath": "date", "order": "DESCENDING" }
+        { "fieldPath": "rodeAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "rideLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "attractionId", "order": "ASCENDING" },
+        { "fieldPath": "rodeAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "attractionId", "order": "ASCENDING" },
+        { "fieldPath": "reportedAt", "order": "DESCENDING" }
       ]
     }
   ],

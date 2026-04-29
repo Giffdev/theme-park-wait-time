@@ -54,6 +54,16 @@ service cloud.firestore {
           allow read, write: if request.auth != null && request.auth.uid == uid;
         }
       }
+
+      // Ride logs (standalone — personal ride history)
+      match /rideLogs/{logId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // Active timer (single doc per user)
+      match /activeTimer/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
     }
 
     // ── CROWD REPORTS (mixed access) ──
@@ -80,6 +90,17 @@ service cloud.firestore {
                       && request.resource.data.userId == request.auth.uid;
         allow update, delete: if false;
       }
+    }
+
+    // ── CROWDSOURCED WAIT TIMES (anonymized — public read, server write) ──
+    match /crowdsourcedWaitTimes/{parkId}/reports/{reportId} {
+      allow read: if true;
+      allow write: if false; // Admin SDK only (API route writes)
+    }
+
+    match /crowdsourcedWaitTimes/{parkId}/aggregates/{attractionId} {
+      allow read: if true;
+      allow write: if false; // Admin SDK only (API route writes)
     }
   }
 }
