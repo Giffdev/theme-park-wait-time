@@ -44,4 +44,8 @@
 
 ## Learnings
 
-(none yet)
+- `create-next-app` refuses non-empty directories. When other agents have already scaffolded files (firebase config, test utils, etc.), manually create package.json/tsconfig/next.config instead.
+- Tailwind v4 uses `@theme` blocks in CSS for design tokens instead of `tailwind.config.ts`. oklch color system works great for the palette.
+- Existing test-utils with `@firebase/rules-unit-testing` have a peer dep conflict with firebase@11. Exclude them from the Next.js build via tsconfig `exclude` and eslintrc `ignorePatterns`.
+- Always use `<Link>` from `next/link` for internal navigation — Next.js ESLint config enforces this strictly.
+- Mobile bottom nav needs `pb-[env(safe-area-inset-bottom)]` for iPhone notch/home indicator safe areas and pages need `pb-24 md:pb-0` to avoid content being hidden behind it.

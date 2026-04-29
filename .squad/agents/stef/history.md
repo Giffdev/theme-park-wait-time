@@ -38,4 +38,9 @@
 
 ## Learnings
 
-(none yet)
+- **2026-04-28:** Bootstrapped full test infrastructure. Chose **Vitest** over Jest — faster, native ESM/TS support, better fit for Next.js 14+. Created separate vitest configs for unit (jsdom) and integration (node) to keep unit tests fast.
+- **2026-04-28:** Security rules test suite is the highest-priority integration test. Covers every collection in the Firestore schema with the full access matrix (unauth/owner/other/admin). Uses `@firebase/rules-unit-testing` with `withSecurityRulesDisabled` for seeding.
+- **2026-04-28:** Firebase Emulator ports: Auth=9099, Firestore=8080, Functions=5001, UI=4000. Added to `firebase.json` — these must stay in sync with `firebase-test-helpers.ts`.
+- **2026-04-28:** Created factory functions (`createMockPark`, `createMockUser`, etc.) with auto-incrementing IDs and full type safety. All tests should use these — no inline test data.
+- **2026-04-28:** Playwright configured for 4 browser targets (Chromium, Firefox, WebKit, Mobile Chrome). E2E tests should run against Firebase Emulators to stay deterministic.
+- **2026-04-28:** Auth/Firestore unit tests are `.todo` skeletons — they document the expected contract for the modules Mouth will build. They'll light up as code lands.

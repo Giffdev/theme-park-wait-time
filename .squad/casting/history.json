@@ -1,0 +1,22 @@
+{
+  "universe_usage_history": [
+    {
+      "universe": "The Goonies",
+      "assignment_id": "theme-park-wait-times-init",
+      "used_at": "2026-04-29T06:26:43Z"
+    }
+  ],
+  "assignment_cast_snapshots": {
+    "theme-park-wait-times-init": {
+      "universe": "The Goonies",
+      "agents": {
+        "lead": "Mikey",
+        "frontend": "Mouth",
+        "backend": "Data",
+        "data-engineer": "Chunk",
+        "tester": "Stef"
+      },
+      "created_at": "2026-04-29T06:26:43Z"
+    }
+  }
+}
