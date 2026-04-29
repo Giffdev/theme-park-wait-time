@@ -114,7 +114,24 @@ export async function getTrips(
     constraints.push(limitConstraint(options.limit));
   }
 
-  return getCollection<Trip>(tripsPath(userId), constraints);
+  try {
+    return await getCollection<Trip>(tripsPath(userId), constraints);
+  } catch (error) {
+    // Fallback: if the composite index isn't built yet, fetch all and filter client-side
+    console.warn('[getTrips] Query failed (missing index?), falling back to client-side filter:', error);
+    const allTrips = await getCollection<Trip>(tripsPath(userId), [
+      orderByConstraint('createdAt', 'desc'),
+    ]);
+
+    let results = allTrips;
+    if (options.status) {
+      results = results.filter((t) => t.status === options.status);
+    }
+    if (options.limit) {
+      results = results.slice(0, options.limit);
+    }
+    return results;
+  }
 }
 
 /** Get a single trip by ID. */
