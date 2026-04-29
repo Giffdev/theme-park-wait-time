@@ -28,6 +28,23 @@ When adding a new theme park to the platform or debugging data issues with an ex
 - Safe capacity: ~1,500 parks before rate limit concern
 - Queue-Times: fair-use only, keep to ≤12 req/hour per park
 
+## Key Data Fields by Endpoint
+
+### `/entity/{id}/live` (liveData array)
+- `queue.STANDBY.waitTime` — current standby minutes
+- `queue.RETURN_TIME.{state, returnStart, returnEnd}` — Lightning Lane / virtual queue
+- `queue.PAID_RETURN_TIME.{state, returnStart, returnEnd, price}` — Individual Lightning Lane
+- `queue.BOARDING_GROUP.{state, currentGroupStart, currentGroupEnd, estimatedWait}` — Boarding groups
+- `forecast[].{time, waitTime, percentage}` — Hourly wait predictions for the day
+- `operatingHours[].{type, startTime, endTime}` — Per-attraction hours ("Operating", "Early Entry")
+- `showtimes[].{type, startTime, endTime}` — Show performance times
+- `diningAvailability[].{waitTime, partySize}` — Restaurant availability
+
+### `/entity/{id}/schedule` (schedule array)
+- `type: "OPERATING"` — Normal park hours + `purchases[]` with Lightning Lane pricing
+- `type: "TICKETED_EVENT"` — Special events (Early Entry, Extended Evening, Halloween Horror Nights)
+- `purchases[].{name, type, price.formatted, available}` — Real-time LL pricing/availability
+
 ## Key URLs
 - ThemeParks.wiki docs: https://themeparks.wiki/api/http
 - Queue-Times API: https://queue-times.com/pages/api

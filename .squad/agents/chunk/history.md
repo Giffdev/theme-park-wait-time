@@ -86,3 +86,38 @@ Created `scripts/enrich-attraction-types.ts` and `scripts/attraction-overrides.t
 - Inbox cleared
 
 **Status:** Attraction enrichment complete. Ready for Phase 2 UI integration (Mouth). Trip filters shipped; attraction type taxonomy available for future refinement.
+
+### 2026-04-29 — Wait-Times API Expanded (Full Data Capture)
+
+Widened `src/app/api/wait-times/route.ts` to capture all data from the ThemeParks Wiki `/entity/{id}/live` endpoint that we were previously discarding.
+
+**New Data Captured:**
+- `queue.RETURN_TIME` — Lightning Lane return windows (state, returnStart, returnEnd)
+- `queue.PAID_RETURN_TIME` — Individual Lightning Lane (state, times, price with amount/currency/formatted)
+- `queue.BOARDING_GROUP` — Virtual queue boarding groups (state, currentGroupStart/End, estimatedWait)
+- `forecast[]` — Hourly wait time predictions per attraction (~60-70% coverage)
+- `operatingHours[]` — Per-attraction operating hours (type, startTime, endTime)
+
+**Historical Archiving:**
+- On each poll, writes snapshot to `waitTimeHistory/{parkId}/daily/{YYYY-MM-DD}/attractions/{attractionId}`
+- Uses `FieldValue.arrayUnion` to append `{time, waitMinutes}` to a `snapshots` array
+- One doc per attraction per day — keeps docs small (~5KB/day at 5-min intervals)
+
+**API Resilience:**
+- In-memory stale cache per park — updated on every successful fetch
+- On 429 or 5xx from ThemeParks Wiki, serves stale cached data instead of failing
+- Response includes `stale: boolean` field so clients know when data is from cache
+- Network errors (unreachable API) also fall back to stale cache
+
+**Null Handling:**
+- All new fields gracefully default to `null` if missing from the API response
+- Forecast/operatingHours stored as `null` (not empty array) when absent — cleaner for client checks
+
+**Key Files:**
+- `src/app/api/wait-times/route.ts` — the single file modified
+- Uses `FieldValue.arrayUnion` from `firebase-admin/firestore` for atomic snapshot appends
+
+**Patterns:**
+- Stale-while-revalidate at API layer (in-memory `parkDataCache` map)
+- Null-coalescing throughout for optional API fields (`?? null`)
+- Same batched Firestore write pattern (499 per batch) for both current + history

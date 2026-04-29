@@ -46,7 +46,7 @@ export default function HomePage() {
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-primary-200 sm:text-xl">
             Real-time wait times, crowd predictions, and ride logging for theme park
-            fans who refuse to waste a single minute in line.
+            fans who want to make the most of their trip to the park.
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link

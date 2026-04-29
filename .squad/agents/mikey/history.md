@@ -43,3 +43,14 @@
 - **Route structure:** `/trips`, `/trips/new`, `/trips/[tripId]`, `/trips/[tripId]/edit`
 - **Quick win:** Ride type filter chips on park page can ship immediately with zero backend changes — just client-side filtering on existing `entityType` field.
 - **Devin preferences needed:** Trip sharing (public vs private), export format, multi-trip overlap rules, default filter behavior for non-rides.
+
+### 2026-04-29 — Virtual Queue, Enhanced Sidebar & Events Architecture
+- **Decision file:** `.squad/decisions/inbox/mikey-virtual-queue-sidebar-events.md`
+- **Key discovery:** ThemeParks Wiki API returns WAY more data than we consume. `forecast[]` with hourly predictions, `operatingHours[]` per attraction, `queue.RETURN_TIME`/`PAID_RETURN_TIME`/`BOARDING_GROUP`, and `TICKETED_EVENT` schedules with Lightning Lane pricing.
+- **Architecture pattern:** "Widen the pipe" — no new endpoints needed for virtual queues or forecasts. Just expand what we capture from the existing live data response and store in Firestore.
+- **Sidebar chart breakthrough:** The PRNG fake data in `DayChart` can be replaced immediately with real API `forecast` data. No historical data collection needed for v1.
+- **Schedule endpoint:** One new endpoint `/api/park-schedule` for park hours + events. Caches in Firestore at 1-hour intervals.
+- **Data model additions:** `queue` object on `waitTimes/{parkId}/current/{attractionId}`, `forecast` + `operatingHours` fields, new `parkSchedules/{parkId}/daily/{date}` collection.
+- **Historical data strategy:** Start archiving snapshots now to `waitTimeHistory/{parkId}/daily/{date}/attractions/{attractionId}` — don't block features on it, use for "typical day" overlays after 30 days.
+- **Lightning Lane pricing:** Available in schedule `purchases[]` array — real-time pricing with availability flags. Major differentiator vs competitors.
+- **Implementation estimate:** 7 person-days for Phase 1, all using existing API data. No new infrastructure or third-party services.

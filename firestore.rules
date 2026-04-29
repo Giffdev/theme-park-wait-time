@@ -100,6 +100,12 @@ service cloud.firestore {
                             && resource.data.userId == request.auth.uid; // Only owner can modify/delete
     }
 
+    // ── PARK SCHEDULES (public read, server-only write) ──
+    match /parkSchedules/{parkId}/daily/{date} {
+      allow read: if true;
+      allow write: if false; // Admin SDK only
+    }
+
     // ── CROWDSOURCED WAIT TIMES (anonymized — public read, server write) ──
     match /crowdsourcedWaitTimes/{parkId}/reports/{reportId} {
       allow read: if true;

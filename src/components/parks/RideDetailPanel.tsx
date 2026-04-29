@@ -3,106 +3,91 @@
 import { useEffect, useRef } from 'react';
 import { X, Clock, Zap } from 'lucide-react';
 import WaitTimeBadge from '@/components/WaitTimeBadge';
+import ForecastChart from '@/components/parks/ForecastChart';
+import type { QueueData, ForecastEntry, OperatingHoursEntry } from '@/types/queue';
 
 interface RideDetailPanelProps {
   name: string;
   entityType: string;
   status: string;
   waitMinutes: number | null;
+  queue?: QueueData | null;
+  forecast?: ForecastEntry[] | null;
+  operatingHours?: OperatingHoursEntry[] | null;
   onClose: () => void;
 }
 
-function seededRandom(seed: string, index: number): number {
-  let hash = 0;
-  const str = seed + index;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return (hash & 0x7fffffff) / 0x7fffffff;
+function formatReturnTime(start: string | null, end: string | null): string {
+  if (!start) return 'Checking availability...';
+  const s = new Date(start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (!end) return `${s} onward`;
+  const e = new Date(end).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return `${s} – ${e}`;
 }
 
-function generateHourlyData(name: string, currentWait: number | null): { hour: number; wait: number }[] {
-  const parkOpen = 9;
-  const parkClose = 22;
-  const hours: { hour: number; wait: number }[] = [];
-  const base = currentWait ?? 20;
+function VirtualQueueDetail({ queue }: { queue: QueueData }) {
+  const sections: JSX.Element[] = [];
 
-  for (let h = parkOpen; h <= parkClose; h++) {
-    const timeFactor = Math.sin(((h - parkOpen) / (parkClose - parkOpen)) * Math.PI);
-    const noise = (seededRandom(name, h) - 0.5) * 10;
-    const wait = Math.max(5, Math.round(base * 0.4 + base * 0.8 * timeFactor + noise));
-    hours.push({ hour: h, wait });
-  }
-  return hours;
-}
-
-function formatHour(h: number): string {
-  if (h === 12) return '12p';
-  if (h > 12) return `${h - 12}p`;
-  return `${h}a`;
-}
-
-function DayChart({ name, currentWait }: { name: string; currentWait: number | null }) {
-  const data = generateHourlyData(name, currentWait);
-  const max = Math.max(...data.map((d) => d.wait), 1);
-  const width = 280;
-  const height = 100;
-  const padding = { top: 10, right: 10, bottom: 20, left: 30 };
-  const chartW = width - padding.left - padding.right;
-  const chartH = height - padding.top - padding.bottom;
-
-  const bestHour = data.reduce((best, d) => (d.wait < best.wait ? d : best), data[0]);
-
-  const points = data
-    .map((d, i) => {
-      const x = padding.left + (i / (data.length - 1)) * chartW;
-      const y = padding.top + chartH - (d.wait / max) * chartH;
-      return `${x},${y}`;
-    })
-    .join(' ');
-
-  // Area fill
-  const firstX = padding.left;
-  const lastX = padding.left + chartW;
-  const bottomY = padding.top + chartH;
-  return (
-    <div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full max-w-[280px]">
-        {/* Y-axis labels */}
-        <text x={padding.left - 4} y={padding.top + 4} textAnchor="end" className="fill-primary-400" fontSize="8">
-          {max}m
-        </text>
-        <text x={padding.left - 4} y={bottomY} textAnchor="end" className="fill-primary-400" fontSize="8">
-          0
-        </text>
-        {/* X-axis labels */}
-        {data.filter((_, i) => i % 3 === 0).map((d, i) => {
-          const idx = i * 3;
-          const x = padding.left + (idx / (data.length - 1)) * chartW;
-          return (
-            <text key={d.hour} x={x} y={height - 4} textAnchor="middle" className="fill-primary-400" fontSize="8">
-              {formatHour(d.hour)}
-            </text>
-          );
-        })}
-        {/* Area */}
-        <polygon points={`${firstX},${bottomY} ${points} ${lastX},${bottomY}`} fill="currentColor" className="text-coral-100" />
-        {/* Line */}
-        <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-coral-500" />
-      </svg>
-      <div className="mt-3 flex items-center gap-2 rounded-lg bg-sage-50 px-3 py-2 text-sm">
-        <Zap className="h-4 w-4 text-sage-600" />
-        <span className="text-sage-800 font-medium">
-          Best time: {formatHour(bestHour.hour)} (~{bestHour.wait} min)
-        </span>
+  if (queue.RETURN_TIME && queue.RETURN_TIME.state !== 'FINISHED') {
+    sections.push(
+      <div key="ll" className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+        <span className="text-amber-500">⚡</span>
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-amber-800">Lightning Lane</p>
+          <p className="text-xs text-amber-600">
+            {queue.RETURN_TIME.state === 'TEMPORARILY_FULL'
+              ? 'Temporarily full'
+              : formatReturnTime(queue.RETURN_TIME.returnStart, queue.RETURN_TIME.returnEnd)}
+          </p>
+        </div>
       </div>
-      <p className="mt-1 text-xs text-primary-400 italic">Based on historical averages</p>
-    </div>
-  );
+    );
+  }
+
+  if (queue.PAID_RETURN_TIME && queue.PAID_RETURN_TIME.state !== 'FINISHED') {
+    sections.push(
+      <div key="ill" className="flex items-center gap-2 rounded-lg border border-yellow-300 bg-yellow-50 px-3 py-2">
+        <span className="text-yellow-600">💰</span>
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-yellow-800">
+            Individual Lightning Lane{queue.PAID_RETURN_TIME.price ? `: ${queue.PAID_RETURN_TIME.price.formatted}` : ''}
+          </p>
+          <p className="text-xs text-yellow-600">
+            {queue.PAID_RETURN_TIME.state === 'TEMPORARILY_FULL'
+              ? 'Temporarily full'
+              : formatReturnTime(queue.PAID_RETURN_TIME.returnStart, queue.PAID_RETURN_TIME.returnEnd)}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (queue.BOARDING_GROUP) {
+    const bg = queue.BOARDING_GROUP;
+    sections.push(
+      <div key="vq" className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2">
+        <span className="text-purple-500">🎟️</span>
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-purple-800">Virtual Queue</p>
+          <p className="text-xs text-purple-600">
+            {bg.state === 'CLOSED' && 'Closed for today'}
+            {bg.state === 'PAUSED' && 'Paused — check back later'}
+            {bg.state === 'AVAILABLE' && bg.currentGroupStart !== null && (
+              <>Now boarding: Groups {bg.currentGroupStart}–{bg.currentGroupEnd}{bg.estimatedWait ? ` (~${bg.estimatedWait} min)` : ''}</>
+            )}
+            {bg.state === 'AVAILABLE' && bg.currentGroupStart === null && 'Open — join now'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (sections.length === 0) return null;
+
+  return <div className="space-y-2">{sections}</div>;
 }
 
-export default function RideDetailPanel({ name, entityType, status, waitMinutes, onClose }: RideDetailPanelProps) {
+export default function RideDetailPanel({ name, entityType, status, waitMinutes, queue, forecast, operatingHours, onClose }: RideDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -110,7 +95,6 @@ export default function RideDetailPanel({ name, entityType, status, waitMinutes,
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', handleEscape);
-    // Auto-focus the panel on mount for accessibility
     panelRef.current?.focus();
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose]);
@@ -159,13 +143,20 @@ export default function RideDetailPanel({ name, entityType, status, waitMinutes,
             </div>
           </div>
 
-          {/* Chart */}
+          {/* Virtual Queue Detail */}
+          {queue && <VirtualQueueDetail queue={queue} />}
+
+          {/* Forecast Chart */}
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Clock className="h-4 w-4 text-primary-400" />
               <h3 className="text-sm font-semibold text-primary-700">Wait Times Today</h3>
             </div>
-            <DayChart name={name} currentWait={waitMinutes} />
+            <ForecastChart
+              forecast={forecast ?? null}
+              operatingHours={operatingHours ?? null}
+              currentWait={waitMinutes}
+            />
           </div>
         </div>
       </div>
