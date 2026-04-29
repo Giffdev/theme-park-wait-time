@@ -83,3 +83,30 @@
 
 - **Decision Filed:** Client-Side Data Fetching for Parks Pages decision merged into main decisions log.
 - **Status:** Live parks dashboard with real wait times complete. 225kB first-load JS. Refresh button functional. Responsive on mobile. Ready for Phase 2 features.
+
+## Phase 3: Ride Logging & Timer UI (2026-04-29)
+
+- **Timer components** (`src/components/queue-timer/`):
+  - `TimerDisplay.tsx` — live MM:SS with green/yellow/red color coding
+  - `QueueTimerButton.tsx` — start/stop/disabled states per attraction
+  - `QueueTimerBanner.tsx` — persistent banner in Providers (visible on all pages when timer active)
+  - `TimerCompleteSheet.tsx` — bottom sheet with rating stars, notes, and save/skip actions
+- **Ride log components** (`src/components/ride-log/`):
+  - `RideLogEntry.tsx` — card with expandable notes, delete, rating stars
+  - `RideLogList.tsx` — date-grouped list with loading/empty states
+  - `ManualLogForm.tsx` — full form with park/attraction dropdowns from Firestore
+- **Crowd estimate components** (`src/components/crowd-estimate/`):
+  - `CrowdBadge.tsx` — "👥 ~X min" badge with color coding + confidence checkmark
+  - `ConfidenceIndicator.tsx` — dot-based confidence level with tooltip
+- **Ride Log page** (`src/app/ride-log/page.tsx`): Stats summary, filter tabs, FAB for manual entry, auth gate
+- **Hook** (`src/hooks/useActiveTimer.ts`): Real-time Firestore subscription with 1s tick, abandoned timer detection
+- **Services** (`src/lib/services/`): `timer-service.ts` (start/stop/subscribe/abandon), `ride-log-service.ts` (CRUD + crowd report submission)
+- **Layout updates**: QueueTimerBanner in Providers, "My Rides" in nav + bottom bar, slide-up animation in globals.css
+- **Build:** Clean build, ride-log page 237kB first-load JS. Type-check passes.
+
+## Learnings (Phase 3 additions)
+
+- Data's `ride-log.ts` types use plain `Date` objects (not Firestore Timestamps). Service layer does the conversion with `dateToTimestamp()` and manual `Timestamp.toDate()` calls.
+- Active timer lives at `users/{userId}/activeTimer/current` (single doc pattern). `onSnapshot` gives instant real-time updates without polling.
+- The `clientStartedAt` (epoch ms) field is critical for offline resilience — elapsed time is always `now - clientStartedAt`, not dependent on server Timestamp resolution.
+- `animate-slide-up` CSS keyframe with `cubic-bezier(0.16, 1, 0.3, 1)` gives a satisfying spring-like entrance for bottom sheets.
