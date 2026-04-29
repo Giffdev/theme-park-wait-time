@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { X, Clock, Zap } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { X, Clock } from 'lucide-react';
 import WaitTimeBadge from '@/components/WaitTimeBadge';
 import ForecastChart from '@/components/parks/ForecastChart';
 import type { QueueData, ForecastEntry, OperatingHoursEntry } from '@/types/queue';
@@ -26,7 +26,7 @@ function formatReturnTime(start: string | null, end: string | null): string {
 }
 
 function VirtualQueueDetail({ queue }: { queue: QueueData }) {
-  const sections: JSX.Element[] = [];
+  const sections: React.ReactElement[] = [];
 
   if (queue.RETURN_TIME && queue.RETURN_TIME.state !== 'FINISHED') {
     sections.push(

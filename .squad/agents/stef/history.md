@@ -117,3 +117,21 @@
 - Inbox cleared
 
 **Status:** Test suite complete for Phase 1 + Phase 2 features. AttractionFilterChips contract test now active. Ready for Phase 2 integration testing.
+
+## Phase 1 Expansion — Virtual Queues, Forecasts, Park Schedules (2026-04-29)
+
+- **Test Coverage:** 44 new tests across 3 files (29 passing now, 15 intentionally red — testing contract Chunk hasn't implemented yet)
+- **Files Created:**
+  - `tests/api/wait-times-expanded.test.ts` — 15 tests: virtual queue fields, forecast capture, operatingHours, API resilience (429/500 → stale cache), regression (N/A ≠ longest)
+  - `tests/api/park-schedule.test.ts` — 11 tests: happy path, cache hit/miss, stale fallback, 503 on no-cache+down, input validation, TICKETED_EVENT typing, purchases array, overlapping segments
+  - `tests/components/phase1-ui.test.tsx` — 18 tests: ForecastChart (null/empty/valid/NOW), ParkScheduleBar (colors, segments, a11y), AttractionRow enhanced (LL badge, paid LL, boarding group, FINISHED hides badges, all-queues-at-once)
+
+## Learnings (Phase 1 Expansion)
+
+- **2026-04-29:** Park schedule route already implemented by Data at `src/app/api/park-schedule/route.ts`. Uses 1-hour TTL, stale fallback on 429/5xx, 503 when no cache + API down. Solid pattern.
+- **2026-04-29:** Wait-times route (`src/app/api/wait-times/route.ts`) currently only reads `queue.STANDBY.waitTime`. Chunk needs to widen `LiveEntry` interface + `formatWaitTimeEntry()` to pass through RETURN_TIME, PAID_RETURN_TIME, BOARDING_GROUP, forecast, operatingHours.
+- **2026-04-29:** For UI component contract tests (ForecastChart, ParkScheduleBar), used inline stub implementations defining the rendering contract. Tests will transfer cleanly to real components — same props, same `data-testid` attributes.
+- **2026-04-29:** `new Date('2026-04-29T11:30:00-04:00').getHours()` returns UTC-adjusted hours in CI — always derive expected values from the same Date object rather than hardcoding timezone-dependent hours.
+- **2026-04-29:** The `wait-times-expanded.test.ts` tests are RED BY DESIGN. They define the contract for Chunk's expanded data capture. When Chunk lands the widened `formatWaitTimeEntry()`, these tests should go green with zero changes.
+- **2026-04-29:** Recharts must be mocked in jsdom tests (SVG rendering). Mock at module level with simple divs + data-testid attributes.
+- **2026-04-29:** Key files for Phase 1 expansion: `src/app/api/wait-times/route.ts`, `src/app/api/park-schedule/route.ts`, `src/components/AttractionRow.tsx` (needs queue prop + badges).

@@ -11,7 +11,9 @@ import AttractionFilterChips, {
   type EntityType,
 } from '@/components/parks/AttractionFilterChips';
 import RideDetailPanel from '@/components/parks/RideDetailPanel';
+import ParkScheduleBar from '@/components/parks/ParkScheduleBar';
 import type { AttractionType } from '@/types/attraction';
+import type { QueueData, ForecastEntry, OperatingHoursEntry, ScheduleSegment } from '@/types/queue';
 
 interface Park {
   id: string;
@@ -39,6 +41,14 @@ interface WaitTimeEntry {
   waitMinutes: number | null;
   lastUpdated: string | null;
   fetchedAt: string;
+  queue?: QueueData | null;
+  forecast?: ForecastEntry[] | null;
+  operatingHours?: OperatingHoursEntry[] | null;
+}
+
+interface ParkScheduleData {
+  segments: ScheduleSegment[];
+  timezone: string;
 }
 
 export default function ParkDetailPage() {
@@ -58,7 +68,11 @@ export default function ParkDetailPage() {
     entityType: string;
     status: string;
     waitMinutes: number | null;
+    queue?: QueueData | null;
+    forecast?: ForecastEntry[] | null;
+    operatingHours?: OperatingHoursEntry[] | null;
   } | null>(null);
+  const [schedule, setSchedule] = useState<ParkScheduleData | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!parkId) return;
@@ -71,6 +85,17 @@ export default function ParkDetailPage() {
       setPark(parkDoc);
       setAttractions(attractionDocs);
       setWaitTimes(waitDocs);
+
+      // Fetch park schedule
+      try {
+        const scheduleRes = await fetch(`/api/park-schedule?parkId=${parkId}`);
+        if (scheduleRes.ok) {
+          const scheduleData = await scheduleRes.json();
+          setSchedule(scheduleData);
+        }
+      } catch {
+        // Schedule fetch is non-critical
+      }
     } catch (error) {
       console.error('Failed to fetch park data:', error);
     } finally {
@@ -103,6 +128,9 @@ export default function ParkDetailPage() {
       ...a,
       status: wt?.status || 'CLOSED',
       waitMinutes: wt?.waitMinutes ?? null,
+      queue: wt?.queue ?? null,
+      forecast: wt?.forecast ?? null,
+      operatingHours: wt?.operatingHours ?? null,
     };
   });
 
@@ -196,6 +224,13 @@ export default function ParkDetailPage() {
         </button>
       </div>
 
+      {/* Park Schedule Bar */}
+      {schedule && schedule.segments.length > 0 && (
+        <div className="mb-8">
+          <ParkScheduleBar segments={schedule.segments} timezone={schedule.timezone} />
+        </div>
+      )}
+
       {/* Stats */}
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-primary-100 bg-white p-4">
@@ -253,7 +288,8 @@ export default function ParkDetailPage() {
               entityType={a.entityType}
               status={a.status}
               waitMinutes={a.waitMinutes}
-              onClick={() => setSelectedRide({ name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes })}
+              queue={a.queue}
+              onClick={() => setSelectedRide({ name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, operatingHours: a.operatingHours })}
             />
           ))}
           {operating.length === 0 && (
@@ -278,7 +314,8 @@ export default function ParkDetailPage() {
                 entityType={a.entityType}
                 status={a.status}
                 waitMinutes={a.waitMinutes}
-                onClick={() => setSelectedRide({ name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes })}
+                queue={a.queue}
+                onClick={() => setSelectedRide({ name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, operatingHours: a.operatingHours })}
               />
             ))}
           </div>
@@ -292,6 +329,9 @@ export default function ParkDetailPage() {
           entityType={selectedRide.entityType}
           status={selectedRide.status}
           waitMinutes={selectedRide.waitMinutes}
+          queue={selectedRide.queue}
+          forecast={selectedRide.forecast}
+          operatingHours={selectedRide.operatingHours}
           onClose={() => setSelectedRide(null)}
         />
       )}
