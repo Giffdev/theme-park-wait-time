@@ -2,6 +2,7 @@
 
 import { Star, Clock, Trash2, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import type { RideLog } from '@/types/ride-log';
 
 interface RideLogEntryProps {
@@ -15,6 +16,8 @@ interface RideLogEntryProps {
  */
 export default function RideLogEntry({ log, onDelete }: RideLogEntryProps) {
   const [expanded, setExpanded] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const rodeAt = log.rodeAt instanceof Date ? log.rodeAt : new Date(log.rodeAt);
   const timeStr = rodeAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -83,8 +86,8 @@ export default function RideLogEntry({ log, onDelete }: RideLogEntryProps) {
 
         {onDelete && (
           <button
-            onClick={() => onDelete(log.id)}
-            className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity"
+            onClick={() => setShowConfirm(true)}
+            className="text-red-400 hover:text-red-600 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -97,6 +100,22 @@ export default function RideLogEntry({ log, onDelete }: RideLogEntryProps) {
           {log.notes}
         </div>
       )}
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={showConfirm}
+        title="Delete Ride Log"
+        description={`Delete your "${log.attractionName}" ride log? This cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={async () => {
+          setDeleting(true);
+          await onDelete!(log.id);
+          setDeleting(false);
+          setShowConfirm(false);
+        }}
+        onCancel={() => setShowConfirm(false)}
+        loading={deleting}
+      />
     </div>
   );
 }

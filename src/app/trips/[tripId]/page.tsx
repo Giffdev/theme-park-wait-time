@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Trash2 } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
-import { getTrip, completeTrip, generateShareId, updateTrip } from '@/lib/services/trip-service';
+import { getTrip, completeTrip, generateShareId, updateTrip, deleteTrip } from '@/lib/services/trip-service';
 import { getTripRideLogs } from '@/lib/services/trip-service';
+import { deleteRideLog } from '@/lib/services/ride-log-service';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import type { Trip } from '@/types/trip';
 import type { RideLog } from '@/types/ride-log';
 
@@ -45,6 +48,7 @@ function groupRidesByDay(logs: (RideLog & { id: string })[]): Record<string, (Ri
 
 export default function TripDetailPage() {
   const { tripId } = useParams<{ tripId: string }>();
+  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
   const [trip, setTrip] = useState<(Trip & { id: string }) | null>(null);
@@ -53,6 +57,14 @@ export default function TripDetailPage() {
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+
+  // Delete trip state
+  const [showDeleteTrip, setShowDeleteTrip] = useState(false);
+  const [deletingTrip, setDeletingTrip] = useState(false);
+
+  // Delete ride log state
+  const [deleteLogId, setDeleteLogId] = useState<string | null>(null);
+  const [deletingLog, setDeletingLog] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user || !tripId) return;
@@ -107,6 +119,33 @@ export default function TripDetailPage() {
       console.error('Failed to share trip:', err);
     } finally {
       setSharing(false);
+    }
+  };
+
+  const handleDeleteTrip = async () => {
+    if (!user || !tripId) return;
+    setDeletingTrip(true);
+    try {
+      await deleteTrip(user.uid, tripId);
+      router.push('/trips');
+    } catch (err) {
+      console.error('Failed to delete trip:', err);
+      setDeletingTrip(false);
+      setShowDeleteTrip(false);
+    }
+  };
+
+  const handleDeleteRideLog = async () => {
+    if (!user || !deleteLogId) return;
+    setDeletingLog(true);
+    try {
+      await deleteRideLog(user.uid, deleteLogId);
+      setRideLogs((prev) => prev.filter((l) => l.id !== deleteLogId));
+    } catch (err) {
+      console.error('Failed to delete ride log:', err);
+    } finally {
+      setDeletingLog(false);
+      setDeleteLogId(null);
     }
   };
 
@@ -202,6 +241,14 @@ export default function TripDetailPage() {
             </svg>
             Share
           </button>
+          <button
+            onClick={() => setShowDeleteTrip(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+            aria-label="Delete trip"
+          >
+            <Trash2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Delete</span>
+          </button>
           {trip.status === 'active' && (
             <>
               <Link
@@ -278,7 +325,7 @@ export default function TripDetailPage() {
                       ? log.rodeAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
                       : new Date(log.rodeAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
                     return (
-                      <div key={log.id} className="rounded-lg border border-primary-100 bg-white p-3">
+                      <div key={log.id} className="group rounded-lg border border-primary-100 bg-white p-3">
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-sm font-medium text-primary-800">{log.attractionName}</p>
@@ -295,6 +342,13 @@ export default function TripDetailPage() {
                                 {'★'.repeat(log.rating)}{'☆'.repeat(5 - log.rating)}
                               </span>
                             )}
+                            <button
+                              onClick={() => setDeleteLogId(log.id)}
+                              className="ml-1 rounded-md p-1 text-red-400 transition-opacity hover:bg-red-50 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100"
+                              aria-label={`Delete ${log.attractionName} ride log`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
                           </div>
                         </div>
                         {log.notes && (
@@ -309,6 +363,28 @@ export default function TripDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Trip Confirmation */}
+      <ConfirmDialog
+        open={showDeleteTrip}
+        title="Delete Trip"
+        description="Are you sure? This will permanently delete this trip and all associated ride logs. This action cannot be undone."
+        confirmLabel="Delete Trip"
+        onConfirm={handleDeleteTrip}
+        onCancel={() => setShowDeleteTrip(false)}
+        loading={deletingTrip}
+      />
+
+      {/* Delete Ride Log Confirmation */}
+      <ConfirmDialog
+        open={deleteLogId !== null}
+        title="Delete Ride Log"
+        description="Are you sure you want to delete this ride log entry? This action cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={handleDeleteRideLog}
+        onCancel={() => setDeleteLogId(null)}
+        loading={deletingLog}
+      />
     </div>
   );
 }

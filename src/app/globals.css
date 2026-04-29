@@ -40,6 +40,18 @@
   --color-sage-800: oklch(0.33 0.07 145);
   --color-sage-900: oklch(0.27 0.05 145);
 
+  /* Soft Violet — Trip / Journal */
+  --color-violet-50: oklch(0.97 0.01 290);
+  --color-violet-100: oklch(0.93 0.03 290);
+  --color-violet-200: oklch(0.86 0.06 290);
+  --color-violet-300: oklch(0.76 0.10 290);
+  --color-violet-400: oklch(0.64 0.14 290);
+  --color-violet-500: oklch(0.53 0.16 290);
+  --color-violet-600: oklch(0.45 0.15 290);
+  --color-violet-700: oklch(0.38 0.13 290);
+  --color-violet-800: oklch(0.31 0.10 290);
+  --color-violet-900: oklch(0.25 0.07 290);
+
   /* Vibrant Orange — Accent */
   --color-accent-50: oklch(0.97 0.02 70);
   --color-accent-100: oklch(0.93 0.05 70);
@@ -86,6 +98,21 @@ html {
 
 .animate-slide-up {
   animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes scale-in {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ─── Scrollbar hide utility (for horizontal chip scrolling) ─── */
