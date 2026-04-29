@@ -1,67 +1,137 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
+'use client';
 
-export const metadata: Metadata = {
-  title: 'Parks',
-  description: 'Browse theme parks and view live wait times.',
-};
+import { useEffect, useState, useCallback } from 'react';
+import { RefreshCw } from 'lucide-react';
+import { getCollection } from '@/lib/firebase/firestore';
+import ParkCard from '@/components/ParkCard';
 
-const parkFamilies = [
-  {
-    name: 'Walt Disney World',
-    slug: 'walt-disney-world',
-    parks: [
-      { name: 'Magic Kingdom', slug: 'magic-kingdom', emoji: '🏰' },
-      { name: 'EPCOT', slug: 'epcot', emoji: '🌐' },
-      { name: "Hollywood Studios", slug: 'hollywood-studios', emoji: '🎬' },
-      { name: 'Animal Kingdom', slug: 'animal-kingdom', emoji: '🦁' },
-    ],
-  },
-  {
-    name: 'Universal Orlando',
-    slug: 'universal-orlando',
-    parks: [
-      { name: 'Universal Studios Florida', slug: 'universal-studios', emoji: '🎥' },
-      { name: "Islands of Adventure", slug: 'islands-of-adventure', emoji: '🏝️' },
-      { name: 'Epic Universe', slug: 'epic-universe', emoji: '✨' },
-    ],
-  },
-];
+interface Park {
+  id: string;
+  name: string;
+  slug: string;
+  destinationName: string;
+  destinationId: string;
+}
+
+interface WaitTimeEntry {
+  attractionId: string;
+  attractionName: string;
+  status: string;
+  waitMinutes: number | null;
+}
 
 export default function ParksPage() {
+  const [parks, setParks] = useState<Park[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [shortestWaits, setShortestWaits] = useState<Record<string, number | null>>({});
+
+  const fetchParks = useCallback(async () => {
+    try {
+      const data = await getCollection<Park>('parks');
+      setParks(data);
+
+      // Fetch shortest wait for each park from waitTimes subcollection
+      const waits: Record<string, number | null> = {};
+      for (const park of data) {
+        try {
+          const waitData = await getCollection<WaitTimeEntry>(
+            `waitTimes/${park.id}/current`
+          );
+          const operatingWaits = waitData
+            .filter((w) => w.status === 'OPERATING' && w.waitMinutes !== null)
+            .map((w) => w.waitMinutes as number);
+          waits[park.id] = operatingWaits.length > 0 ? Math.min(...operatingWaits) : null;
+        } catch {
+          waits[park.id] = null;
+        }
+      }
+      setShortestWaits(waits);
+    } catch (error) {
+      console.error('Failed to fetch parks:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchParks();
+  }, [fetchParks]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetch('/api/wait-times');
+      await fetchParks();
+    } catch (error) {
+      console.error('Refresh failed:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Group parks by destination
+  const grouped = parks.reduce<Record<string, Park[]>>((acc, park) => {
+    const dest = park.destinationName || 'Other';
+    if (!acc[dest]) acc[dest] = [];
+    acc[dest].push(park);
+    return acc;
+  }, {});
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 pb-24 sm:px-6 md:pb-10 lg:px-8">
-      <div className="mb-10">
-        <h1 className="text-3xl font-bold text-primary-900">Theme Parks</h1>
-        <p className="mt-2 text-primary-500">
-          Select a park to view live wait times and attraction details.
-        </p>
+      <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-primary-900">Theme Parks</h1>
+          <p className="mt-2 text-primary-500">
+            Select a park to view live wait times and attraction details.
+          </p>
+        </div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="inline-flex items-center gap-2 rounded-lg bg-coral-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-coral-600 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh Data'}
+        </button>
       </div>
 
-      <div className="space-y-10">
-        {parkFamilies.map((family) => (
-          <section key={family.slug}>
-            <h2 className="mb-4 text-xl font-semibold text-primary-800">
-              {family.name}
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {family.parks.map((park) => (
-                <Link
-                  key={park.slug}
-                  href={`/parks/${park.slug}`}
-                  className="group rounded-xl border border-primary-200 bg-white p-5 transition-all hover:border-primary-300 hover:shadow-md"
-                >
-                  <div className="mb-3 text-3xl">{park.emoji}</div>
-                  <h3 className="font-semibold text-primary-800 group-hover:text-primary-600">
-                    {park.name}
-                  </h3>
-                  <p className="mt-1 text-xs text-primary-400">View live wait times →</p>
-                </Link>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      {loading ? (
+        <div className="space-y-10">
+          {[1, 2, 3].map((i) => (
+            <section key={i}>
+              <div className="mb-4 h-6 w-48 animate-pulse rounded bg-primary-100" />
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {[1, 2, 3, 4].map((j) => (
+                  <div key={j} className="h-36 animate-pulse rounded-xl border border-primary-100 bg-primary-50" />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-10">
+          {Object.entries(grouped).map(([destination, destParks]) => (
+            <section key={destination}>
+              <h2 className="mb-4 text-xl font-semibold text-primary-800">
+                {destination}
+              </h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {destParks.map((park) => (
+                  <ParkCard
+                    key={park.id}
+                    id={park.id}
+                    name={park.name}
+                    destinationName={park.destinationName}
+                    shortestWait={shortestWaits[park.id] ?? null}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

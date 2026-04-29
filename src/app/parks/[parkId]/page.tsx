@@ -1,68 +1,244 @@
-import type { Metadata } from 'next';
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { RefreshCw, ArrowUpDown, TrendingUp, Clock, AlertCircle } from 'lucide-react';
+import { getDocument, getCollection, whereConstraint } from '@/lib/firebase/firestore';
+import AttractionRow from '@/components/AttractionRow';
 
-type Props = { params: Promise<{ parkId: string }> };
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { parkId } = await params;
-  const title = parkId
-    .split('-')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-  return { title, description: `Live wait times and details for ${title}.` };
+interface Park {
+  id: string;
+  name: string;
+  slug: string;
+  destinationName: string;
+  destinationId: string;
 }
 
-export default async function ParkDetailPage({ params }: Props) {
-  const { parkId } = await params;
-  const parkName = parkId
-    .split('-')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+interface Attraction {
+  id: string;
+  name: string;
+  parkId: string;
+  parkName: string;
+  entityType: string;
+  slug: string;
+}
+
+interface WaitTimeEntry {
+  id: string;
+  attractionId: string;
+  attractionName: string;
+  status: string;
+  waitMinutes: number | null;
+  lastUpdated: string | null;
+  fetchedAt: string;
+}
+
+export default function ParkDetailPage() {
+  const { parkId } = useParams<{ parkId: string }>();
+  const [park, setPark] = useState<Park | null>(null);
+  const [attractions, setAttractions] = useState<Attraction[]>([]);
+  const [waitTimes, setWaitTimes] = useState<WaitTimeEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sortAsc, setSortAsc] = useState(true);
+
+  const fetchData = useCallback(async () => {
+    if (!parkId) return;
+    try {
+      const [parkDoc, attractionDocs, waitDocs] = await Promise.all([
+        getDocument<Park>('parks', parkId),
+        getCollection<Attraction>('attractions', [whereConstraint('parkId', '==', parkId)]),
+        getCollection<WaitTimeEntry>(`waitTimes/${parkId}/current`),
+      ]);
+      setPark(parkDoc);
+      setAttractions(attractionDocs);
+      setWaitTimes(waitDocs);
+    } catch (error) {
+      console.error('Failed to fetch park data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [parkId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetch(`/api/wait-times?parkId=${parkId}`);
+      await fetchData();
+    } catch (error) {
+      console.error('Refresh failed:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Merge wait times into attractions
+  const waitMap = new Map(waitTimes.map((w) => [w.attractionId, w]));
+
+  const mergedAttractions = attractions.map((a) => {
+    const wt = waitMap.get(a.id);
+    return {
+      ...a,
+      status: wt?.status || 'CLOSED',
+      waitMinutes: wt?.waitMinutes ?? null,
+    };
+  });
+
+  // Split into operating and not operating
+  const operating = mergedAttractions
+    .filter((a) => a.status === 'OPERATING')
+    .sort((a, b) => {
+      const aWait = a.waitMinutes ?? 999;
+      const bWait = b.waitMinutes ?? 999;
+      return sortAsc ? aWait - bWait : bWait - aWait;
+    });
+  const notOperating = mergedAttractions.filter((a) => a.status !== 'OPERATING');
+
+  // Stats
+  const operatingCount = operating.length;
+  const operatingWithWaits = operating.filter((a) => a.waitMinutes !== null);
+  const avgWait = operatingWithWaits.length > 0
+    ? Math.round(operatingWithWaits.reduce((sum, a) => sum + (a.waitMinutes || 0), 0) / operatingWithWaits.length)
+    : 0;
+  const longestWait = operatingWithWaits.length > 0
+    ? Math.max(...operatingWithWaits.map((a) => a.waitMinutes || 0))
+    : 0;
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-10 pb-24 sm:px-6 md:pb-10 lg:px-8">
+        <div className="mb-6 h-4 w-32 animate-pulse rounded bg-primary-100" />
+        <div className="mb-8">
+          <div className="h-9 w-64 animate-pulse rounded bg-primary-100" />
+          <div className="mt-3 h-5 w-48 animate-pulse rounded bg-primary-100" />
+        </div>
+        <div className="mb-8 grid gap-4 sm:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-24 animate-pulse rounded-xl bg-primary-50" />
+          ))}
+        </div>
+        <div className="space-y-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="h-16 animate-pulse rounded-lg bg-primary-50" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 pb-24 sm:px-6 md:pb-10 lg:px-8">
+      {/* Breadcrumb */}
       <nav className="mb-6 text-sm text-primary-400">
         <Link href="/parks" className="hover:text-primary-600">Parks</Link>
         <span className="mx-2">›</span>
-        <span className="text-primary-700">{parkName}</span>
+        <span className="text-primary-700">{park?.name || 'Park'}</span>
       </nav>
 
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-primary-900">{parkName}</h1>
-        <div className="mt-2 flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-100 px-3 py-1 text-xs font-medium text-sage-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-sage-500" />
-            Open
-          </span>
-          <span className="text-sm text-primary-400">Hours: 9:00 AM – 10:00 PM</span>
+      {/* Header */}
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-primary-900">{park?.name}</h1>
+          <p className="mt-1 text-sm text-primary-500">{park?.destinationName}</p>
+        </div>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="inline-flex items-center gap-2 rounded-lg bg-coral-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-coral-600 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh Wait Times'}
+        </button>
+      </div>
+
+      {/* Stats */}
+      <div className="mb-8 grid gap-4 sm:grid-cols-3">
+        <div className="rounded-xl border border-primary-100 bg-white p-4">
+          <div className="flex items-center gap-2 text-sm text-primary-500">
+            <TrendingUp className="h-4 w-4" />
+            <span>Operating</span>
+          </div>
+          <p className="mt-1 text-2xl font-bold text-primary-800">
+            {operatingCount}
+            <span className="ml-1 text-sm font-normal text-primary-400">/ {mergedAttractions.length}</span>
+          </p>
+        </div>
+        <div className="rounded-xl border border-primary-100 bg-white p-4">
+          <div className="flex items-center gap-2 text-sm text-primary-500">
+            <Clock className="h-4 w-4" />
+            <span>Avg Wait</span>
+          </div>
+          <p className="mt-1 text-2xl font-bold text-primary-800">
+            {avgWait}<span className="ml-1 text-sm font-normal text-primary-400">min</span>
+          </p>
+        </div>
+        <div className="rounded-xl border border-primary-100 bg-white p-4">
+          <div className="flex items-center gap-2 text-sm text-primary-500">
+            <AlertCircle className="h-4 w-4" />
+            <span>Longest Wait</span>
+          </div>
+          <p className="mt-1 text-2xl font-bold text-red-600">
+            {longestWait}<span className="ml-1 text-sm font-normal text-primary-400">min</span>
+          </p>
         </div>
       </div>
 
-      {/* Wait Times Grid Placeholder */}
-      <section>
-        <h2 className="mb-4 text-lg font-semibold text-primary-800">Live Wait Times</h2>
+      {/* Operating Attractions */}
+      <section className="mb-10">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-primary-800">
+            Operating ({operating.length})
+          </h2>
+          <button
+            onClick={() => setSortAsc(!sortAsc)}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary-500 transition-colors hover:bg-primary-50 hover:text-primary-700"
+          >
+            <ArrowUpDown className="h-3 w-3" />
+            {sortAsc ? 'Shortest first' : 'Longest first'}
+          </button>
+        </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {['Space Mountain', 'Thunder Mountain', 'Haunted Mansion', 'Pirates of the Caribbean', 'Splash Mountain', 'Seven Dwarfs Mine Train'].map(
-            (ride) => (
-              <div
-                key={ride}
-                className="flex items-center justify-between rounded-lg border border-primary-100 bg-white p-4 transition-colors hover:bg-primary-50"
-              >
-                <div>
-                  <div className="font-medium text-primary-800">{ride}</div>
-                  <div className="text-xs text-primary-400">Standby</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-accent-600">
-                    {Math.floor(Math.random() * 60) + 10}
-                  </div>
-                  <div className="text-xs text-primary-400">min</div>
-                </div>
-              </div>
-            ),
+          {operating.map((a) => (
+            <AttractionRow
+              key={a.id}
+              name={a.name}
+              entityType={a.entityType}
+              status={a.status}
+              waitMinutes={a.waitMinutes}
+            />
+          ))}
+          {operating.length === 0 && (
+            <p className="col-span-full text-center text-sm text-primary-400 py-8">
+              No attractions currently operating.
+            </p>
           )}
         </div>
       </section>
+
+      {/* Closed / Not Operating */}
+      {notOperating.length > 0 && (
+        <section>
+          <h2 className="mb-4 text-lg font-semibold text-primary-800">
+            Closed / Not Operating ({notOperating.length})
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {notOperating.map((a) => (
+              <AttractionRow
+                key={a.id}
+                name={a.name}
+                entityType={a.entityType}
+                status={a.status}
+                waitMinutes={a.waitMinutes}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -59,3 +59,22 @@
 - **Brand:** "ParkPulse" working UI name (decision filed for consensus).
 - **Deliverables:** All files in `src/app/`, `src/components/`, `src/lib/ui/` organized by feature.
 - **Next:** Awaiting Data's Firestore integration and real-time data feeds.
+
+## Phase 2: Live Wait Times UI (2026-04-29)
+
+- **Parks listing** (`src/app/parks/page.tsx`): Client component fetching from Firestore `parks` collection, grouped by `destinationName`, with live shortest-wait indicator per park.
+- **Park detail** (`src/app/parks/[parkId]/page.tsx`): Fetches park, attractions (filtered by parkId), and wait times subcollection. Stats bar (operating count, avg wait, longest wait). Sort toggle.
+- **Components created:**
+  - `src/components/WaitTimeBadge.tsx` — color-coded wait badge (green < 20, yellow 20-45, red > 45)
+  - `src/components/StatusIndicator.tsx` — dot + label for ride status
+  - `src/components/ParkCard.tsx` — park listing card with shortest wait
+  - `src/components/AttractionRow.tsx` — attraction card with wait time and entity type badge
+- **Pattern:** Use `getCollection` with `whereConstraint` for filtered queries. Wait times live at `waitTimes/{parkId}/current/{attractionId}`.
+- **Refresh:** Both pages have refresh buttons hitting `/api/wait-times?parkId=X` then re-fetching from Firestore.
+- **Build:** Clean build, 225kB first-load JS for park detail page.
+
+## Learnings (Phase 2 additions)
+
+- Park detail converted from server component (with `params: Promise`) to client component using `useParams()` hook — needed for interactive state (sort toggle, refresh).
+- Firestore subcollection path for wait times: `waitTimes/{parkId}/current` — use as a flat collectionPath in `getCollection`.
+- Sort toggle UX: default shortest-first (users want the fastest ride), one-tap to flip.
