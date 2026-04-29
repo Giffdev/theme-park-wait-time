@@ -57,17 +57,18 @@ export default function TripDetailPage() {
     if (!user || !tripId) return;
     setLoading(true);
     try {
-      const [tripData, logs] = await Promise.all([
-        getTrip(user.uid, tripId),
-        getTripRideLogs(user.uid, tripId),
-      ]);
+      const tripData = await getTrip(user.uid, tripId);
       setTrip(tripData);
-      setRideLogs(logs);
     } catch (err) {
       console.error('Failed to load trip:', err);
-    } finally {
-      setLoading(false);
     }
+    try {
+      const logs = await getTripRideLogs(user.uid, tripId);
+      setRideLogs(logs);
+    } catch (err) {
+      console.error('Failed to load ride logs:', err);
+    }
+    setLoading(false);
   }, [user, tripId]);
 
   useEffect(() => {

@@ -102,11 +102,32 @@ Refactored `scripts/seed-parks.ts` from Orlando-only to a multi-destination arch
 - Oceans of Fun excluded via `parkFilter` (not in ThemeParks Wiki API).
 - Total: 13 parks, 627 attractions seeded across Orlando + Kansas City.
 
+## Recent Work (2026-04-29T15:23:30-07:00)
+
+### Park Schedule API + Batch Hours Endpoint
+
+Wired up real operating hours from ThemeParks Wiki API:
+
+**Files Modified/Created:**
+- `src/app/api/parks/[parkId]/schedule/route.ts` — Replaced placeholder with real implementation. Looks up park by slug in Firestore to get UUID, calls `https://api.themeparks.wiki/v1/entity/{id}/schedule`, returns today's operating hours with timezone. Handles: park not found (404), wiki API down (502), no schedule data (NO_DATA status).
+- `src/app/api/park-hours/route.ts` (NEW) — Batch endpoint for parks listing page. Fetches schedule for ALL parks in parallel, returns slug, name, timezone, status (OPEN/CLOSED/NO_DATA/ERROR), and opening/closing times. Frontend can call once to get all parks' status.
+
+**Design Choices:**
+- Schedule route uses slug-based lookup (Firestore query `where('slug', '==', slug)`) since URLs use slugs not UUIDs.
+- Today's date computed in park's local timezone using `toLocaleDateString('en-CA', { timeZone })` for correct YYYY-MM-DD.
+- 5-minute revalidation cache on wiki API calls (`next: { revalidate: 300 }`).
+- OPERATING entry type determines open/closed; other types (EXTRA_HOURS, etc.) included in full schedule response.
+- Batch endpoint uses `Promise.all` — individual park failures don't break the batch.
+
 ## Learnings
 
-- Park registration requires entries in TWO files: `src/lib/constants.ts` (PARK_FAMILIES) and `src/lib/crowd-calendar/park-families.ts` (PARK_FAMILY_REGISTRY). The first uses simple string IDs; the second uses ThemeParks Wiki UUIDs.
+- Park registration requires entries in TWO files:`src/lib/constants.ts` (PARK_FAMILIES) and `src/lib/crowd-calendar/park-families.ts` (PARK_FAMILY_REGISTRY). The first uses simple string IDs; the second uses ThemeParks Wiki UUIDs.
 - When a park isn't in the ThemeParks Wiki API yet, use a descriptive placeholder ID (e.g., `oceans-of-fun-kc`) - it won't have live data but reserves the slot.
 - User wants to eventually add ALL parks from the wiki. Current approach: add incrementally per request.
 - `scripts/seed-parks.ts` now uses a `SEED_DESTINATIONS` config map — to add a new destination, just add an entry with keywords, optional parkFilter (UUID list), and optional timezoneOverride. No structural changes needed.
 - Firestore seeding uses `service-account.json` at project root (or `FIREBASE_SERVICE_ACCOUNT` env var).
 - ThemeParks Wiki API destination for Worlds of Fun ID: `c4231018-dc6f-4d8d-bfc2-7a21a6c9e9fa`. The destination contains both Worlds of Fun and Oceans of Fun, but only WoF is in the API.
+- ThemeParks Wiki schedule API: `GET /v1/entity/{parkId}/schedule` returns `{ schedule: [{ date, type, openingTime, closingTime }] }`. The `type` field is key — `OPERATING` = normal hours, others are extra hours/events. Dates and times are ISO strings.
+- Park slug → UUID resolution: Firestore `parks` collection has a `slug` field. Query `where('slug', '==', slug).limit(1)` to resolve.
+- Compound Firestore queries (multiple `where` + `orderBy`) require composite indexes. If the index is missing, the query throws and can cascade-fail other fetches if wrapped in `Promise.all`. Always separate independent fetches so one failure doesn't mask the other.
+- `firestore.indexes.json` is the source of truth for deployed indexes. Always add new composite indexes there when adding compound queries.

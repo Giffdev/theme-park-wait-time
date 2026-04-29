@@ -393,3 +393,31 @@ Converted park and attraction URLs from UUIDs to human-readable slugs.
 - Attractions store `parkId` as UUID, so always need the park UUID after resolving the slug
 - `parkSlug` added as optional to ActiveTimer for backward compat with existing timer documents
 - Route param names kept as `[parkId]`/`[attractionId]` — values are now slugs, folder structure unchanged
+
+## Recent Work (2026-04-29)
+
+### Park Operating Status Display
+
+Added open/closed state, hours, and local time to ParkCard and park detail page.
+
+**What was shipped:**
+- ParkCard now accepts optional `isOpen`, `todayHours`, `timezone`, `localTime` props
+- Closed parks: muted card style, red "Closed" pill, "Opens 9 AM ET" context
+- Open parks: green "Open" pill, "Open until 9 PM CT" or shortest-wait display
+- Park local time + timezone abbreviation shown bottom-right of each card
+- Parks listing page fetches `/api/park-hours` (non-blocking, supplemental data)
+- Park detail page: `ParkOperatingStatus` badge next to park name in header
+- Graceful degradation: if `/api/park-hours` is unavailable, cards render normally without status
+
+**Files Modified:**
+- `src/components/ParkCard.tsx` — extended props, conditional styling, status pills
+- `src/app/parks/page.tsx` — fetch park-hours API, pass to ParkCard
+- `src/app/parks/[parkId]/page.tsx` — added ParkOperatingStatus import + render
+- `src/components/parks/ParkOperatingStatus.tsx` — new component (schedule-aware open/closed badge)
+
+## Learnings
+
+- Park hours API is built by Data team simultaneously — designed ParkCard to gracefully handle missing data (all new props optional)
+- Timezone abbreviation mapping is a simple lookup table; covers US parks well, falls back to city name for international
+- `ParkOperatingStatus` on detail page derives open/closed from existing `schedule.segments` — no extra API call needed
+- Kept card height stable by using consistent element sizing in both open/closed states
