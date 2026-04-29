@@ -10,6 +10,7 @@ import {
 import { PARK_FAMILIES } from '@/lib/constants';
 import type { FamilyCrowdMonth, CrowdDay, CrowdDayPark } from '@/types/crowd-calendar';
 import type { FamilyCrowdDay } from '@/types/parkFamily';
+import type { ForecastAggregate } from '@/types/queue';
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
@@ -66,12 +67,13 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Compute from live forecast data
+      // Compute from aggregate + live forecast data
       if (family) {
         const rawDays = await computeFamilyCrowdDays(family.parks, month);
 
-        // Check if we got meaningful data (non-zero waits)
-        const hasRealData = rawDays.some((d) => d.parks.some((p) => p.avgWaitMinutes > 0));
+        // Check if we got meaningful data — aggregates cover most days
+        const daysWithData = rawDays.filter((d) => d.parks.some((p) => p.avgWaitMinutes > 0));
+        const hasRealData = daysWithData.length >= Math.ceil(rawDays.length * 0.5);
 
         if (hasRealData) {
           const days = rawDays.map(toCrowdDay);
@@ -179,7 +181,8 @@ function generatePlaceholderData(familyId: string, monthStr: string): FamilyCrow
 
 /**
  * Compute crowd days for all parks in a family for the given month.
- * Reads forecast data from waitTimes/{parkId}/current/{attractionId} docs.
+ * Uses historical aggregate data from forecastAggregates/{parkId}/byDayOfWeek/{dow}/attractions/
+ * for all days, with live forecast data from waitTimes/{parkId}/current/ taking priority for today.
  */
 async function computeFamilyCrowdDays(
   parks: Array<{ parkId: string; parkName: string }>,
@@ -195,40 +198,69 @@ async function computeFamilyCrowdDays(
     dates.push(`${month}-${String(d).padStart(2, '0')}`);
   }
 
-  // Fetch forecast data for all parks in parallel
-  const parkDateForecasts = new Map<string, Map<string, Map<string, ForecastEntry[]>>>();
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // For each park, fetch aggregate data per day-of-week (0-6) and live data for today
+  const parkAggregates = new Map<string, Map<number, ForecastAggregate[]>>();
+  const parkLiveForecasts = new Map<string, Map<string, ForecastEntry[]>>();
 
   await Promise.all(
     parks.map(async (park) => {
-      const attractionsSnapshot = await adminDb
+      // Fetch all 7 day-of-week aggregate collections in parallel
+      const dowAggregates = new Map<number, ForecastAggregate[]>();
+      const dowFetches = Array.from({ length: 7 }, (_, dow) =>
+        adminDb
+          .collection('forecastAggregates')
+          .doc(park.parkId)
+          .collection('byDayOfWeek')
+          .doc(String(dow))
+          .collection('attractions')
+          .get()
+          .then((snap) => {
+            const aggregates: ForecastAggregate[] = [];
+            for (const doc of snap.docs) {
+              const data = doc.data() as ForecastAggregate;
+              // Only use aggregates with sufficient sample size
+              if (data.totalSamples >= 15) {
+                aggregates.push(data);
+              }
+            }
+            dowAggregates.set(dow, aggregates);
+          })
+          .catch((err) => {
+            console.warn(`Failed to fetch aggregates for park ${park.parkId} dow ${dow}:`, err.message);
+            dowAggregates.set(dow, []);
+          })
+      );
+
+      // Fetch live forecast data (for today only)
+      const liveFetch = adminDb
         .collection('waitTimes')
         .doc(park.parkId)
         .collection('current')
-        .get();
+        .get()
+        .then((snap) => {
+          const attractionMap = new Map<string, ForecastEntry[]>();
+          for (const doc of snap.docs) {
+            const data = doc.data();
+            const forecast = data.forecast as ForecastEntry[] | null;
+            if (!forecast || forecast.length === 0) continue;
 
-      const dateForecasts = new Map<string, Map<string, ForecastEntry[]>>();
-
-      for (const doc of attractionsSnapshot.docs) {
-        const data = doc.data();
-        const forecast = data.forecast as ForecastEntry[] | null;
-        if (!forecast || forecast.length === 0) continue;
-
-        for (const entry of forecast) {
-          const entryDate = entry.time.slice(0, 10);
-          if (!entryDate.startsWith(month)) continue;
-
-          if (!dateForecasts.has(entryDate)) {
-            dateForecasts.set(entryDate, new Map());
+            const todayEntries = forecast.filter((e) => e.time.startsWith(todayStr));
+            if (todayEntries.length > 0) {
+              attractionMap.set(doc.id, todayEntries);
+            }
           }
-          const dayMap = dateForecasts.get(entryDate)!;
-          if (!dayMap.has(doc.id)) {
-            dayMap.set(doc.id, []);
-          }
-          dayMap.get(doc.id)!.push(entry);
-        }
-      }
+          return attractionMap;
+        })
+        .catch((err) => {
+          console.warn(`Failed to fetch live forecast for park ${park.parkId}:`, err.message);
+          return new Map<string, ForecastEntry[]>();
+        });
 
-      parkDateForecasts.set(park.parkId, dateForecasts);
+      const [liveData] = await Promise.all([liveFetch, ...dowFetches]);
+      parkAggregates.set(park.parkId, dowAggregates);
+      parkLiveForecasts.set(park.parkId, liveData);
     })
   );
 
@@ -236,10 +268,45 @@ async function computeFamilyCrowdDays(
   const familyDays: FamilyCrowdDay[] = [];
 
   for (const date of dates) {
+    const isToday = date === todayStr;
+    const dayOfWeek = new Date(date + 'T12:00:00').getDay();
+
     const parkCrowdDays = parks.map((park) => {
-      const dateForecasts = parkDateForecasts.get(park.parkId);
-      const attractionMap = dateForecasts?.get(date) ?? new Map<string, ForecastEntry[]>();
-      return computeParkCrowdDay(park.parkId, park.parkName, attractionMap);
+      // For today, prefer live forecast data if available
+      if (isToday) {
+        const liveData = parkLiveForecasts.get(park.parkId);
+        if (liveData && liveData.size > 0) {
+          return computeParkCrowdDay(park.parkId, park.parkName, liveData);
+        }
+      }
+
+      // Use historical aggregates for this day-of-week
+      const dowMap = parkAggregates.get(park.parkId);
+      const aggregates = dowMap?.get(dayOfWeek) ?? [];
+
+      if (aggregates.length === 0) {
+        // No aggregate data — return zero (will trigger placeholder fallback)
+        return computeParkCrowdDay(park.parkId, park.parkName, new Map());
+      }
+
+      // Convert aggregates to ForecastEntry[] per attraction for computeParkCrowdDay
+      const attractionForecasts = new Map<string, ForecastEntry[]>();
+      for (const agg of aggregates) {
+        const entries: ForecastEntry[] = [];
+        for (const [hour, stats] of Object.entries(agg.hourlyAverages)) {
+          if (stats.sampleCount >= 3) {
+            entries.push({
+              time: `${date}T${hour.padStart(2, '0')}:00:00`,
+              waitTime: stats.avgWait,
+            });
+          }
+        }
+        if (entries.length > 0) {
+          attractionForecasts.set(agg.attractionId, entries);
+        }
+      }
+
+      return computeParkCrowdDay(park.parkId, park.parkName, attractionForecasts);
     });
 
     familyDays.push(buildFamilyCrowdDay(date, parkCrowdDays));

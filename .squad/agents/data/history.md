@@ -186,3 +186,5 @@ service cloud.firestore {
   - Graceful degradation: aggregate read failures fall back to `source: 'none'` with console error. No user-facing errors.
   - TypeScript compiles clean. Next.js build passes.
 
+- **2026-04-29:** Fixed crowd calendar showing empty data for non-today dates. Root cause: `computeFamilyCrowdDays` only read live forecast data from `waitTimes/{parkId}/current` docs which only contain TODAY's hourly forecast. Fix: rewrote function to read historical aggregate data from `forecastAggregates/{parkId}/byDayOfWeek/{dow}/attractions/` for all days in the month. Live data still wins for today. Aggregates require totalSamples ≥ 15 and hourly sampleCount ≥ 3 (matching blender thresholds). Updated `hasRealData` check: if ≥50% of days have data, treat as real (not placeholder). Falls back to `generatePlaceholderData` on cold start. Build passes clean.
+
