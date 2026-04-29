@@ -145,3 +145,15 @@
 - UI component tests for ForecastChart (null/empty/valid states), ParkScheduleBar (colors, segments, a11y), enhanced AttractionRow (LL badges)
 - Total suite: 309 passing tests across all phases
 - All Phase 1 deliverables covered by test contracts — ready for Devin review
+
+## Learnings
+
+- **2026-04-29:** Crowd calendar tests written proactively from Mikey's architecture spec + Devin's design answers. 58 new tests across 3 files — all passing against inline stub implementations.
+- **2026-04-29:** Crowd level thresholds per design decision: <20min=level 1 (Low), 20-34=level 2 (Moderate), 35-49=level 3 (High), 50+=level 4 (Very High). Default trip plan length = 3 days (Devin's choice).
+- **2026-04-29:** `toHaveStyle({ backgroundColor: 'green' })` fails in jsdom even with inline `style={}` because jsdom doesn't normalize color keywords. Use className assertions (e.g., `expect(el.className).toContain('crowd-bar--green')`) instead.
+- **2026-04-29:** bestPlan algorithm is a greedy assignment: sort all (day, park, level) tuples by level ascending, then pick entries ensuring no park or day is reused. Partial plans are valid when fewer parks than requested days.
+- **2026-04-29:** Test files created:
+  - `tests/api/crowd-calendar.test.ts` — 17 tests: shape validation, input validation, threshold boundaries, bestPlan logic, caching/stale fallback
+  - `tests/api/crowd-level-computation.test.ts` — 17 tests: threshold unit tests, null handling, closed parks, all-same-level edge case, greedy assignment
+  - `tests/components/crowd-calendar.test.tsx` — 24 tests: FamilySelector, CalendarDayCell (bars + colors + toggle filtering), BestPlanBanner, MiniMonth, full page integration (family switch fetches, park toggle hides, mini month navigates)
+- **2026-04-29:** These are contract tests with inline stubs. When Chunk/Mouth land the real components, swap the stubs for real imports — same `data-testid` attributes, same props, same behavior.

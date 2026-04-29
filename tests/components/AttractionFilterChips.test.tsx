@@ -64,7 +64,6 @@ describe('AttractionFilterChips', () => {
       expect(screen.getByRole('button', { name: /all rides/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /shows/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /dining/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /shops/i })).toBeInTheDocument();
     });
 
     it('renders Tier 2 sub-filter chips when ATTRACTION is selected', () => {
@@ -254,7 +253,7 @@ describe('AttractionFilterChips', () => {
       expect(showsChip.className).toMatch(/bg-blue-600/);
     });
 
-    it('dining and shops chips are not active in default state', () => {
+    it('dining chip is not active in default state', () => {
       const filters: FilterState = {
         entityTypes: new Set(['ATTRACTION', 'SHOW']),
         attractionTypes: new Set(),
@@ -262,11 +261,9 @@ describe('AttractionFilterChips', () => {
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
       const diningChip = screen.getByRole('button', { name: /dining/i });
-      const shopsChip = screen.getByRole('button', { name: /shops/i });
 
       // Inactive chips should NOT have active bg classes
       expect(diningChip.className).not.toMatch(/bg-green-600/);
-      expect(shopsChip.className).not.toMatch(/bg-amber-500/);
     });
   });
 

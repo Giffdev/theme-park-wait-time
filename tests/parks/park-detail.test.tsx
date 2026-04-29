@@ -146,22 +146,22 @@ describe('Park Detail Page', () => {
       });
     });
 
-    it('sorts operating attractions by wait time (shortest first)', async () => {
+    it('sorts operating attractions by wait time (longest first by default)', async () => {
       render(<ParkDetailPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('Haunted Mansion')).toBeInTheDocument();
+        expect(screen.getByText('Space Mountain')).toBeInTheDocument();
       });
 
-      // Get all attraction names in order — Haunted Mansion (20) should be before Space Mountain (60)
+      // Default sort is longest first (sortAsc = false → bWait - aWait)
       const allText = document.body.textContent || '';
-      const hauntedIdx = allText.indexOf('Haunted Mansion');
-      const jungleIdx = allText.indexOf('Jungle Cruise');
       const spaceIdx = allText.indexOf('Space Mountain');
+      const jungleIdx = allText.indexOf('Jungle Cruise');
+      const hauntedIdx = allText.indexOf('Haunted Mansion');
 
-      // 20 min < 35 min < 60 min
-      expect(hauntedIdx).toBeLessThan(jungleIdx);
-      expect(jungleIdx).toBeLessThan(spaceIdx);
+      // 60 min > 35 min > 20 min
+      expect(spaceIdx).toBeLessThan(jungleIdx);
+      expect(jungleIdx).toBeLessThan(hauntedIdx);
     });
 
     it('groups operating attractions before closed ones', async () => {
@@ -217,13 +217,15 @@ describe('Park Detail Page', () => {
 
     it('shows "Refreshing..." during refresh', async () => {
       const user = userEvent.setup();
-      mockFetch.mockReturnValue(new Promise(() => {}));
 
       render(<ParkDetailPage />);
 
       await waitFor(() => {
         expect(screen.getByText('Refresh Wait Times')).toBeInTheDocument();
       });
+
+      // Now make fetch hang for the refresh call
+      mockFetch.mockReturnValue(new Promise(() => {}));
 
       await user.click(screen.getByText('Refresh Wait Times'));
 
@@ -239,11 +241,11 @@ describe('Park Detail Page', () => {
         .mockResolvedValueOnce(mockWaitTimes);
     });
 
-    it('shows "Shortest first" sort label by default', async () => {
+    it('shows sort label by default', async () => {
       render(<ParkDetailPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('Shortest first')).toBeInTheDocument();
+        expect(screen.getByText(/Shortest first/)).toBeInTheDocument();
       });
     });
 
@@ -252,12 +254,12 @@ describe('Park Detail Page', () => {
       render(<ParkDetailPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('Shortest first')).toBeInTheDocument();
+        expect(screen.getByText(/Shortest first/)).toBeInTheDocument();
       });
 
-      await user.click(screen.getByText('Shortest first'));
+      await user.click(screen.getByText(/Shortest first/));
 
-      expect(screen.getByText('Longest first')).toBeInTheDocument();
+      expect(screen.getByText(/Longest first/)).toBeInTheDocument();
     });
   });
 

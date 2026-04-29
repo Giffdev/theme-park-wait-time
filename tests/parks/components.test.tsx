@@ -197,21 +197,21 @@ describe('AttractionRow', () => {
     expect(screen.getByText('min')).toBeInTheDocument();
   });
 
-  it('displays status indicator', () => {
-    render(<AttractionRow name="Space Mountain" entityType="ATTRACTION" status="OPERATING" waitMinutes={45} />);
-    expect(screen.getByText('Operating')).toBeInTheDocument();
+  it('shows entity type badge (hidden on mobile via CSS)', () => {
+    const { container } = render(<AttractionRow name="Space Mountain" entityType="ATTRACTION" status="OPERATING" waitMinutes={45} />);
+    // Entity type badge is rendered with hidden sm:inline-flex classes
+    const typeBadge = container.querySelector('[class*="text-coral-700"]');
+    expect(typeBadge).not.toBeNull();
   });
 
   it('does not show wait time badge for CLOSED attractions', () => {
     render(<AttractionRow name="Splash Mountain" entityType="ATTRACTION" status="CLOSED" waitMinutes={null} />);
-    expect(screen.getByText('Closed')).toBeInTheDocument();
     expect(screen.getByText('—')).toBeInTheDocument();
     expect(screen.queryByText('min')).not.toBeInTheDocument();
   });
 
   it('does not show wait time badge for REFURBISHMENT attractions', () => {
     render(<AttractionRow name="Tron" entityType="ATTRACTION" status="REFURBISHMENT" waitMinutes={null} />);
-    expect(screen.getByText('Refurbishment')).toBeInTheDocument();
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 

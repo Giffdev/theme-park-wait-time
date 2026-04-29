@@ -40,6 +40,7 @@ export default function CreateTripPage() {
   const [loadingParks, setLoadingParks] = useState(true);
 
   useEffect(() => {
+    if (!user) return;
     async function fetchParks() {
       try {
         const data = await getCollection<ParkData>('parks', []);
@@ -51,7 +52,7 @@ export default function CreateTripPage() {
       }
     }
     fetchParks();
-  }, []);
+  }, [user]);
 
   // Group parks by destination
   const resortGroups = parks.reduce<Record<string, { name: string; parks: ParkData[] }>>((acc, p) => {

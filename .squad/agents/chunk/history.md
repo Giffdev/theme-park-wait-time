@@ -131,3 +131,26 @@ Widened `src/app/api/wait-times/route.ts` to capture all data from the ThemePark
 - Stale-while-revalidate at API layer (in-memory `parkDataCache` map)
 - Null-coalescing throughout for optional API fields (`?? null`)
 - Same batched Firestore write pattern (499 per batch) for both current + history
+
+### 2026-04-29 — Park Family Crowd Calendar Data Model & Aggregation
+
+Built the data layer for the park-family crowd calendar feature:
+
+**Files Created:**
+- `src/types/parkFamily.ts` — CrowdLevel enum (1-4), ParkFamilyDefinition, ParkCrowdDay, FamilyCrowdDay, FamilyCrowdMonth, BestPlan, CrowdCalendarResponse types
+- `src/lib/crowd-calendar/park-families.ts` — Static registry of 6 park families with ThemeParks Wiki entity UUIDs (Universal Orlando, WDW, Disneyland, USH, SeaWorld, Busch Gardens)
+- `src/lib/crowd-calendar/aggregation.ts` — Pure functions: deriveCrowdLevel, computeDailyAverage, computeParkCrowdDay, buildFamilyCrowdDay, computeBestPlan
+- `src/lib/crowd-calendar/index.ts` — Barrel exports
+- `src/app/api/crowd-calendar/route.ts` — GET endpoint with Firestore caching (6hr TTL), stale fallback, best-plan computation
+- `src/lib/crowd-calendar/__tests__/aggregation.test.ts` — 18 tests, all passing
+
+**Key Design Decisions:**
+- 4-tier crowd levels: Low (<20min avg), Moderate (20-35), High (35-50), Extreme (50+)
+- Best Plan greedy algorithm: sort all (day, park) combos by crowd level, pick lowest with unique dates/parks first, then allow repeats
+- API derives crowd from forecast data already stored in `waitTimes/{parkId}/current/{attractionId}` — no new external API calls needed
+- Firestore cache at `crowdCalendar/{familyId}/monthly/{YYYY-MM}` with 6-hour TTL
+- Stale fallback: on computation failure, serves expired cache rather than 500
+- All aggregation logic is pure (no Firebase imports) for testability
+- Updated `src/lib/constants.ts` to include all 6 park families
+- Updated `src/types/index.ts` to export new types
+

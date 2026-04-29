@@ -39,3 +39,17 @@ export type {
   CrowdAggregate,
   QueueReportRequest,
 } from './ride-log';
+export {
+  CrowdLevel,
+  CROWD_LEVEL_LABELS,
+} from './parkFamily';
+export type {
+  ParkFamilyDefinition,
+  ParkEntry,
+  ParkCrowdDay,
+  FamilyCrowdDay,
+  FamilyCrowdMonth,
+  BestPlan,
+  BestPlanDay,
+  CrowdCalendarResponse,
+} from './parkFamily';
