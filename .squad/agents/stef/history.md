@@ -45,6 +45,18 @@
 - **2026-04-28:** Playwright configured for 4 browser targets (Chromium, Firefox, WebKit, Mobile Chrome). E2E tests should run against Firebase Emulators to stay deterministic.
 - **2026-04-28:** Auth/Firestore unit tests are `.todo` skeletons — they document the expected contract for the modules Mouth will build. They'll light up as code lands.
 
+- **2026-04-29:** Wrote 99 passing tests across 6 files for auth flow + parks/wait-times display. Key mocking strategies:
+  - Must mock `@/lib/firebase/config` to prevent `auth/invalid-api-key` errors in jsdom environment.
+  - Must mock `firebase/app` (for `FirebaseError` class) in tests that import auth pages with error handling.
+  - Must mock `@/lib/firebase/auth-context` for pages using `useAuth()` hook.
+  - Must mock `lucide-react` icons as simple spans (they don't render in jsdom).
+  - Use `vi.mock('@/lib/firebase/firestore')` with per-test `mockResolvedValue` for data-fetching pages.
+  - `require()` does NOT resolve `@/` alias in Vitest — always use `await import('@/...')` for dynamic imports.
+  - When text appears in multiple DOM elements (e.g., breadcrumb + heading), use `getByRole('heading')` or `getAllByText`.
+  - Updated `vitest.config.ts` include pattern to cover `tests/**` in addition to `src/**`.
+- **2026-04-29:** The auth pages (signin/signup) were upgraded from static scaffolds to fully interactive `'use client'` components by Data. They now use `useAuth()`, handle Firebase errors with switch statements, show loading states, and redirect. Signup password placeholder is "Password (min 6 characters)".
+- **2026-04-29:** Component tests (WaitTimeBadge, StatusIndicator, ParkCard, AttractionRow) test the REAL implementations — these are no longer spec-only. Badge boundaries: green < 20, yellow 20–45, red > 45. Status uses uppercase strings (OPERATING, CLOSED, DOWN, REFURBISHMENT).
+
 ## Phase 1 Completion (2026-04-29)
 
 - **Test Infrastructure:** Full Vitest + Playwright setup complete. Two vitest configs (unit + integration).

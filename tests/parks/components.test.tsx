@@ -1,8 +1,7 @@
 /**
  * Tests for reusable park/wait-time components.
  *
- * These components don't exist yet — these tests serve as a spec
- * for Mouth's implementation. They define the expected behavior of:
+ * Tests the actual implementations of:
  * - WaitTimeBadge: color-coded wait time display
  * - StatusIndicator: attraction operational status
  * - ParkCard: park listing card
@@ -12,6 +11,11 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 
+import WaitTimeBadge from '@/components/WaitTimeBadge';
+import StatusIndicator from '@/components/StatusIndicator';
+import ParkCard from '@/components/ParkCard';
+import AttractionRow from '@/components/AttractionRow';
+
 // Mock next/link for ParkCard tests
 vi.mock('next/link', () => ({
   default: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => (
@@ -19,171 +23,209 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+// Mock Firebase to prevent initialization errors in test environment
+vi.mock('@/lib/firebase/config', () => ({
+  auth: {},
+  db: {},
+  storage: {},
+  app: {},
+}));
+
 describe('WaitTimeBadge', () => {
-  /**
-   * Spec: A badge that displays wait time in minutes with color coding:
-   * - Green (< 20 min): short wait
-   * - Yellow (20-45 min): moderate wait
-   * - Red (> 45 min): long wait
-   */
-
-  it('should render wait time in minutes', () => {
-    // Spec: <WaitTimeBadge minutes={25} /> → displays "25 min"
-    expect(true).toBe(true);
+  it('renders wait time in minutes', () => {
+    render(<WaitTimeBadge waitMinutes={25} />);
+    expect(screen.getByText('25')).toBeInTheDocument();
+    expect(screen.getByText('min')).toBeInTheDocument();
   });
 
-  it('should show green color for wait times under 20 minutes', () => {
-    // Spec: minutes < 20 → green background/text (e.g., bg-green-100 text-green-700)
-    // Test values: 0, 5, 10, 15, 19
-    const testCases = [0, 5, 10, 15, 19];
-    testCases.forEach((mins) => {
-      // Expected: element has green styling class
-      expect(mins).toBeLessThan(20);
-    });
+  it('shows green color for wait times under 20 minutes', () => {
+    const { container } = render(<WaitTimeBadge waitMinutes={10} />);
+    const badge = container.querySelector('span');
+    expect(badge?.className).toContain('bg-green-100');
+    expect(badge?.className).toContain('text-green-800');
   });
 
-  it('should show yellow color for wait times 20-45 minutes', () => {
-    // Spec: 20 <= minutes <= 45 → yellow/amber styling
-    // Test values: 20, 30, 45
-    const testCases = [20, 30, 45];
-    testCases.forEach((mins) => {
-      expect(mins).toBeGreaterThanOrEqual(20);
-      expect(mins).toBeLessThanOrEqual(45);
-    });
+  it('shows green for 0 minutes (walk-on)', () => {
+    const { container } = render(<WaitTimeBadge waitMinutes={0} />);
+    const badge = container.querySelector('span');
+    expect(badge?.className).toContain('bg-green-100');
+    expect(screen.getByText('0')).toBeInTheDocument();
   });
 
-  it('should show red color for wait times over 45 minutes', () => {
-    // Spec: minutes > 45 → red styling
-    // Test values: 46, 60, 90, 120
-    const testCases = [46, 60, 90, 120];
-    testCases.forEach((mins) => {
-      expect(mins).toBeGreaterThan(45);
-    });
+  it('shows green for 19 minutes (just under boundary)', () => {
+    const { container } = render(<WaitTimeBadge waitMinutes={19} />);
+    const badge = container.querySelector('span');
+    expect(badge?.className).toContain('bg-green-100');
   });
 
-  it('should handle edge case at boundary: 20 minutes is yellow', () => {
-    // Spec: 20 is the start of yellow range (inclusive)
-    expect(20).toBeGreaterThanOrEqual(20);
+  it('shows yellow color for wait times 20-45 minutes', () => {
+    const { container } = render(<WaitTimeBadge waitMinutes={30} />);
+    const badge = container.querySelector('span');
+    expect(badge?.className).toContain('bg-yellow-100');
+    expect(badge?.className).toContain('text-yellow-800');
   });
 
-  it('should handle edge case at boundary: 45 minutes is yellow', () => {
-    // Spec: 45 is still yellow (inclusive upper bound)
-    expect(45).toBeLessThanOrEqual(45);
+  it('shows yellow at boundary: 20 minutes', () => {
+    const { container } = render(<WaitTimeBadge waitMinutes={20} />);
+    const badge = container.querySelector('span');
+    expect(badge?.className).toContain('bg-yellow-100');
   });
 
-  it('should handle zero wait time', () => {
-    // Spec: 0 min → green badge, displays "0 min" or "Walk On"
-    expect(0).toBeLessThan(20);
+  it('shows yellow at boundary: 45 minutes', () => {
+    const { container } = render(<WaitTimeBadge waitMinutes={45} />);
+    const badge = container.querySelector('span');
+    expect(badge?.className).toContain('bg-yellow-100');
+  });
+
+  it('shows red color for wait times over 45 minutes', () => {
+    const { container } = render(<WaitTimeBadge waitMinutes={60} />);
+    const badge = container.querySelector('span');
+    expect(badge?.className).toContain('bg-red-100');
+    expect(badge?.className).toContain('text-red-800');
+  });
+
+  it('shows red at boundary: 46 minutes', () => {
+    const { container } = render(<WaitTimeBadge waitMinutes={46} />);
+    const badge = container.querySelector('span');
+    expect(badge?.className).toContain('bg-red-100');
+  });
+
+  it('shows "N/A" when waitMinutes is null', () => {
+    render(<WaitTimeBadge waitMinutes={null} />);
+    expect(screen.getByText('N/A')).toBeInTheDocument();
+  });
+
+  it('supports different sizes (sm, md, lg)', () => {
+    const { container: sm } = render(<WaitTimeBadge waitMinutes={10} size="sm" />);
+    const { container: lg } = render(<WaitTimeBadge waitMinutes={10} size="lg" />);
+
+    expect(sm.querySelector('span')?.className).toContain('text-sm');
+    expect(lg.querySelector('span')?.className).toContain('text-3xl');
   });
 });
 
 describe('StatusIndicator', () => {
-  /**
-   * Spec: A small indicator showing attraction operational status.
-   * - OPERATING: green dot + "Operating" text
-   * - CLOSED: gray dot + "Closed" text
-   * - DOWN: red dot + "Down" text (unexpected closure)
-   * - REFURBISHMENT: yellow dot + "Refurbishment" text
-   */
-
-  it('should show green indicator for OPERATING status', () => {
-    // Spec: <StatusIndicator status="operating" />
-    // → green dot (bg-green-500) + text "Operating"
-    expect('operating').toBe('operating');
+  it('shows green dot and "Operating" for OPERATING status', () => {
+    const { container } = render(<StatusIndicator status="OPERATING" />);
+    expect(screen.getByText('Operating')).toBeInTheDocument();
+    const dot = container.querySelector('span > span');
+    expect(dot?.className).toContain('bg-green-500');
   });
 
-  it('should show gray indicator for CLOSED status', () => {
-    // Spec: <StatusIndicator status="closed" />
-    // → gray dot (bg-gray-400) + text "Closed"
-    expect('closed').toBe('closed');
+  it('shows gray dot and "Closed" for CLOSED status', () => {
+    const { container } = render(<StatusIndicator status="CLOSED" />);
+    expect(screen.getByText('Closed')).toBeInTheDocument();
+    const dot = container.querySelector('span > span');
+    expect(dot?.className).toContain('bg-gray-400');
   });
 
-  it('should show red indicator for DOWN status', () => {
-    // Spec: <StatusIndicator status="delayed" /> (maps to "Down" in UI)
-    // → red dot (bg-red-500) + text "Down" or "Temporarily Closed"
-    expect('delayed').toBe('delayed');
+  it('shows red dot and "Down" for DOWN status', () => {
+    const { container } = render(<StatusIndicator status="DOWN" />);
+    expect(screen.getByText('Down')).toBeInTheDocument();
+    const dot = container.querySelector('span > span');
+    expect(dot?.className).toContain('bg-red-500');
   });
 
-  it('should show yellow indicator for REFURBISHMENT status', () => {
-    // Spec: <StatusIndicator status="refurbishment" />
-    // → yellow dot (bg-yellow-500) + text "Refurbishment"
-    expect('refurbishment').toBe('refurbishment');
+  it('shows yellow dot and "Refurbishment" for REFURBISHMENT status', () => {
+    const { container } = render(<StatusIndicator status="REFURBISHMENT" />);
+    expect(screen.getByText('Refurbishment')).toBeInTheDocument();
+    const dot = container.querySelector('span > span');
+    expect(dot?.className).toContain('bg-yellow-500');
   });
 
-  it('should handle seasonal-closed status', () => {
-    // Spec: <StatusIndicator status="seasonal-closed" />
-    // → gray styling, text "Seasonal Closure"
-    expect('seasonal-closed').toBe('seasonal-closed');
+  it('handles unknown status gracefully (shows raw status text)', () => {
+    render(<StatusIndicator status="SEASONAL_CLOSED" />);
+    expect(screen.getByText('SEASONAL_CLOSED')).toBeInTheDocument();
+  });
+
+  it('can hide label when showLabel is false', () => {
+    render(<StatusIndicator status="OPERATING" showLabel={false} />);
+    expect(screen.queryByText('Operating')).not.toBeInTheDocument();
   });
 });
 
 describe('ParkCard', () => {
-  /**
-   * Spec: A card component showing park name, emoji/image, and link to detail page.
-   * Used in the parks listing grid.
-   */
+  const defaultProps = {
+    id: 'magic-kingdom',
+    name: 'Magic Kingdom',
+    destinationName: 'Walt Disney World',
+    shortestWait: 15,
+  };
 
-  it('should render park name', () => {
-    // Spec: <ParkCard name="Magic Kingdom" slug="magic-kingdom" emoji="🏰" />
-    // → displays "Magic Kingdom"
-    expect(true).toBe(true);
+  it('renders park name', () => {
+    render(<ParkCard {...defaultProps} />);
+    expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
   });
 
-  it('should link to the correct park detail page', () => {
-    // Spec: Card is wrapped in a link to /parks/{slug}
-    // <ParkCard slug="epcot" /> → href="/parks/epcot"
-    expect(true).toBe(true);
+  it('renders destination name', () => {
+    render(<ParkCard {...defaultProps} />);
+    expect(screen.getByText('Walt Disney World')).toBeInTheDocument();
   });
 
-  it('should display park emoji or image', () => {
-    // Spec: Shows the emoji (🏰, 🌐, etc.) or park image
-    expect(true).toBe(true);
+  it('links to the correct park detail page using id', () => {
+    render(<ParkCard {...defaultProps} />);
+    const link = screen.getByRole('link');
+    expect(link).toHaveAttribute('href', '/parks/magic-kingdom');
   });
 
-  it('should show hover state on interaction', () => {
-    // Spec: Card has hover:shadow-md or hover:border-color transition
-    expect(true).toBe(true);
+  it('shows shortest wait time when available', () => {
+    render(<ParkCard {...defaultProps} shortestWait={15} />);
+    expect(screen.getByText('15')).toBeInTheDocument();
+    expect(screen.getByText('Shortest wait')).toBeInTheDocument();
+  });
+
+  it('shows "No live data" when shortestWait is null', () => {
+    render(<ParkCard {...defaultProps} shortestWait={null} />);
+    expect(screen.getByText('No live data')).toBeInTheDocument();
+  });
+
+  it('shows attraction count when provided', () => {
+    render(<ParkCard {...defaultProps} attractionCount={42} />);
+    expect(screen.getByText('42 rides')).toBeInTheDocument();
   });
 });
 
 describe('AttractionRow', () => {
-  /**
-   * Spec: A row in the park detail attraction list showing:
-   * - Attraction name
-   * - Wait time badge (color-coded)
-   * - Status indicator
-   * - Queue type (Standby, Lightning Lane, etc.)
-   */
-
-  it('should display attraction name', () => {
-    // Spec: <AttractionRow name="Space Mountain" waitMinutes={45} status="operating" />
-    // → shows "Space Mountain"
-    expect(true).toBe(true);
+  it('displays attraction name', () => {
+    render(<AttractionRow name="Space Mountain" entityType="ATTRACTION" status="OPERATING" waitMinutes={45} />);
+    expect(screen.getByText('Space Mountain')).toBeInTheDocument();
   });
 
-  it('should display wait time badge with correct color', () => {
-    // Spec: waitMinutes is passed to WaitTimeBadge for color coding
-    // 45 min → yellow badge
-    expect(true).toBe(true);
+  it('displays wait time badge for OPERATING attractions', () => {
+    render(<AttractionRow name="Space Mountain" entityType="ATTRACTION" status="OPERATING" waitMinutes={45} />);
+    expect(screen.getByText('45')).toBeInTheDocument();
+    expect(screen.getByText('min')).toBeInTheDocument();
   });
 
-  it('should display status indicator', () => {
-    // Spec: Shows the StatusIndicator component for current status
-    expect(true).toBe(true);
+  it('displays status indicator', () => {
+    render(<AttractionRow name="Space Mountain" entityType="ATTRACTION" status="OPERATING" waitMinutes={45} />);
+    expect(screen.getByText('Operating')).toBeInTheDocument();
   });
 
-  it('should show "Standby" as default queue type', () => {
-    // Spec: Default queue type label is "Standby"
-    expect(true).toBe(true);
+  it('does not show wait time badge for CLOSED attractions', () => {
+    render(<AttractionRow name="Splash Mountain" entityType="ATTRACTION" status="CLOSED" waitMinutes={null} />);
+    expect(screen.getByText('Closed')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('min')).not.toBeInTheDocument();
   });
 
-  it('should not show wait time for closed attractions', () => {
-    // Spec: If status is "closed", show "Closed" text instead of wait badge
-    expect(true).toBe(true);
+  it('does not show wait time badge for REFURBISHMENT attractions', () => {
+    render(<AttractionRow name="Tron" entityType="ATTRACTION" status="REFURBISHMENT" waitMinutes={null} />);
+    expect(screen.getByText('Refurbishment')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
   });
 
-  it('should not show wait time for attractions under refurbishment', () => {
-    // Spec: If status is "refurbishment", show "Refurbishment" instead of wait badge
-    expect(true).toBe(true);
+  it('shows entity type badge', () => {
+    render(<AttractionRow name="Festival of the Lion King" entityType="SHOW" status="OPERATING" waitMinutes={10} />);
+    expect(screen.getByText('SHOW')).toBeInTheDocument();
+  });
+
+  it('applies correct color coding to wait time', () => {
+    const { container } = render(
+      <AttractionRow name="Space Mountain" entityType="ATTRACTION" status="OPERATING" waitMinutes={60} />,
+    );
+    // 60 min → red badge
+    const badge = container.querySelector('[class*="bg-red-100"]');
+    expect(badge).not.toBeNull();
   });
 });

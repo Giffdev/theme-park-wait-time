@@ -1,16 +1,17 @@
 /**
  * Tests for the Park Detail page.
  *
- * The park detail page should:
- * - Show park name and breadcrumb navigation
- * - Display attractions with live wait times
- * - Sort attractions by wait time (shortest first)
- * - Group by status (operating first, then closed/refurbishment)
- * - Show refresh button to reload wait time data
- * - Handle loading and error states
+ * The park detail page is a client component that:
+ * - Uses useParams to get parkId from the URL
+ * - Fetches park doc, attractions, and wait times from Firestore
+ * - Shows loading skeletons while data loads
+ * - Sorts attractions by wait time (shortest first by default)
+ * - Groups by status (operating first, then closed/refurbishment)
+ * - Has a refresh button to reload wait time data
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 // Mock next/link
@@ -27,113 +28,250 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/parks/magic-kingdom',
 }));
 
+// Mock Firebase config
+vi.mock('@/lib/firebase/config', () => ({
+  auth: {},
+  db: {},
+  storage: {},
+  app: {},
+}));
+
+// Mock Firestore
+const mockGetDocument = vi.fn();
+const mockGetCollection = vi.fn();
+vi.mock('@/lib/firebase/firestore', () => ({
+  getDocument: (...args: unknown[]) => mockGetDocument(...args),
+  getCollection: (...args: unknown[]) => mockGetCollection(...args),
+  whereConstraint: vi.fn((...args: unknown[]) => args),
+}));
+
+// Mock lucide-react icons
+vi.mock('lucide-react', () => ({
+  RefreshCw: ({ className }: { className?: string }) => <span data-testid="refresh-icon" className={className}>↻</span>,
+  ArrowUpDown: () => <span>⇅</span>,
+  TrendingUp: () => <span>↗</span>,
+  Clock: () => <span>🕐</span>,
+  AlertCircle: () => <span>⚠</span>,
+}));
+
+// Mock fetch
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
+
+const mockPark = {
+  id: 'magic-kingdom',
+  name: 'Magic Kingdom',
+  slug: 'magic-kingdom',
+  destinationName: 'Walt Disney World',
+  destinationId: 'wdw',
+};
+
+const mockAttractions = [
+  { id: 'space-mountain', name: 'Space Mountain', parkId: 'magic-kingdom', parkName: 'Magic Kingdom', entityType: 'ATTRACTION', slug: 'space-mountain' },
+  { id: 'haunted-mansion', name: 'Haunted Mansion', parkId: 'magic-kingdom', parkName: 'Magic Kingdom', entityType: 'ATTRACTION', slug: 'haunted-mansion' },
+  { id: 'pirates', name: 'Pirates of the Caribbean', parkId: 'magic-kingdom', parkName: 'Magic Kingdom', entityType: 'ATTRACTION', slug: 'pirates' },
+  { id: 'jungle-cruise', name: 'Jungle Cruise', parkId: 'magic-kingdom', parkName: 'Magic Kingdom', entityType: 'ATTRACTION', slug: 'jungle-cruise' },
+];
+
+const mockWaitTimes = [
+  { id: 'wt-1', attractionId: 'space-mountain', attractionName: 'Space Mountain', status: 'OPERATING', waitMinutes: 60, lastUpdated: '2026-04-29T09:00:00Z', fetchedAt: '2026-04-29T09:05:00Z' },
+  { id: 'wt-2', attractionId: 'haunted-mansion', attractionName: 'Haunted Mansion', status: 'OPERATING', waitMinutes: 20, lastUpdated: '2026-04-29T09:00:00Z', fetchedAt: '2026-04-29T09:05:00Z' },
+  { id: 'wt-3', attractionId: 'pirates', attractionName: 'Pirates of the Caribbean', status: 'CLOSED', waitMinutes: null, lastUpdated: null, fetchedAt: '2026-04-29T09:05:00Z' },
+  { id: 'wt-4', attractionId: 'jungle-cruise', attractionName: 'Jungle Cruise', status: 'OPERATING', waitMinutes: 35, lastUpdated: '2026-04-29T09:00:00Z', fetchedAt: '2026-04-29T09:05:00Z' },
+];
+
 describe('Park Detail Page', () => {
-  beforeEach(() => {
+  let ParkDetailPage: React.ComponentType;
+
+  beforeEach(async () => {
     vi.clearAllMocks();
+    mockFetch.mockResolvedValue({ ok: true });
+    const mod = await import('@/app/parks/[parkId]/page');
+    ParkDetailPage = mod.default;
   });
 
-  describe('rendering (current static scaffold)', () => {
-    it('renders the park name from URL params', async () => {
-      const { default: ParkDetailPage } = await import('@/app/parks/[parkId]/page');
-      // The component expects params as a Promise (Next.js 15 pattern)
-      render(await ParkDetailPage({ params: Promise.resolve({ parkId: 'magic-kingdom' }) }));
+  describe('loading state', () => {
+    it('shows loading skeletons while data loads', () => {
+      mockGetDocument.mockReturnValue(new Promise(() => {}));
+      mockGetCollection.mockReturnValue(new Promise(() => {}));
 
-      expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
+      const { container } = render(<ParkDetailPage />);
+
+      const skeletons = container.querySelectorAll('.animate-pulse');
+      expect(skeletons.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('after data loads', () => {
+    beforeEach(() => {
+      mockGetDocument.mockResolvedValue(mockPark);
+      mockGetCollection
+        .mockResolvedValueOnce(mockAttractions)
+        .mockResolvedValueOnce(mockWaitTimes);
+    });
+
+    it('renders park name from Firestore data', async () => {
+      render(<ParkDetailPage />);
+
+      await waitFor(() => {
+        const heading = screen.getByRole('heading', { level: 1 });
+        expect(heading).toHaveTextContent('Magic Kingdom');
+      });
+    });
+
+    it('renders destination name', async () => {
+      render(<ParkDetailPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Walt Disney World')).toBeInTheDocument();
+      });
     });
 
     it('renders breadcrumb navigation back to parks list', async () => {
-      const { default: ParkDetailPage } = await import('@/app/parks/[parkId]/page');
-      render(await ParkDetailPage({ params: Promise.resolve({ parkId: 'magic-kingdom' }) }));
+      render(<ParkDetailPage />);
 
-      const parksLink = screen.getByRole('link', { name: /parks/i });
-      expect(parksLink).toHaveAttribute('href', '/parks');
+      await waitFor(() => {
+        const parksLink = screen.getByRole('link', { name: /parks/i });
+        expect(parksLink).toHaveAttribute('href', '/parks');
+      });
     });
 
-    it('renders the Live Wait Times section heading', async () => {
-      const { default: ParkDetailPage } = await import('@/app/parks/[parkId]/page');
-      render(await ParkDetailPage({ params: Promise.resolve({ parkId: 'magic-kingdom' }) }));
+    it('displays attraction names', async () => {
+      render(<ParkDetailPage />);
 
-      expect(screen.getByText('Live Wait Times')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('Space Mountain')).toBeInTheDocument();
+        expect(screen.getByText('Haunted Mansion')).toBeInTheDocument();
+        expect(screen.getByText('Jungle Cruise')).toBeInTheDocument();
+      });
     });
 
-    it('renders attraction names', async () => {
-      const { default: ParkDetailPage } = await import('@/app/parks/[parkId]/page');
-      render(await ParkDetailPage({ params: Promise.resolve({ parkId: 'magic-kingdom' }) }));
+    it('sorts operating attractions by wait time (shortest first)', async () => {
+      render(<ParkDetailPage />);
 
-      expect(screen.getByText('Space Mountain')).toBeInTheDocument();
-      expect(screen.getByText('Haunted Mansion')).toBeInTheDocument();
-      expect(screen.getByText('Pirates of the Caribbean')).toBeInTheDocument();
-    });
-  });
+      await waitFor(() => {
+        expect(screen.getByText('Haunted Mansion')).toBeInTheDocument();
+      });
 
-  describe('wait time display (spec)', () => {
-    it('should display wait time in minutes for each attraction', () => {
-      // Spec: Each attraction row shows a numeric wait time and "min" label
-      // Format: "45 min" with the number prominently displayed
-      expect(true).toBe(true);
-    });
+      // Get all attraction names in order — Haunted Mansion (20) should be before Space Mountain (60)
+      const allText = document.body.textContent || '';
+      const hauntedIdx = allText.indexOf('Haunted Mansion');
+      const jungleIdx = allText.indexOf('Jungle Cruise');
+      const spaceIdx = allText.indexOf('Space Mountain');
 
-    it('should sort attractions by wait time (shortest first)', () => {
-      // Spec: Attractions are ordered ascending by waitMinutes
-      // 5min ride appears before 60min ride
-      expect(true).toBe(true);
+      // 20 min < 35 min < 60 min
+      expect(hauntedIdx).toBeLessThan(jungleIdx);
+      expect(jungleIdx).toBeLessThan(spaceIdx);
     });
 
-    it('should group operating attractions before closed ones', () => {
-      // Spec: Status groups in order: OPERATING → CLOSED → DOWN → REFURBISHMENT
-      // Within each group, sort by wait time
-      expect(true).toBe(true);
+    it('groups operating attractions before closed ones', async () => {
+      render(<ParkDetailPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Pirates of the Caribbean')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/Operating \(3\)/)).toBeInTheDocument();
+      expect(screen.getByText(/Closed \/ Not Operating \(1\)/)).toBeInTheDocument();
     });
 
-    it('should show "Closed" instead of wait time for non-operating attractions', () => {
-      // Spec: Attractions with status "closed" show "Closed" badge instead of minutes
-      expect(true).toBe(true);
-    });
-  });
+    it('displays wait time stats (avg wait, longest wait)', async () => {
+      render(<ParkDetailPage />);
 
-  describe('refresh behavior (spec)', () => {
-    it('should have a refresh button to reload wait times', () => {
-      // Spec: A button (icon or text) that triggers re-fetch of wait time data
-      // Expected: aria-label="Refresh wait times" or text "Refresh"
-      expect(true).toBe(true);
-    });
-
-    it('should show loading indicator during refresh', () => {
-      // Spec: While API call is in-flight, show spinner on the refresh button
-      // or skeleton over the wait time values
-      expect(true).toBe(true);
-    });
-
-    it('should update displayed wait times after refresh completes', () => {
-      // Spec: New data from API replaces old values in the UI
-      expect(true).toBe(true);
+      await waitFor(() => {
+        expect(screen.getByText('Avg Wait')).toBeInTheDocument();
+        expect(screen.getByText('Longest Wait')).toBeInTheDocument();
+      });
     });
   });
 
-  describe('loading state (spec)', () => {
-    it('should show loading skeleton while attraction data loads', () => {
-      // Spec: On initial page load, show animated skeleton cards
-      // for the attractions list
-      expect(true).toBe(true);
+  describe('refresh behavior', () => {
+    beforeEach(() => {
+      mockGetDocument.mockResolvedValue(mockPark);
+      mockGetCollection
+        .mockResolvedValueOnce(mockAttractions)
+        .mockResolvedValueOnce(mockWaitTimes)
+        .mockResolvedValue([]);
     });
 
-    it('should show park status (Open/Closed) with operating hours', () => {
-      // Spec: Header area shows current park status and hours
-      expect(true).toBe(true);
+    it('has a refresh button', async () => {
+      render(<ParkDetailPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Refresh Wait Times')).toBeInTheDocument();
+      });
+    });
+
+    it('calls API with parkId when refresh is clicked', async () => {
+      const user = userEvent.setup();
+      render(<ParkDetailPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Refresh Wait Times')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Refresh Wait Times'));
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/wait-times?parkId=magic-kingdom');
+    });
+
+    it('shows "Refreshing..." during refresh', async () => {
+      const user = userEvent.setup();
+      mockFetch.mockReturnValue(new Promise(() => {}));
+
+      render(<ParkDetailPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Refresh Wait Times')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Refresh Wait Times'));
+
+      expect(screen.getByText('Refreshing...')).toBeInTheDocument();
     });
   });
 
-  describe('error handling (spec)', () => {
-    it('should show error message if wait times API fails', () => {
-      // Spec: "Unable to load wait times. Please try again."
-      // with a retry button
-      expect(true).toBe(true);
+  describe('sort toggle', () => {
+    beforeEach(() => {
+      mockGetDocument.mockResolvedValue(mockPark);
+      mockGetCollection
+        .mockResolvedValueOnce(mockAttractions)
+        .mockResolvedValueOnce(mockWaitTimes);
     });
 
-    it('should show stale data warning if data is older than 10 minutes', () => {
-      // Spec: If lastUpdated > 10 min ago, show warning banner:
-      // "Wait times may be outdated. Last updated X minutes ago."
-      expect(true).toBe(true);
+    it('shows "Shortest first" sort label by default', async () => {
+      render(<ParkDetailPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Shortest first')).toBeInTheDocument();
+      });
+    });
+
+    it('toggles to "Longest first" when sort button is clicked', async () => {
+      const user = userEvent.setup();
+      render(<ParkDetailPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Shortest first')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Shortest first'));
+
+      expect(screen.getByText('Longest first')).toBeInTheDocument();
+    });
+  });
+
+  describe('error handling', () => {
+    it('handles Firestore fetch errors gracefully (no crash)', async () => {
+      mockGetDocument.mockRejectedValue(new Error('Network error'));
+      mockGetCollection.mockRejectedValue(new Error('Network error'));
+
+      render(<ParkDetailPage />);
+
+      await waitFor(() => {
+        const skeletons = document.querySelectorAll('.animate-pulse');
+        expect(skeletons.length).toBe(0);
+      });
     });
   });
 });

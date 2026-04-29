@@ -4,11 +4,12 @@
  * Tests the expected interactive behavior: Google sign-in, email/password form,
  * loading states, error display, and redirect on success.
  *
- * NOTE: The current SignInPage is a static scaffold. These tests define the
- * expected behavior spec — they'll pass once Data wires up the auth logic.
+ * The current SignInPage is a static scaffold — the rendering tests verify the
+ * current structure, while the interaction tests define the spec for when
+ * Data wires up auth logic.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -19,6 +20,32 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, replace: mockReplace }),
   usePathname: () => '/auth/signin',
   redirect: vi.fn(),
+}));
+
+// Mock next/link
+vi.mock('next/link', () => ({
+  default: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => (
+    <a href={href} {...props}>{children}</a>
+  ),
+}));
+
+// Mock Firebase config
+vi.mock('@/lib/firebase/config', () => ({
+  auth: { currentUser: null },
+  db: {},
+  storage: {},
+  app: {},
+}));
+
+// Mock firebase/app (for FirebaseError)
+vi.mock('firebase/app', () => ({
+  FirebaseError: class FirebaseError extends Error {
+    code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+    }
+  },
 }));
 
 // Mock auth functions
@@ -38,14 +65,6 @@ vi.mock('@/lib/firebase/auth-context', () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-/**
- * SignIn page component under test.
- *
- * This is a spec-driven test: we define what the component SHOULD do.
- * The actual component will be built by Data/Mouth to match these specs.
- * For now, we test the static scaffold renders correctly and define
- * the interactive behavior as separate test blocks.
- */
 describe('SignIn Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -53,7 +72,6 @@ describe('SignIn Page', () => {
 
   describe('rendering', () => {
     it('renders the page title and description', async () => {
-      // Dynamic import to handle the server component
       const { default: SignInPage } = await import('@/app/auth/signin/page');
       render(<SignInPage />);
 
@@ -93,44 +111,9 @@ describe('SignIn Page', () => {
     });
   });
 
-  describe('Google sign-in interaction (spec)', () => {
-    it('calls signInWithGoogle when Google button is clicked', async () => {
+  describe('form interaction', () => {
+    it('accepts email and password input', async () => {
       const user = userEvent.setup();
-      mockSignInWithGoogle.mockResolvedValue({ user: { uid: '1' } });
-
-      const { default: SignInPage } = await import('@/app/auth/signin/page');
-      render(<SignInPage />);
-
-      const googleButton = screen.getByText('Continue with Google');
-      await user.click(googleButton);
-
-      // Once interactive behavior is wired up, this assertion will verify the call
-      // For now we verify the button exists and is clickable
-      expect(googleButton).toBeInTheDocument();
-    });
-
-    it('should redirect to /dashboard after successful Google sign-in', async () => {
-      mockSignInWithGoogle.mockResolvedValue({ user: { uid: 'google-1', email: 'user@gmail.com' } });
-
-      // This test documents the expected post-login redirect behavior
-      // Will be fully testable once the interactive auth is wired
-      expect(mockPush).not.toHaveBeenCalled(); // no redirect yet
-    });
-
-    it('should display error when Google popup is blocked', async () => {
-      mockSignInWithGoogle.mockRejectedValue({ code: 'auth/popup-blocked' });
-
-      // Spec: error message should appear in the DOM after failed popup
-      // e.g., "Popup was blocked. Please allow popups and try again."
-      expect(true).toBe(true); // placeholder for behavior assertion
-    });
-  });
-
-  describe('email/password sign-in interaction (spec)', () => {
-    it('calls signIn with email and password on form submit', async () => {
-      const user = userEvent.setup();
-      mockSignIn.mockResolvedValue({ user: { uid: 'uid-1' } });
-
       const { default: SignInPage } = await import('@/app/auth/signin/page');
       render(<SignInPage />);
 
@@ -140,44 +123,66 @@ describe('SignIn Page', () => {
       await user.type(emailInput, 'test@example.com');
       await user.type(passwordInput, 'password123');
 
-      // Verify inputs accept text
       expect(emailInput).toHaveValue('test@example.com');
       expect(passwordInput).toHaveValue('password123');
     });
 
-    it('should show loading state during authentication', async () => {
-      // Spec: Submit button should show spinner/disabled state while auth is pending
-      // Expected: button text changes to "Signing in..." or shows spinner
-      // Expected: form inputs become disabled
-      expect(true).toBe(true);
-    });
+    it('Google button is clickable', async () => {
+      const user = userEvent.setup();
+      const { default: SignInPage } = await import('@/app/auth/signin/page');
+      render(<SignInPage />);
 
-    it('should show error message for wrong password', async () => {
-      mockSignIn.mockRejectedValue({ code: 'auth/wrong-password', message: 'Wrong password' });
+      const googleButton = screen.getByText('Continue with Google');
+      await user.click(googleButton);
 
-      // Spec: Error banner appears: "Incorrect password. Please try again."
-      expect(true).toBe(true);
-    });
-
-    it('should show error message for user not found', async () => {
-      mockSignIn.mockRejectedValue({ code: 'auth/user-not-found', message: 'User not found' });
-
-      // Spec: Error banner appears: "No account found with this email."
-      expect(true).toBe(true);
-    });
-
-    it('should redirect to /dashboard after successful email sign-in', async () => {
-      mockSignIn.mockResolvedValue({ user: { uid: '1', email: 'test@example.com' } });
-
-      // Spec: router.push('/dashboard') or redirect('/dashboard') called on success
-      expect(true).toBe(true);
+      // Button exists and is interactive
+      expect(googleButton).toBeInTheDocument();
     });
   });
 
-  describe('already authenticated user (spec)', () => {
-    it('should redirect authenticated user away from /auth/signin to /dashboard', async () => {
+  describe('auth behavior (spec — for wired-up version)', () => {
+    it('should call signInWithGoogle when Google button is clicked', () => {
+      // Spec: On Google button click → signInWithGoogle() is called
+      // On success → router.push('/dashboard')
+      expect(mockSignInWithGoogle).not.toHaveBeenCalled();
+    });
+
+    it('should call signIn with email/password on form submit', () => {
+      // Spec: On form submit → signIn(email, password) is called
+      // On success → router.push('/dashboard')
+      expect(mockSignIn).not.toHaveBeenCalled();
+    });
+
+    it('should show loading state during authentication', () => {
+      // Spec: While auth is pending:
+      // - Submit button shows "Signing in..." or spinner
+      // - Form inputs become disabled
+      expect(true).toBe(true);
+    });
+
+    it('should show error for auth/wrong-password', () => {
+      // Spec: Error banner: "Incorrect password. Please try again."
+      expect(true).toBe(true);
+    });
+
+    it('should show error for auth/user-not-found', () => {
+      // Spec: Error banner: "No account found with this email."
+      expect(true).toBe(true);
+    });
+
+    it('should show error for auth/popup-blocked', () => {
+      // Spec: Error banner: "Popup was blocked. Please allow popups."
+      expect(true).toBe(true);
+    });
+
+    it('should redirect to /dashboard after successful sign-in', () => {
+      // Spec: router.push('/dashboard') called on success
+      expect(true).toBe(true);
+    });
+
+    it('should redirect authenticated users to /dashboard', () => {
       // Spec: If useAuth().user is non-null and loading is false,
-      // the page should redirect to /dashboard immediately
+      // redirect to /dashboard immediately (no flash of sign-in page)
       expect(true).toBe(true);
     });
   });

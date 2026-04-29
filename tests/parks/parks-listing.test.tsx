@@ -1,14 +1,15 @@
 /**
  * Tests for the Parks listing page.
  *
- * The parks page should:
- * - Show parks grouped by destination/family (Walt Disney World, Universal Orlando)
- * - Fetch park data from Firestore
- * - Display loading skeleton while data loads
- * - Link each park card to the correct detail page
+ * The parks page is a client component that:
+ * - Fetches parks from Firestore via getCollection
+ * - Shows loading skeletons while data loads
+ * - Groups parks by destination and renders ParkCards
+ * - Has a refresh button that calls the wait-times API
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 // Mock next/link
@@ -18,100 +19,160 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+// Mock Firebase config
+vi.mock('@/lib/firebase/config', () => ({
+  auth: {},
+  db: {},
+  storage: {},
+  app: {},
+}));
+
+// Mock Firestore
+const mockGetCollection = vi.fn();
+vi.mock('@/lib/firebase/firestore', () => ({
+  getCollection: (...args: unknown[]) => mockGetCollection(...args),
+  getDocument: vi.fn(),
+  whereConstraint: vi.fn(),
+}));
+
+// Mock lucide-react icons
+vi.mock('lucide-react', () => ({
+  RefreshCw: ({ className }: { className?: string }) => <span data-testid="refresh-icon" className={className}>↻</span>,
+}));
+
+// Mock fetch for API calls
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
+
+const mockParks = [
+  { id: 'magic-kingdom', name: 'Magic Kingdom', slug: 'magic-kingdom', destinationName: 'Walt Disney World', destinationId: 'wdw' },
+  { id: 'epcot', name: 'EPCOT', slug: 'epcot', destinationName: 'Walt Disney World', destinationId: 'wdw' },
+  { id: 'universal-studios', name: 'Universal Studios', slug: 'universal-studios', destinationName: 'Universal Orlando', destinationId: 'uni' },
+];
+
 describe('Parks Listing Page', () => {
-  beforeEach(() => {
+  let ParksPage: React.ComponentType;
+
+  beforeEach(async () => {
     vi.clearAllMocks();
+    mockFetch.mockResolvedValue({ ok: true });
+    const mod = await import('@/app/parks/page');
+    ParksPage = mod.default;
   });
 
-  describe('rendering (current static implementation)', () => {
-    it('renders the page heading', async () => {
-      const { default: ParksPage } = await import('@/app/parks/page');
+  describe('loading state', () => {
+    it('renders loading skeletons while parks data is fetching', () => {
+      mockGetCollection.mockReturnValue(new Promise(() => {}));
+
+      const { container } = render(<ParksPage />);
+
+      const skeletons = container.querySelectorAll('.animate-pulse');
+      expect(skeletons.length).toBeGreaterThan(0);
+    });
+
+    it('renders the page heading even during loading', () => {
+      mockGetCollection.mockReturnValue(new Promise(() => {}));
+
       render(<ParksPage />);
 
       expect(screen.getByText('Theme Parks')).toBeInTheDocument();
     });
+  });
 
-    it('renders park family section headings', async () => {
-      const { default: ParksPage } = await import('@/app/parks/page');
-      render(<ParksPage />);
-
-      expect(screen.getByText('Walt Disney World')).toBeInTheDocument();
-      expect(screen.getByText('Universal Orlando')).toBeInTheDocument();
+  describe('after data loads', () => {
+    beforeEach(() => {
+      mockGetCollection
+        .mockResolvedValueOnce(mockParks)
+        .mockResolvedValue([]);
     });
 
-    it('renders individual park names', async () => {
-      const { default: ParksPage } = await import('@/app/parks/page');
+    it('displays parks grouped by destination', async () => {
       render(<ParksPage />);
 
-      expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
-      expect(screen.getByText('EPCOT')).toBeInTheDocument();
-      expect(screen.getByText('Hollywood Studios')).toBeInTheDocument();
-      expect(screen.getByText('Animal Kingdom')).toBeInTheDocument();
-      expect(screen.getByText('Universal Studios Florida')).toBeInTheDocument();
-      expect(screen.getByText('Islands of Adventure')).toBeInTheDocument();
-      expect(screen.getByText('Epic Universe')).toBeInTheDocument();
+      await waitFor(() => {
+        // Section headings for each destination group
+        const headings = screen.getAllByRole('heading', { level: 2 });
+        const headingTexts = headings.map((h) => h.textContent);
+        expect(headingTexts).toContain('Walt Disney World');
+        expect(headingTexts).toContain('Universal Orlando');
+      });
     });
 
-    it('links each park card to the correct detail page', async () => {
-      const { default: ParksPage } = await import('@/app/parks/page');
+    it('renders park names', async () => {
       render(<ParksPage />);
 
-      const magicKingdomLink = screen.getByRole('link', { name: /magic kingdom/i });
-      expect(magicKingdomLink).toHaveAttribute('href', '/parks/magic-kingdom');
-
-      const epcotLink = screen.getByRole('link', { name: /epcot/i });
-      expect(epcotLink).toHaveAttribute('href', '/parks/epcot');
-
-      const epicLink = screen.getByRole('link', { name: /epic universe/i });
-      expect(epicLink).toHaveAttribute('href', '/parks/epic-universe');
+      await waitFor(() => {
+        expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
+        expect(screen.getByText('EPCOT')).toBeInTheDocument();
+        expect(screen.getByText('Universal Studios')).toBeInTheDocument();
+      });
     });
 
-    it('displays park description text', async () => {
-      const { default: ParksPage } = await import('@/app/parks/page');
-      render(<ParksPage />);
+    it('hides loading skeletons once data arrives', async () => {
+      const { container } = render(<ParksPage />);
 
-      expect(
-        screen.getByText('Select a park to view live wait times and attraction details.'),
-      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
+      });
+
+      const skeletons = container.querySelectorAll('.animate-pulse');
+      expect(skeletons.length).toBe(0);
     });
   });
 
-  describe('loading state (spec — for Firestore-backed version)', () => {
-    it('should render loading skeletons while parks data is fetching', () => {
-      // Spec: When parks data is loading from Firestore, show animated skeleton cards
-      // Expected: At least one element with role="status" or aria-label="Loading"
-      // or a CSS animation class like "animate-pulse"
-      expect(true).toBe(true);
+  describe('refresh button', () => {
+    beforeEach(() => {
+      mockGetCollection
+        .mockResolvedValueOnce(mockParks)
+        .mockResolvedValue([]);
     });
 
-    it('should hide loading state once data arrives', () => {
-      // Spec: Loading skeletons disappear and park cards appear after fetch resolves
-      expect(true).toBe(true);
+    it('renders the refresh button', async () => {
+      render(<ParksPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Refresh Data')).toBeInTheDocument();
+      });
+    });
+
+    it('calls the wait-times API when refresh is clicked', async () => {
+      const user = userEvent.setup();
+      render(<ParksPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Refresh Data')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Refresh Data'));
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/wait-times');
+    });
+
+    it('shows "Refreshing..." text while refresh is in progress', async () => {
+      const user = userEvent.setup();
+      mockFetch.mockReturnValue(new Promise(() => {}));
+
+      render(<ParksPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Refresh Data')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Refresh Data'));
+
+      expect(screen.getByText('Refreshing...')).toBeInTheDocument();
     });
   });
 
-  describe('Firestore integration (spec)', () => {
-    it('should fetch parks from Firestore on mount', () => {
-      // Spec: The page calls a Firestore query for active parks
-      // grouped by their `family` field (destination)
-      expect(true).toBe(true);
-    });
+  describe('error handling', () => {
+    it('handles Firestore fetch errors gracefully (no crash)', async () => {
+      mockGetCollection.mockRejectedValue(new Error('Network error'));
 
-    it('should group parks by destination/family', () => {
-      // Spec: Parks with family "walt-disney-world" appear under
-      // "Walt Disney World" heading, etc.
-      expect(true).toBe(true);
-    });
+      render(<ParksPage />);
 
-    it('should show error state if Firestore query fails', () => {
-      // Spec: On network error, show a user-friendly error message
-      // with a retry button
-      expect(true).toBe(true);
-    });
-
-    it('should only show active parks (isActive: true)', () => {
-      // Spec: Parks with isActive: false should not appear in listing
-      expect(true).toBe(true);
+      await waitFor(() => {
+        expect(screen.getByText('Theme Parks')).toBeInTheDocument();
+      });
     });
   });
 });

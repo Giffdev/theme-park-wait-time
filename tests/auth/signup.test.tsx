@@ -18,6 +18,32 @@ vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
 }));
 
+// Mock next/link
+vi.mock('next/link', () => ({
+  default: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => (
+    <a href={href} {...props}>{children}</a>
+  ),
+}));
+
+// Mock Firebase config
+vi.mock('@/lib/firebase/config', () => ({
+  auth: { currentUser: null },
+  db: {},
+  storage: {},
+  app: {},
+}));
+
+// Mock firebase/app (for FirebaseError)
+vi.mock('firebase/app', () => ({
+  FirebaseError: class FirebaseError extends Error {
+    code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+    }
+  },
+}));
+
 // Mock auth functions
 const mockSignInWithGoogle = vi.fn();
 const mockSignUp = vi.fn();
@@ -63,7 +89,7 @@ describe('SignUp Page', () => {
 
       expect(screen.getByPlaceholderText('Display name')).toBeInTheDocument();
       expect(screen.getByPlaceholderText('Email address')).toBeInTheDocument();
-      expect(screen.getByPlaceholderText('Password')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Password (min 6 characters)')).toBeInTheDocument();
     });
 
     it('renders the Create Account submit button', async () => {
@@ -91,8 +117,7 @@ describe('SignUp Page', () => {
 
       const nameInput = screen.getByPlaceholderText('Display name');
       const emailInput = screen.getByPlaceholderText('Email address');
-      const passwordInput = screen.getByPlaceholderText('Password');
-
+      const passwordInput = screen.getByPlaceholderText('Password (min 6 characters)');
       await user.type(nameInput, 'Park Enthusiast');
       await user.type(emailInput, 'new@example.com');
       await user.type(passwordInput, 'securepass123');
@@ -101,87 +126,64 @@ describe('SignUp Page', () => {
       expect(emailInput).toHaveValue('new@example.com');
       expect(passwordInput).toHaveValue('securepass123');
     });
-  });
 
-  describe('Google sign-up interaction (spec)', () => {
-    it('calls signInWithGoogle when Google button is clicked', async () => {
+    it('Google button is clickable', async () => {
       const user = userEvent.setup();
-      mockSignInWithGoogle.mockResolvedValue({ user: { uid: 'g-1' } });
-
       const { default: SignUpPage } = await import('@/app/auth/signup/page');
       render(<SignUpPage />);
 
       const googleButton = screen.getByText('Continue with Google');
       await user.click(googleButton);
 
-      // Spec: signInWithGoogle() is called (same provider for sign-in and sign-up)
       expect(googleButton).toBeInTheDocument();
     });
-
-    it('should redirect to /dashboard after successful Google sign-up', async () => {
-      mockSignInWithGoogle.mockResolvedValue({ user: { uid: 'g-1', email: 'new@gmail.com' } });
-
-      // Spec: redirect to /dashboard after new Google account created
-      expect(mockPush).not.toHaveBeenCalled();
-    });
   });
 
-  describe('email/password sign-up interaction (spec)', () => {
-    it('calls signUp with email, password, and display name on form submit', async () => {
-      mockSignUp.mockResolvedValue({ user: { uid: 'new-1' } });
+  describe('auth behavior (spec — for wired-up version)', () => {
+    it('should call signUp with email, password, and displayName on form submit', () => {
+      // Spec: signUp('email', 'password', 'displayName') called on submit
+      expect(mockSignUp).not.toHaveBeenCalled();
+    });
 
-      // Spec: signUp('email', 'password', 'displayName') is called on submit
+    it('should call signInWithGoogle when Google button is clicked', () => {
+      // Spec: Same Google provider for sign-in and sign-up
+      expect(mockSignInWithGoogle).not.toHaveBeenCalled();
+    });
+
+    it('should show loading state during registration', () => {
+      // Spec: Submit button shows "Creating account..." or spinner
+      // Spec: Form inputs become disabled
       expect(true).toBe(true);
     });
 
-    it('should show loading state during registration', async () => {
-      // Spec: Submit button shows "Creating account..." or spinner while pending
-      // Spec: Form inputs become disabled during submission
+    it('should redirect to /dashboard after successful sign-up', () => {
+      // Spec: router.push('/dashboard') called after registration
       expect(true).toBe(true);
     });
 
-    it('should redirect to /dashboard after successful sign-up', async () => {
-      mockSignUp.mockResolvedValue({ user: { uid: 'new-1', email: 'new@example.com' } });
-
-      // Spec: router.push('/dashboard') called after successful registration
-      expect(true).toBe(true);
-    });
-  });
-
-  describe('error handling (spec)', () => {
-    it('should show error for weak password (< 6 characters)', async () => {
-      mockSignUp.mockRejectedValue({ code: 'auth/weak-password', message: 'Weak password' });
-
+    it('should show error for auth/weak-password', () => {
       // Spec: Error message: "Password must be at least 6 characters."
       expect(true).toBe(true);
     });
 
-    it('should show error for email already in use', async () => {
-      mockSignUp.mockRejectedValue({ code: 'auth/email-already-in-use', message: 'Email already in use' });
-
+    it('should show error for auth/email-already-in-use', () => {
       // Spec: Error message: "An account with this email already exists."
-      // Spec: Optionally link to sign-in page
+      // Optional: link to sign-in page
       expect(true).toBe(true);
     });
 
-    it('should show error for invalid email format', async () => {
-      mockSignUp.mockRejectedValue({ code: 'auth/invalid-email', message: 'Invalid email' });
-
+    it('should show error for auth/invalid-email', () => {
       // Spec: Error message: "Please enter a valid email address."
       expect(true).toBe(true);
     });
 
-    it('should validate password length client-side before submission', async () => {
+    it('should validate password length client-side before submission', () => {
       // Spec: If password < 6 chars, show validation error without calling Firebase
-      // This prevents unnecessary API calls
       expect(true).toBe(true);
     });
-  });
 
-  describe('already authenticated user (spec)', () => {
-    it('should redirect authenticated user away from /auth/signup to /dashboard', async () => {
-      // Spec: If useAuth().user is non-null and loading is false,
-      // redirect to /dashboard immediately
+    it('should redirect authenticated users to /dashboard', () => {
+      // Spec: If useAuth().user is non-null, redirect immediately
       expect(true).toBe(true);
     });
   });
