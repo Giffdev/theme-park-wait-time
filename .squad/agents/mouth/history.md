@@ -218,6 +218,27 @@
 - Non-critical fetches (schedule) should be fire-and-forget in the main data load — wrap in try/catch to avoid blocking the primary wait time display.
 - Queue badge tooltips: `onTouchStart` toggle (not just `onMouseEnter`) enables mobile tap-to-reveal without needing a separate modal.
 
+## Park-Family Crowd Calendar UI (2026-04-29)
+
+- **Replaced** entire `/calendar` page with new park-family crowd calendar
+- **Components created** (`src/components/crowd-calendar/`):
+  - `FamilySelector.tsx` — Pill/button selector for park family (shows park count)
+  - `CalendarDayCell.tsx` — Desktop: stacked color-coded mini-bars per park; Mobile: colored dots with tap-to-expand bottom sheet
+  - `BestPlanBanner.tsx` — "Best 3-Day Plan" recommendation with park-per-day and crowd dots
+  - `MiniMonth.tsx` — Compact future month grid with aggregate crowd colors, clickable to navigate
+- **Types** (`src/types/crowd-calendar.ts`): `FamilyCrowdMonth`, `CrowdDay`, `CrowdDayPark`, `BestPlan`, `BestPlanDay`
+- **Constants update**: `PARK_FAMILIES` now includes full park arrays (id + name); added `CROWD_LEVEL_COLORS` (4-tier: green/yellow/orange/red)
+- **Data flow**: Fetches `/api/crowd-calendar?familyId={id}&month={YYYY-MM}` with mock fallback
+- **Design decisions applied**: 3-day default plan, full park names (no abbreviations), temperature shown on desktop cells, no confidence labels
+- **Build**: Clean, `/calendar` page 4.84kB + 107kB shared JS
+
+## Learnings
+
+- 4-tier crowd scale (1–4) is cleaner than 10-tier for multi-park comparison — fewer colors = faster at-a-glance scanning
+- Mini-bar width as `(level/4)*100%` gives proportional visual weight that reads well even at 5px height
+- MiniMonth cells use hex color + `'40'` suffix (25% opacity) for subtle aggregate coloring without defining extra Tailwind classes
+- Park toggle chips with `line-through` when disabled give clear visual feedback without removing the chip from layout (prevents layout shift)
+
 ## Scribe Orchestration Log (2026-04-29 18:47:57Z)
 
 **Phase 1 Team Delivery:**
