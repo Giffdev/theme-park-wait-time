@@ -48,8 +48,9 @@ export default function ForecastChart({ forecast, operatingHours, currentWait, c
 
   if (!chartData) {
     return (
-      <div className="flex items-center justify-center h-[200px] rounded-xl bg-primary-50 border border-primary-100">
-        <p className="text-sm text-primary-400 italic">No forecast available for this attraction</p>
+      <div className="flex flex-col items-center justify-center h-[140px] rounded-xl bg-primary-50 border border-primary-100 px-4 text-center">
+        <p className="text-sm text-primary-400 italic">Wait time forecast not available</p>
+        <p className="text-xs text-primary-300 mt-1">Forecasts are only available for select attractions during park operating hours</p>
       </div>
     );
   }
