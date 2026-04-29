@@ -124,21 +124,16 @@ export default function CreateTripPage() {
     }
   }, [user, canSubmit, days, tripName, router]);
 
-  if (authLoading) {
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace('/auth/signin');
+    }
+  }, [authLoading, user, router]);
+
+  if (authLoading || !user) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <h1 className="text-2xl font-bold text-primary-900">Sign in to create a trip</h1>
-        <Link href="/auth/signin" className="mt-4 inline-block rounded-full bg-primary-600 px-6 py-3 text-white font-medium hover:bg-primary-700">
-          Sign In
-        </Link>
       </div>
     );
   }

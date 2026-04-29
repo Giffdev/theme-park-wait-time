@@ -145,3 +145,4 @@
 - Resort groups derived client-side by grouping parks from Firestore by `destinationId`/`destinationName` — no separate collection needed
 - The `getCollection<T>('parks', [])` call with empty constraints returns all parks — useful for dropdowns
 - ActiveTripBanner placed above QueueTimerBanner in Providers to give trip context visual priority
+- **Auth redirect pattern for protected pages:** Use `useAuth()` hook → `useEffect` that calls `router.replace('/auth/signin')` when `!authLoading && !user` → render spinner while `authLoading || !user`. Applied to all 4 trip routes (`/trips`, `/trips/new`, `/trips/[tripId]`, `/trips/[tripId]/edit`). This prevents content flash and gives a clean redirect.

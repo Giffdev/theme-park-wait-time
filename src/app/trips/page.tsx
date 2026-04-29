@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getTrips } from '@/lib/services/trip-service';
 import TripCard from '@/components/trips/TripCard';
@@ -17,6 +18,7 @@ const TAB_STATUS_MAP: Record<TabKey, TripStatus> = {
 
 export default function TripsPage() {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [trips, setTrips] = useState<(Trip & { id: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabKey>('active');
@@ -38,23 +40,16 @@ export default function TripsPage() {
     if (user) fetchTrips();
   }, [user, fetchTrips]);
 
-  if (authLoading) {
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace('/auth/signin');
+    }
+  }, [authLoading, user, router]);
+
+  if (authLoading || !user) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <div className="text-5xl mb-4">🔒</div>
-        <h1 className="text-2xl font-bold text-primary-900">Sign in to view your trips</h1>
-        <p className="mt-2 text-primary-500">Track your theme park adventures and ride history.</p>
-        <Link href="/auth/signin" className="mt-6 inline-block rounded-full bg-primary-600 px-6 py-3 text-white font-medium hover:bg-primary-700">
-          Sign In
-        </Link>
       </div>
     );
   }
