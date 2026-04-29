@@ -8,46 +8,116 @@
 - **Design direction:** Modern, clean, data-focused but exciting. Deep Ocean Blue primary, Warm Coral accents, Inter font family. Mobile-first. Better UX than thrill-data.com.
 - **PRD color scheme:** oklch-based triadic palette with WCAG AA+ contrast ratios defined.
 
-## Architecture Decisions (via Scribe — 2026-04-28)
+*Detailed history of Phase 1–3 UI implementation archived in history-archive.md.*
 
-### Component & Routing Scope
+## Recent Work (2026-04-29)
 
-**Next.js App Router (not Pages Router)**
-- Server components for data fetching, layout optimization
-- File-based routing: `app/parks/[parkId]/page.tsx`, `app/user/trips/page.tsx`
-- ISR strategy: Park pages revalidate every 1 hour, crowd calendar every 6 hours
+### Forecast Chart Source Badge
 
-**What Ports from Prototype**
-- UI components: shadcn/Radix primitives (Button, Card, Tabs, Modal, Drawer)
-- Type definitions: Extended Park, Attraction, Ride types (added Firestore IDs)
-- Styling: Tailwind config, oklch triadic palette, CSS variables
-- UX patterns: Mobile nav (bottom drawer), park selector (modal), ride timer (countdown), multi-day trip builder
+Integrated forecast source indicator into ForecastChart component.
 
-**What Gets Rewritten**
-- Routing: React Router DOM → Next.js file-based
-- State management: context → Server Components + cache strategy
-- Data fetching: Promise-based client-side → RSC + Firestore Client SDK
+**What was implemented:**
+- Added source badge: blue "Live forecast" vs amber "Based on historical data"
+- Wired `forecastMeta` through component tree from API response
+- No chart rendering changes — both live and historical sources produce same ForecastEntry[] format
+- Park detail page passes forecastMeta to ForecastChart
 
-### Public vs Private Data Boundary
+**Files Modified:**
+- `src/components/parks/ForecastChart.tsx` — source badge rendering
+- `src/app/parks/[parkId]/page.tsx` — pass forecastMeta through
 
-- **Public (no auth required):** Parks list, attractions, live wait times, crowd calendar predictions, crowd report aggregates
-- **Private (auth required):** User profiles, trip plans, ride logs, user-submitted reports
-- **Pattern:** Maximize audience for read path, protect user data on write path
+### Family Calendar: Dropdown Selector
 
-### Five-Phase Build Plan
+Converted FamilySelector from pill buttons to searchable combobox for scalability.
 
-- **Phase 1 (Mouth focus):** Scaffold + component library + static park data layout
-- **Phase 2:** Live wait times widgets (requires Chunk's API integration)
-- **Phase 3:** User ride logging UI (requires Data's auth + schema)
-- **Phase 4:** Crowd calendar views (requires Chunk's data aggregation)
-- **Phase 5:** Crowd-source submission flows (requires Stef's validation)
+**Implementation:**
+- Built with native HTML + React state + full keyboard navigation + ARIA roles
+- Client-side search by family name (case-insensitive substring match)
+- Props interface unchanged: `selectedFamilyId` + `onFamilyChange`
+- All 25 crowd calendar tests pass
+- TypeScript compiles clean
 
-## Learnings
+**Files Modified:**
+- `src/components/crowd-calendar/FamilySelector.tsx` — rewritten as combobox
 
-- `create-next-app` refuses non-empty directories. When other agents have already scaffolded files (firebase config, test utils, etc.), manually create package.json/tsconfig/next.config instead.
-- Tailwind v4 uses `@theme` blocks in CSS for design tokens instead of `tailwind.config.ts`. oklch color system works great for the palette.
-- Existing test-utils with `@firebase/rules-unit-testing` have a peer dep conflict with firebase@11. Exclude them from the Next.js build via tsconfig `exclude` and eslintrc `ignorePatterns`.
-- Always use `<Link>` from `next/link` for internal navigation — Next.js ESLint config enforces this strictly.
+### Temperature Display: Dual Format
+
+Implemented Fahrenheit + Celsius display across calendar views.
+
+**Design:**
+- Desktop cells: `92°/72°F (33°/22°C)` on one line (tight space)
+- Mobile expanded overlay: `High 92°F (33°C) / Low 72°F (22°C)` (more readable)
+- Legend updated: "Avg temps (°F/°C)"
+
+**Implementation:**
+- Desktop uses 8px font, inline with slash-separated values
+- Mobile leverages extra space in expanded view
+- Helper: `fToC()` co-located in CalendarDayCell
+
+### Data Freshness Indicator
+
+Implemented relative-time display for API data age.
+
+**What was shipped:**
+- Recent data: "Updated 2 min ago" (relative time)
+- Older data (60+ min): "Updated as of 12:38 PM" (absolute time)
+- Staleness threshold: 10+ minutes renders in amber (`text-amber-600`) to signal potential API lag
+- Under 10 min: muted gray (`text-primary-400`)
+- 30-second interval re-evaluates the age
+
+**Implementation:**
+- Derived from `max(fetchedAt)` across all wait time entries
+- No new dependencies — inline in park detail page
+
+### Homepage Feature Cards Auth-Aware Pattern
+
+Fixed unauthenticated users landing on protected route.
+
+**Solution:**
+- Extracted feature cards from `src/app/page.tsx` (server component) into `src/components/FeatureCards.tsx` (client component with `useAuth()`)
+- Trip card now routes unauthenticated users to `/auth/signin` instead of `/trips/new`
+- Description text adjusts: "Sign in to track…" vs "Track wait times…"
+- CTA text in hover: "Sign in →" vs "Explore →"
+- Audited all public pages — only this card needed the fix
+
+**Pattern:**
+Keep page layout as server component. Extract auth-dependent sections into client components using `useAuth()`.
+
+## Scribe Batch Update (2026-04-29 21:55:00Z)
+
+**Orchestration:** Blended Forecast System Completion
+
+Successfully shipped forecast blending + crowd calendar historical fix. 11 decisions merged into main decisions.md. All three agents (Chunk, Data, Mouth) delivered core components in parallel.
+
+**Your Contributions to This Batch:**
+- ForecastChart: Added source badge (blue "Live forecast" vs amber "Based on historical data")
+- Wired `forecastMeta` through component tree from API response
+- No chart rendering changes — both live and historical sources produce same ForecastEntry[] format
+- Park detail page passes forecastMeta to ForecastChart
+- Crowd calendar dropdown: Converted FamilySelector from pills to searchable combobox (scales to unlimited families)
+  - Built with native HTML + React state + full keyboard navigation + ARIA roles
+  - Client-side search by family name (case-insensitive substring match)
+  - All 25 crowd calendar tests pass
+- Temperature display: Implemented dual °F/°C format
+  - Desktop: `92°/72°F (33°/22°C)` on one line
+  - Mobile: `High 92°F (33°C) / Low 72°F (22°C)` multiline
+- Freshness indicator: Relative time for recent data, absolute for 60+ min old
+  - "Updated 2 min ago" vs "Updated as of 12:38 PM"
+  - Amber color for ≥10 min old data
+- Homepage: Fixed feature cards routing to signin for unauthenticated users
+
+**Decisions Processed (18–26):**
+- Blended Forecast Architecture
+- Crowd Calendar Aggregate Sourcing
+- Park Family Calendar UX redesign
+- 4-Tier Crowd Algorithm
+- Park Family Calendar Design Decisions
+- FamilySelector Combobox Implementation
+- Dual Temperature Format (°F/°C)
+- Relative Time Freshness Indicator
+- Home Page Auth-Aware Pattern
+
+**Status:** Batch orchestration complete. Decisions archived. All components integrated. Ready for Phase 2 refinement.
 - Mobile bottom nav needs `pb-[env(safe-area-inset-bottom)]` for iPhone notch/home indicator safe areas and pages need `pb-24 md:pb-0` to avoid content being hidden behind it.
 
 ## Phase 1 Completion (2026-04-29)
@@ -262,4 +332,39 @@
 - Park page integration: fetches `/api/park-schedule?parkId=X`, merges queue/forecast/operatingHours into attractions
 - Stef validated 18 UI tests passing for phase 1 components
 - Decision #15 (architecture) + Decision #16 (auth guard) + Decision #17 (nav structure) filed and merged
+
+## Scribe Batch Update (2026-04-29 21:55:00Z)
+
+**Orchestration:** Blended Forecast System Completion
+
+Successfully shipped forecast blending + crowd calendar historical fix. 11 decisions merged into main decisions.md. All three agents (Chunk, Data, Mouth) delivered core components in parallel.
+
+**Your Contributions to This Batch:**
+- ForecastChart: Added source badge (blue "Live forecast" vs amber "Based on historical data")
+- Wired `forecastMeta` through component tree from API response
+- No chart rendering changes — both live and historical sources produce same ForecastEntry[] format
+- Park detail page passes forecastMeta to ForecastChart
+- Crowd calendar dropdown: Converted FamilySelector from pills to searchable combobox (scales to unlimited families)
+  - Built with native HTML + React state + full keyboard navigation + ARIA roles
+  - Client-side search by family name (case-insensitive substring match)
+  - All 25 crowd calendar tests pass
+- Temperature display: Implemented dual °F/°C format
+  - Desktop: `92°/72°F (33°/22°C)` on one line
+  - Mobile: `High 92°F (33°C) / Low 72°F (22°C)` multiline
+- Freshness indicator: Relative time for recent data, absolute for 60+ min old
+  - "Updated 2 min ago" vs "Updated as of 12:38 PM"
+  - Amber color for ≥10 min old data
+
+**Decisions Processed (18–26):**
+- Blended Forecast Architecture
+- Crowd Calendar Aggregate Sourcing
+- Park Family Calendar UX redesign
+- 4-Tier Crowd Algorithm
+- Park Family Calendar Design Decisions
+- FamilySelector Combobox Implementation
+- Dual Temperature Format (°F/°C)
+- Relative Time Freshness Indicator
+- Home Page Auth-Aware Pattern
+
+**Status:** Batch orchestration complete. Decisions archived. All components integrated. Ready for Phase 2 refinement.
 

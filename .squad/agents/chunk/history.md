@@ -181,3 +181,29 @@ Built the core aggregation pipeline for the blended forecast system per Mikey's 
 - Phase 1 uses simple incremental averaging; exponential decay is Phase 2
 - Also fixed pre-existing compile errors in `blender.ts` by providing the types it depended on
 
+## Scribe Batch Update (2026-04-29 21:55:00Z)
+
+**Orchestration:** Blended Forecast System Completion
+
+Successfully shipped forecast blending + crowd calendar historical fix. 11 decisions merged into main decisions.md. All three agents (Chunk, Data, Mouth) delivered core components in parallel.
+
+**Key Outcomes:**
+- Aggregation pipeline now live. Pre-computed aggregates flowing into blender logic.
+- Data team wired forecastMeta into API response. Firestore rules updated.
+- Mouth integrated source badges into ForecastChart — blue for live, amber for historical.
+- Crowd calendar now shows meaningful data for all days in month (not just today).
+- Confidence threshold: 15 samples (Phase 2 decay weighting pending).
+
+**Decisions Processed (18–26):**
+- Blended Forecast Architecture
+- Crowd Calendar Aggregate Sourcing
+- Park Family Calendar UX redesign
+- 4-Tier Crowd Algorithm
+- Park Family Calendar Design Decisions
+- FamilySelector Combobox Implementation
+- Dual Temperature Format (°F/°C)
+- Relative Time Freshness Indicator
+- Home Page Auth-Aware Pattern
+
+**Status:** Batch orchestration complete. Decisions archived. All components integrated. Ready for Phase 2 refinement.
+

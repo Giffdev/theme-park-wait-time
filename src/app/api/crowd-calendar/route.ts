@@ -62,7 +62,12 @@ export async function GET(request: NextRequest) {
       if (cached.exists) {
         const cachedData = cached.data() as FamilyCrowdMonth & { generatedAt?: string };
         const generatedTime = new Date(cachedData.generatedAt ?? 0).getTime();
-        if (Date.now() - generatedTime < CACHE_TTL_MS) {
+        // Validate cache quality: at least 50% of days should have non-zero waits
+        const cachedDaysWithData = cachedData.days?.filter(
+          (d) => d.parks?.some((p) => p.avgWaitMinutes > 0)
+        ) ?? [];
+        const cacheHasQuality = cachedDaysWithData.length >= Math.ceil((cachedData.days?.length ?? 1) * 0.5);
+        if (Date.now() - generatedTime < CACHE_TTL_MS && cacheHasQuality) {
           return NextResponse.json(cachedData);
         }
       }
@@ -94,9 +99,15 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Serve stale cache if available
+      // Serve stale cache if available AND quality
       if (cached.exists) {
-        return NextResponse.json({ ...(cached.data() as FamilyCrowdMonth), stale: true });
+        const staleData = cached.data() as FamilyCrowdMonth;
+        const staleDaysWithData = staleData.days?.filter(
+          (d) => d.parks?.some((p) => p.avgWaitMinutes > 0)
+        ) ?? [];
+        if (staleDaysWithData.length >= Math.ceil((staleData.days?.length ?? 1) * 0.5)) {
+          return NextResponse.json({ ...staleData, stale: true });
+        }
       }
     } catch (error) {
       console.warn('Firestore unavailable, using placeholder data:', (error as Error).message);

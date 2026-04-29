@@ -20,7 +20,7 @@ export function FamilySelector({ selectedFamilyId, onFamilyChange }: FamilySelec
 
   const filtered = PARK_FAMILIES.filter((family) =>
     family.name.toLowerCase().includes(query.toLowerCase()),
-  );
+  ).sort((a, b) => a.name.localeCompare(b.name));
 
   // Reset highlight when filtered list changes
   useEffect(() => {

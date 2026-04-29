@@ -742,6 +742,337 @@ When a user starts a timer while standing in line and stops it (or manually ente
 
 ---
 
+### 18. Blended Forecast System — Architecture Decision
+
+**Author:** Mikey (Lead / Architect)  
+**Date:** 2026-04-29  
+**Status:** Proposed  
+**Requested by:** Devin
+
+#### Context
+
+~50% of attractions get live hourly forecasts from ThemeParks Wiki API. The other ~50% show "Wait time forecast not available." We want to fill that gap using our own historical data.
+
+Historical snapshots are already being archived at:
+```
+waitTimeHistory/{parkId}/daily/{date}/attractions/{attractionId}
+  → { snapshots: [{time, waitMinutes}, ...] }
+```
+
+This data accumulates every time a user visits a park page (triggers the `/api/wait-times` route).
+
+#### Architecture Design
+
+##### 1. Schema: Pre-Computed Aggregates
+
+```
+forecastAggregates/{parkId}/byDayOfWeek/{dayOfWeek}/attractions/{attractionId}
+```
+
+Document shape:
+```typescript
+interface ForecastAggregate {
+  attractionId: string;
+  attractionName: string;
+  dayOfWeek: number;           // 0=Sunday, 6=Saturday
+  hourlyAverages: {
+    [hour: string]: {          // "09", "10", ..., "22"
+      avgWait: number;         // weighted average wait minutes
+      sampleCount: number;     // how many data points contributed
+      stdDev: number;          // standard deviation (confidence signal)
+    };
+  };
+  totalSamples: number;        // total snapshots across all hours
+  lastUpdated: string;         // ISO timestamp
+  oldestDataDate: string;      // earliest contributing date
+  newestDataDate: string;      // latest contributing date
+}
+```
+
+##### 2. Aggregation Pipeline (Chunk)
+
+After `archiveHistoricalSnapshot` completes in the wait-times API route:
+1. Read today's snapshot doc for each attraction
+2. For each attraction with ≥3 snapshots today: group by hour and merge into aggregate
+3. Weight recent data higher using 30-day decay half-life
+
+##### 3. Blended Decision Logic (Data)
+
+```typescript
+function resolveForecast(liveForecast: ForecastEntry[] | null, aggregate: ForecastAggregate | null): BlendedForecast {
+  if (liveForecast && liveForecast.length > 0) {
+    return { entries: liveForecast, source: 'live' };
+  }
+  if (aggregate && aggregate.totalSamples >= 15) {
+    return { entries, source: 'historical' };
+  }
+  return { entries: null, source: 'none' };
+}
+```
+
+**Confidence threshold:** `totalSamples >= 15` (3 same-weekday visits with ~5 snapshots each).
+
+##### 4. API Response: Blended Metadata
+
+Keep `forecast` unchanged for backward compat. Add `forecastMeta`:
+
+```typescript
+{
+  forecast: ForecastEntry[] | null,
+  forecastMeta: {
+    source: 'live' | 'historical' | 'none',
+    confidence?: number,
+    dataRange?: { oldest, newest, sampleCount }
+  }
+}
+```
+
+##### 5. Frontend Display (Mouth)
+
+- **Source badge:** Blue pill "Live forecast" or amber "Based on historical data"
+- **Confidence indicator:** "Based on N visits" for historical
+- No chart rendering changes — both sources produce `ForecastEntry[]`
+
+#### Build Plan
+
+| Owner | Task |
+|-------|------|
+| **Chunk** | Add aggregation logic after archive write. Compute/update `forecastAggregates` docs. |
+| **Data** | Add `forecastMeta` to API response. Implement `resolveForecast` blending. Read aggregates when live is null. |
+| **Mouth** | Add source badge to ForecastChart. |
+
+#### Firestore Security Rules
+
+```
+match /forecastAggregates/{parkId}/{document=**} {
+  allow read: if true;          // public data
+  allow write: if false;        // server-only (Admin SDK)
+}
+```
+
+---
+
+### 19. Crowd Calendar Uses Aggregate Data (Not Live-Only)
+
+**Author:** Data  
+**Date:** 2026-04-29  
+**Status:** Implemented
+
+#### Decision
+
+Rewrote `computeFamilyCrowdDays` to source from `forecastAggregates/{parkId}/byDayOfWeek/{dow}/attractions/` (historical aggregates from blended forecast system). For today specifically, live forecast data takes priority.
+
+#### Key Thresholds
+
+- Aggregates require `totalSamples >= 15` (same as blender confidence threshold)
+- Individual hourly entries require `sampleCount >= 3` (skip threshold)
+- `hasRealData = true` when ≥50% of days in month have non-zero wait data
+- Falls back to deterministic placeholder on cold start
+
+#### Impact
+
+- Crowd calendar shows meaningful data for ALL days in a month (not just today)
+- 6-hour cache TTL remains unchanged
+- No new Firestore rules needed
+
+---
+
+### 20. Park Family Crowd Calendar — UX & Architecture
+
+**Author:** Mikey (Lead/Architect)  
+**Date:** 2026-04-29  
+**Status:** Proposed  
+**Requested by:** Devin Sinha
+
+#### Problem Statement
+
+Current crowd calendar shows single park with flat dropdown selector. Users planning multi-day resort trips (Universal Orlando, Walt Disney World) need to **compare busyness across all parks simultaneously**.
+
+#### UX Proposal
+
+**Layout:** One large interactive month + 2 compact future months below
+
+**Cell Design:** Stacked horizontal bars (one per park), colored by severity (green→yellow→red), lowest gets ★ indicator
+
+**Mobile:** Bars collapse to colored dots. Tap cell to expand detail in bottom sheet.
+
+**Recommendation Banner:** "Best 3-day plan: Mon 5/5 Animal Kingdom (2) · Wed 5/7 MK (3) · Fri 5/9 Epic Universe (2)"
+
+#### Data Model
+
+**Firestore:**
+```
+crowdCalendar/{familyId}/months/{YYYY-MM}
+```
+
+Document size: 4 parks × 31 days × ~100 bytes ≈ 12KB/month
+
+#### Component Architecture
+
+```
+FamilyCalendarView (orchestrator)
+├── FamilySelector (searchable dropdown for park families)
+├── ParkToggleChips (on/off per park in family)
+├── TripRecommendation (smart banner)
+├── MonthCalendar (main interactive calendar)
+│   └── CalendarCell (bars/dots + temp)
+├── DayDetailSheet (mobile bottom sheet)
+└── MiniMonthRow (2 future months)
+```
+
+#### API Changes
+
+**New route:** `/api/crowd-calendar/[familyId]?months=2026-05,2026-06,2026-07`
+
+**New cron job:** `/api/cron/crowd-forecast` — runs daily, computes crowd levels for next 90 days
+
+#### Open Questions for Devin
+
+1. Trip recommendation: Ask "how many days?" or default to family's park count?
+2. Park abbreviations clear enough (MK/EP/HS/AK) or use icons/logos?
+3. Temperature per cell or move to detail sheet to save space?
+4. Show data confidence ("forecast" vs "historical pattern") or keep simple?
+
+---
+
+### 21. Crowd Calendar — 4-Tier Crowd Levels & Aggregation Algorithm
+
+**By:** Chunk (Data Engineer)  
+**Date:** 2026-04-29
+
+#### What
+
+1. **4-tier crowd scale:** Low (<20min avg), Moderate (20-35min), High (35-50min), Extreme (50+min)
+2. **Best Plan algorithm:** Greedy assignment sorting all (day, park) combos by crowd level, unique parks preferred
+3. **Firestore cache path:** `crowdCalendar/{familyId}/monthly/{YYYY-MM}` with 6-hour TTL
+4. **Park family registry:** Uses ThemeParks Wiki entity UUIDs as park IDs
+5. **Stale fallback:** Never return 500 if expired data exists
+
+#### Rationale
+
+These thresholds map to natural user expectations. Greedy algorithm avoids O(n!) combinatorics while producing near-optimal results for typical family sizes (2–4 parks). 6-hour TTL balances freshness vs Firestore read costs.
+
+---
+
+### 22. Park Family Calendar Design Decisions
+
+**By:** Devin Sinha (via Copilot)  
+**Date:** 2026-04-29
+
+#### Decisions
+
+1. **Trip length default:** 3 days
+2. **Park names in calendar:** Use full names (not abbreviations)
+3. **Weather/temperature:** Yes, if it fits well visually
+4. **Confidence labels:** Skip for low forecast coverage
+
+---
+
+### 23. FamilySelector converted from pills to searchable combobox
+
+**Author:** Mouth (Frontend Dev)  
+**Date:** 2026-04-29  
+**Status:** Implemented
+
+#### Decision
+
+Replaced pill-button layout with searchable combobox (dropdown with type-to-filter). Built with native HTML + React state + ARIA attributes.
+
+#### Key Details
+
+- **Props unchanged:** `selectedFamilyId` + `onFamilyChange`
+- **Accessibility:** Full `role="combobox"` + `role="listbox"` + `role="option"`, keyboard navigation (arrows, enter, escape, home, end)
+- **Search:** Client-side filter by family name (case-insensitive substring)
+- **Park count:** Right-aligned secondary text "{N} parks"
+- **Styling:** Tailwind `primary-*` scale, rounded-lg, shadow-lg dropdown, z-50 layering
+
+#### Impact
+
+- All 25 crowd calendar tests pass
+- TypeScript clean (zero errors)
+
+---
+
+### 24. Temperature Display: Dual Fahrenheit + Celsius
+
+**Author:** Mouth (Frontend Dev)  
+**Date:** 2026-04-29  
+**Status:** Implemented
+
+#### Decision
+
+- **Desktop cells** (tight space): `92°/72°F (33°/22°C)` — compact with unit labels at end
+- **Mobile expanded** (more room): `High 92°F (33°C) / Low 72°F (22°C)` — fully spelled out
+
+#### Rationale
+
+Desktop cells use 8px font and ~100px width. Inline slash-separated format keeps it to one line. Mobile has space for verbose format.
+
+---
+
+### 25. Data Freshness: Relative Time Indicator
+
+**Author:** Mouth (Frontend Developer)  
+**Date:** 2026-04-29  
+**Status:** Implemented
+
+#### Decision
+
+Used relative time ("Updated 2 min ago") for recent data, switching to absolute time ("Updated as of 12:38 PM") only when ≥60 minutes old.
+
+#### Staleness Threshold
+
+Data older than 10 minutes renders in amber (`text-amber-600`) to signal potential API lag. Under 10 min uses muted gray.
+
+#### Implementation
+
+- Derived from `max(fetchedAt)` across all wait time entries
+- 30-second interval re-evaluates the age
+- No new components/dependencies — inline in park detail page
+
+---
+
+### 26. Home Page Feature Cards Auth-Aware Pattern
+
+**Date:** 2026-04-29T13:57:55-07:00  
+**Author:** Mouth (Frontend Dev)  
+**Status:** Implemented
+
+#### Decision
+
+Extract feature cards section into client component (`src/components/FeatureCards.tsx`) that uses `useAuth()` to:
+1. Route unauthenticated users to `/auth/signin` instead of `/trips/new`
+2. Adjust card description to indicate sign-in is needed
+3. Show "Sign in →" hover CTA for unauthenticated state
+
+#### Pattern
+
+For any public page linking to protected route: extract the link section into client component using `useAuth()`, redirect to `/auth/signin` when `!user`.
+
+#### Audit Result
+
+No other public pages link to protected routes without auth gating.
+
+---
+
+### D5: Park Family Selector UI Scaling
+
+**Date:** 2026-04-29  
+**By:** Devin Sinha
+
+Park family list will grow significantly. Pills don't scale past ~6–8 items without wrapping. Use searchable dropdown instead. **Action:** See decision 23 (implemented).
+
+---
+
+### D6: Celsius Temperature Display
+
+**Date:** 2026-04-29  
+**By:** Devin Sinha
+
+Show temperatures in both Fahrenheit and Celsius (e.g. "92°F (33°C)"). **Action:** See decision 24 (implemented).
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus
