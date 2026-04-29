@@ -8,6 +8,35 @@ interface ParkDoc {
   name: string;
 }
 
+interface ForecastEntry {
+  time: string;
+  waitTime: number;
+  percentage: number;
+}
+
+interface OperatingHoursEntry {
+  type: string;
+  startTime: string;
+  endTime: string;
+}
+
+interface ReturnTimeQueue {
+  state: string;
+  returnStart: string | null;
+  returnEnd: string | null;
+}
+
+interface PaidReturnTimeQueue extends ReturnTimeQueue {
+  price: { amount: number; currency: string; formatted: string } | null;
+}
+
+interface BoardingGroupQueue {
+  state: string;
+  currentGroupStart: number | null;
+  currentGroupEnd: number | null;
+  estimatedWait: number | null;
+}
+
 interface LiveEntry {
   id: string;
   name: string;
@@ -15,8 +44,12 @@ interface LiveEntry {
   status?: string;
   queue?: {
     STANDBY?: { waitTime: number | null };
-    [key: string]: unknown;
+    RETURN_TIME?: ReturnTimeQueue;
+    PAID_RETURN_TIME?: PaidReturnTimeQueue;
+    BOARDING_GROUP?: BoardingGroupQueue;
   };
+  forecast?: ForecastEntry[];
+  operatingHours?: OperatingHoursEntry[];
   lastUpdated?: string;
 }
 
@@ -66,13 +99,54 @@ async function fetchAndStoreWaitTimes(): Promise<void> {
         const waitMinutes = entry.queue?.STANDBY?.waitTime ?? null;
         const status = entry.status || 'UNKNOWN';
 
-        const waitDoc = {
+        const waitDoc: Record<string, unknown> = {
           attractionId: entry.id,
           attractionName: entry.name,
           status,
           waitMinutes,
-          lastUpdated: entry.lastUpdated ? Timestamp.fromDate(new Date(entry.lastUpdated)) : fetchedAt,
-          fetchedAt,
+          lastUpdated: entry.lastUpdated || null,
+          fetchedAt: fetchedAt.toDate().toISOString(),
+          queue: entry.queue
+            ? {
+                RETURN_TIME: entry.queue.RETURN_TIME
+                  ? {
+                      state: entry.queue.RETURN_TIME.state,
+                      returnStart: entry.queue.RETURN_TIME.returnStart ?? null,
+                      returnEnd: entry.queue.RETURN_TIME.returnEnd ?? null,
+                    }
+                  : null,
+                PAID_RETURN_TIME: entry.queue.PAID_RETURN_TIME
+                  ? {
+                      state: entry.queue.PAID_RETURN_TIME.state,
+                      returnStart: entry.queue.PAID_RETURN_TIME.returnStart ?? null,
+                      returnEnd: entry.queue.PAID_RETURN_TIME.returnEnd ?? null,
+                      price: entry.queue.PAID_RETURN_TIME.price ?? null,
+                    }
+                  : null,
+                BOARDING_GROUP: entry.queue.BOARDING_GROUP
+                  ? {
+                      state: entry.queue.BOARDING_GROUP.state,
+                      currentGroupStart: entry.queue.BOARDING_GROUP.currentGroupStart ?? null,
+                      currentGroupEnd: entry.queue.BOARDING_GROUP.currentGroupEnd ?? null,
+                      estimatedWait: entry.queue.BOARDING_GROUP.estimatedWait ?? null,
+                    }
+                  : null,
+              }
+            : null,
+          forecast: entry.forecast?.length
+            ? entry.forecast.map((f) => ({
+                time: f.time,
+                waitTime: f.waitTime,
+                percentage: f.percentage,
+              }))
+            : null,
+          operatingHours: entry.operatingHours?.length
+            ? entry.operatingHours.map((h) => ({
+                type: h.type,
+                startTime: h.startTime,
+                endTime: h.endTime,
+              }))
+            : null,
         };
 
         // Write to current subcollection

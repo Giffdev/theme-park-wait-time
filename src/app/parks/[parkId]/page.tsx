@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RefreshCw, ArrowUpDown, TrendingUp, Clock, AlertCircle } from 'lucide-react';
@@ -73,6 +73,39 @@ export default function ParkDetailPage() {
     operatingHours?: OperatingHoursEntry[] | null;
   } | null>(null);
   const [schedule, setSchedule] = useState<ParkScheduleData | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  // Tick every 30s so relative time stays fresh
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Derive the most recent fetchedAt across all wait time entries
+  const dataFreshness = useMemo(() => {
+    if (waitTimes.length === 0) return null;
+    const timestamps = waitTimes
+      .map((w) => w.fetchedAt)
+      .filter(Boolean)
+      .map((ts) => new Date(ts).getTime())
+      .filter((t) => !isNaN(t));
+    if (timestamps.length === 0) return null;
+    const latest = Math.max(...timestamps);
+    const ageMs = now - latest;
+    const ageMin = Math.round(ageMs / 60_000);
+    const isStale = ageMin >= 10;
+    let label: string;
+    if (ageMin < 1) {
+      label = 'Updated just now';
+    } else if (ageMin === 1) {
+      label = 'Updated 1 min ago';
+    } else if (ageMin < 60) {
+      label = `Updated ${ageMin} min ago`;
+    } else {
+      label = `Updated as of ${new Date(latest).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    }
+    return { label, isStale };
+  }, [waitTimes, now]);
 
   const fetchData = useCallback(async () => {
     if (!parkId) return;
@@ -96,16 +129,35 @@ export default function ParkDetailPage() {
       } catch {
         // Schedule fetch is non-critical
       }
+
+      return waitDocs;
     } catch (error) {
       console.error('Failed to fetch park data:', error);
+      return null;
     } finally {
       setLoading(false);
     }
   }, [parkId]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    async function initLoad() {
+      const waitDocs = await fetchData();
+      // If Firestore data is missing forecast (stale from old script), trigger a background refresh
+      if (waitDocs && waitDocs.length > 0) {
+        const hasForecast = waitDocs.some((w) => w.forecast && w.forecast.length > 0);
+        if (!hasForecast) {
+          // Refresh from API to populate forecast data, then re-read
+          try {
+            await fetch(`/api/wait-times?parkId=${parkId}`);
+            await fetchData();
+          } catch {
+            // Non-critical: user can still manually refresh
+          }
+        }
+      }
+    }
+    initLoad();
+  }, [fetchData, parkId]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -214,14 +266,21 @@ export default function ParkDetailPage() {
           <h1 className="text-3xl font-bold text-primary-900">{park?.name}</h1>
           <p className="mt-1 text-sm text-primary-500">{park?.destinationName}</p>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="inline-flex items-center gap-2 rounded-lg bg-coral-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-coral-600 disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          {refreshing ? 'Refreshing...' : 'Refresh Wait Times'}
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 rounded-lg bg-coral-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-coral-600 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh Wait Times'}
+          </button>
+          {dataFreshness && (
+            <span className={`text-xs ${dataFreshness.isStale ? 'text-amber-600' : 'text-primary-400'}`}>
+              {dataFreshness.label}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Park Schedule Bar */}
