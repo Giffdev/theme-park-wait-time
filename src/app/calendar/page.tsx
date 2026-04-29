@@ -272,7 +272,7 @@ export default function CalendarPage() {
           </div>
         ))}
         <span className="flex items-center gap-1 text-primary-400">
-          <Thermometer className="h-3 w-3" /> Avg temps (°F)
+          <Thermometer className="h-3 w-3" /> Avg temps (°F/°C)
         </span>
       </div>
 

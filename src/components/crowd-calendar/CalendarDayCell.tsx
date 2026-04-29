@@ -12,6 +12,10 @@ interface CalendarDayCellProps {
   month: number; // 0-indexed for temp calc
 }
 
+function fToC(f: number): number {
+  return Math.round((f - 32) * 5 / 9);
+}
+
 function getTemperature(month: number, day: number): { high: number; low: number } {
   const baseHighs = [71, 73, 78, 83, 88, 91, 92, 92, 90, 84, 77, 72];
   const baseLows = [49, 51, 56, 60, 66, 71, 73, 73, 72, 65, 57, 51];
@@ -67,7 +71,7 @@ export function CalendarDayCell({ day, dayNumber, enabledParkIds, month }: Calen
         {/* Temperature (desktop only) */}
         <div className="mt-auto hidden items-center gap-0.5 text-[8px] text-primary-400 opacity-70 sm:flex">
           <Thermometer className="h-2 w-2" />
-          <span>{temp.high}°/{temp.low}°</span>
+          <span>{temp.high}°/{temp.low}°F ({fToC(temp.high)}°/{fToC(temp.low)}°C)</span>
         </div>
       </button>
 
@@ -88,7 +92,7 @@ export function CalendarDayCell({ day, dayNumber, enabledParkIds, month }: Calen
               <button onClick={() => setExpanded(false)} className="text-primary-400 text-xl">✕</button>
             </div>
             <p className="mb-3 flex items-center gap-1 text-xs text-primary-500">
-              <Thermometer className="h-3 w-3" /> {temp.high}°F / {temp.low}°F
+              <Thermometer className="h-3 w-3" /> High {temp.high}°F ({fToC(temp.high)}°C) / Low {temp.low}°F ({fToC(temp.low)}°C)
             </p>
             <div className="space-y-2">
               {filteredParks.map((park) => (

@@ -2,7 +2,7 @@
  * Tests for park-family crowd calendar UI components.
  *
  * Components tested:
- * - FamilySelector: Park family tab picker
+ * - FamilySelector: Park family searchable combobox
  * - CalendarDayCell: Per-day multi-park crowd bars
  * - BestPlanBanner: Trip recommendation summary
  * - MiniMonth: Compact future month overview
@@ -59,7 +59,7 @@ interface DayRecommendation {
 // Stub Components (define rendering contract — replace with real imports)
 // ---------------------------------------------------------------------------
 
-/** FamilySelector: horizontal pills to pick a park family */
+/** FamilySelector: searchable combobox to pick a park family */
 function FamilySelector({
   families,
   selected,
@@ -69,19 +69,48 @@ function FamilySelector({
   selected: string;
   onChange: (familyId: string) => void;
 }) {
+  const [query, setQuery] = React.useState('');
+  const [isOpen, setIsOpen] = React.useState(false);
+  const filtered = families.filter((f) =>
+    f.name.toLowerCase().includes(query.toLowerCase()),
+  );
+  const selectedFamily = families.find((f) => f.id === selected);
+
   return (
-    <div data-testid="family-selector" role="tablist">
-      {families.map((f) => (
-        <button
-          key={f.id}
-          role="tab"
-          aria-selected={f.id === selected}
-          onClick={() => onChange(f.id)}
-          data-testid={`family-tab-${f.id}`}
-        >
-          {f.name}
-        </button>
-      ))}
+    <div data-testid="family-selector">
+      <input
+        role="combobox"
+        aria-expanded={isOpen}
+        aria-label="Select park family"
+        placeholder={selectedFamily?.name ?? 'Select a park family…'}
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setIsOpen(true);
+        }}
+        onFocus={() => setIsOpen(true)}
+        data-testid="family-search-input"
+      />
+      {isOpen && (
+        <ul role="listbox" aria-label="Park families">
+          {filtered.map((f) => (
+            <li
+              key={f.id}
+              role="option"
+              aria-selected={f.id === selected}
+              onClick={() => {
+                onChange(f.id);
+                setIsOpen(false);
+                setQuery('');
+              }}
+              data-testid={`family-option-${f.id}`}
+            >
+              {f.name}
+              <span>{f.parks.length} parks</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -212,7 +241,7 @@ const mockBestPlan: DayRecommendation[] = [
 // ---------------------------------------------------------------------------
 
 describe('FamilySelector', () => {
-  it('renders all park families as tabs', () => {
+  it('renders all park families as options when opened', () => {
     render(
       <FamilySelector
         families={mockFamilies}
@@ -220,6 +249,9 @@ describe('FamilySelector', () => {
         onChange={vi.fn()}
       />,
     );
+
+    // Focus the input to open the listbox
+    fireEvent.focus(screen.getByTestId('family-search-input'));
 
     expect(screen.getByText('Walt Disney World')).toBeInTheDocument();
     expect(screen.getByText('Universal Orlando')).toBeInTheDocument();
@@ -235,11 +267,13 @@ describe('FamilySelector', () => {
       />,
     );
 
-    const uniTab = screen.getByTestId('family-tab-universal-orlando');
-    expect(uniTab).toHaveAttribute('aria-selected', 'true');
+    fireEvent.focus(screen.getByTestId('family-search-input'));
 
-    const wdwTab = screen.getByTestId('family-tab-walt-disney-world');
-    expect(wdwTab).toHaveAttribute('aria-selected', 'false');
+    const uniOption = screen.getByTestId('family-option-universal-orlando');
+    expect(uniOption).toHaveAttribute('aria-selected', 'true');
+
+    const wdwOption = screen.getByTestId('family-option-walt-disney-world');
+    expect(wdwOption).toHaveAttribute('aria-selected', 'false');
   });
 
   it('fires onChange when a family is selected', () => {
@@ -252,11 +286,12 @@ describe('FamilySelector', () => {
       />,
     );
 
+    fireEvent.focus(screen.getByTestId('family-search-input'));
     fireEvent.click(screen.getByText('Universal Orlando'));
     expect(onChange).toHaveBeenCalledWith('universal-orlando');
   });
 
-  it('fires onChange with correct familyId for each tab', () => {
+  it('fires onChange with correct familyId for each option', () => {
     const onChange = vi.fn();
     render(
       <FamilySelector
@@ -266,8 +301,27 @@ describe('FamilySelector', () => {
       />,
     );
 
+    fireEvent.focus(screen.getByTestId('family-search-input'));
     fireEvent.click(screen.getByText('Disneyland Resort'));
     expect(onChange).toHaveBeenCalledWith('disneyland-resort');
+  });
+
+  it('filters options based on search query', () => {
+    render(
+      <FamilySelector
+        families={mockFamilies}
+        selected="walt-disney-world"
+        onChange={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByTestId('family-search-input');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: 'Universal' } });
+
+    expect(screen.getByText('Universal Orlando')).toBeInTheDocument();
+    expect(screen.queryByText('Walt Disney World')).not.toBeInTheDocument();
+    expect(screen.queryByText('Disneyland Resort')).not.toBeInTheDocument();
   });
 });
 
@@ -534,7 +588,8 @@ describe('Crowd Calendar — Full Page Integration', () => {
     // Initial fetch
     expect(screen.getByTestId('fetch-count').textContent).toBe('1');
 
-    // Change family
+    // Open combobox and change family
+    fireEvent.focus(screen.getByTestId('family-search-input'));
     fireEvent.click(screen.getByText('Universal Orlando'));
     expect(screen.getByTestId('fetch-count').textContent).toBe('2');
   });

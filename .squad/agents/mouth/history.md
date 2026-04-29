@@ -217,6 +217,9 @@
 - Schedule timeline proportions: use `(segmentDuration / totalDayDuration) * 100%` for CSS width — simple and accurate.
 - Non-critical fetches (schedule) should be fire-and-forget in the main data load — wrap in try/catch to avoid blocking the primary wait time display.
 - Queue badge tooltips: `onTouchStart` toggle (not just `onMouseEnter`) enables mobile tap-to-reveal without needing a separate modal.
+- Custom combobox pattern: `role="combobox"` on input + `role="listbox"` on dropdown + `role="option"` on items + `aria-activedescendant` for keyboard tracking. No external lib needed for accessible dropdowns.
+- For combobox outside-click: use `mousedown` event (not `click`) on document so the handler fires before blur, and use `onMouseDown` with `e.preventDefault()` on options to prevent input blur before selection registers.
+- Filtering with `.toLowerCase().includes()` is sufficient for short lists (<100 items). For 1000+ items consider debouncing or virtualized lists.
 
 ## Park-Family Crowd Calendar UI (2026-04-29)
 
