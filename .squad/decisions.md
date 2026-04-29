@@ -75,6 +75,36 @@ Use **Vitest** (v3.x) instead of Jest.
 - Two Vitest configs: `vitest.config.ts` (unit, jsdom) and `vitest.integration.config.ts` (integration, node)
 - Coverage thresholds enforced at 80% lines/functions, 75% branches
 
+### 4. Client-Side Data Fetching for Parks Pages
+
+**Author:** Mouth (Frontend Dev)  
+**Date:** 2026-04-29  
+**Status:** Proposed
+
+#### Context
+Parks listing and park detail pages need to show live wait times from Firestore. Had to choose between server components (SSR/ISR) vs client components.
+
+#### Decision
+Both parks pages are `'use client'` components that fetch directly from Firestore using the client SDK.
+
+#### Rationale
+1. Wait times are inherently real-time — stale SSR data defeats the purpose
+2. Refresh button requires client-side state (loading, refetching)
+3. Sort toggle on park detail needs interactive state
+4. Client SDK reads are allowed by Firestore security rules (public collections)
+5. ISR revalidation (from Phase 1 plan) can be revisited if we add a server-rendered shell later
+
+#### Tradeoff
+- No SEO benefit from server-rendered wait times (acceptable — these are logged-in/app-like pages)
+- First paint shows skeleton instead of data (but loads fast due to small payloads)
+
+#### Impact
+- `src/app/parks/page.tsx` — client component
+- `src/app/parks/[parkId]/page.tsx` — client component
+- Pattern for future real-time pages: client component + Firestore client SDK + refresh button
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus

@@ -78,3 +78,8 @@
 - Park detail converted from server component (with `params: Promise`) to client component using `useParams()` hook — needed for interactive state (sort toggle, refresh).
 - Firestore subcollection path for wait times: `waitTimes/{parkId}/current` — use as a flat collectionPath in `getCollection`.
 - Sort toggle UX: default shortest-first (users want the fastest ride), one-tap to flip.
+
+## Phase 1 Orchestration Complete (2026-04-29 16:38:58Z)
+
+- **Decision Filed:** Client-Side Data Fetching for Parks Pages decision merged into main decisions log.
+- **Status:** Live parks dashboard with real wait times complete. 225kB first-load JS. Refresh button functional. Responsive on mobile. Ready for Phase 2 features.
