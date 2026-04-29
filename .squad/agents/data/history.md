@@ -86,3 +86,10 @@ service cloud.firestore {
 - **Files:** 9 files — all build passes, no TS errors, lint clean.
 - **Decisions Filed:** Firebase Infrastructure Patterns (5 design decisions on auth context, Firestore helpers, security defaults, region, write protection).
 - **Next:** Merge with Mouth's frontend scaffold. Ready for Phase 2 park data seeding and live wait-times API.
+
+- **2026-04-29:** Wired real Firebase credentials into `.env.local`. Project ID is `theme-park-log-and-wait-time`. Storage bucket uses `.firebasestorage.app` domain (not `.appspot.com` — newer Firebase projects use this). Added `measurementId` (G-774BVGWH68) to config.ts and both env templates for Google Analytics support. All 7 NEXT_PUBLIC_FIREBASE_* vars confirmed reading correctly. TS compiles clean.
+
+## 2026-04-29 09:28 — Scribe: Orchestration Complete
+- Firebase config wired into .env.local
+- TypeScript compilation clean
+- Ready for next phase (UI integration or testing)
