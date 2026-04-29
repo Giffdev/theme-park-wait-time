@@ -368,3 +368,28 @@ Successfully shipped forecast blending + crowd calendar historical fix. 11 decis
 
 **Status:** Batch orchestration complete. Decisions archived. All components integrated. Ready for Phase 2 refinement.
 
+
+## Friendly URL Slugs (2026-04-29)
+
+Converted park and attraction URLs from UUIDs to human-readable slugs.
+
+**What was implemented:**
+- ParkCard links use `slug` field instead of `id` (UUID)
+- Park detail page queries Firestore `parks` collection with `where('slug', '==', slug)` instead of `getDocument` by ID
+- Attraction detail page resolves both park and attraction slugs to UUIDs via Firestore queries
+- QueueTimerBanner uses `parkSlug` field (with slugified-name fallback for backward compat)
+- Added optional `parkSlug` to `ActiveTimer` and `TimerStartData` interfaces
+
+**Key files:**
+- `src/components/ParkCard.tsx` — slug prop replaces id
+- `src/app/parks/[parkId]/page.tsx` — slug-based park lookup
+- `src/app/parks/[parkId]/attractions/[attractionId]/page.tsx` — slug to UUID resolution
+- `src/components/queue-timer/QueueTimerBanner.tsx` — parkSlug for nav link
+- `src/types/ride-log.ts` — parkSlug on ActiveTimer
+
+## Learnings
+
+- Park detail flow: slug -> query park by slug -> get park.id (UUID) -> query attractions/waitTimes by UUID
+- Attractions store `parkId` as UUID, so always need the park UUID after resolving the slug
+- `parkSlug` added as optional to ActiveTimer for backward compat with existing timer documents
+- Route param names kept as `[parkId]`/`[attractionId]` — values are now slugs, folder structure unchanged
