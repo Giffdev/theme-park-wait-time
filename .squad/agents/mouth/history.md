@@ -49,3 +49,13 @@
 - Existing test-utils with `@firebase/rules-unit-testing` have a peer dep conflict with firebase@11. Exclude them from the Next.js build via tsconfig `exclude` and eslintrc `ignorePatterns`.
 - Always use `<Link>` from `next/link` for internal navigation — Next.js ESLint config enforces this strictly.
 - Mobile bottom nav needs `pb-[env(safe-area-inset-bottom)]` for iPhone notch/home indicator safe areas and pages need `pb-24 md:pb-0` to avoid content being hidden behind it.
+
+## Phase 1 Completion (2026-04-29)
+
+- **Scaffold:** 14 routes (home, parks, attractions, wait-times, crowd-calendar, user-account, about, pricing, faq, auth pages, settings, etc.)
+- **Design:** oklch-based triadic color system integrated. Responsive layout (mobile-first) with safe-area padding.
+- **TypeScript:** All routes and layouts type-safe with extracted Park, Attraction, CrowdLevel types.
+- **Build:** Next.js build passes. ESLint clean. Ready for feature integration.
+- **Brand:** "ParkPulse" working UI name (decision filed for consensus).
+- **Deliverables:** All files in `src/app/`, `src/components/`, `src/lib/ui/` organized by feature.
+- **Next:** Awaiting Data's Firestore integration and real-time data feeds.

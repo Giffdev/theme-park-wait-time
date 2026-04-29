@@ -74,3 +74,15 @@ service cloud.firestore {
 ## Learnings
 
 - **2026-04-28:** Created Firebase infrastructure layer (`src/lib/firebase/config.ts`, `auth.ts`, `firestore.ts`, `auth-context.tsx`). All files use Firebase v9+ modular SDK — no compat layer. Config uses `getApps().length` guard for Next.js hot-reload safety. Auth context is a `'use client'` component wrapping `onAuthStateChanged` with loading state. Firestore helpers are generic CRUD + batch + timestamp utilities — services layer will compose on top of these. Security rules match ARCHITECTURE.md §3.9 exactly. Composite indexes from §3.8 in `firestore.indexes.json`. Added `.env.local` to `.gitignore`. Created `vercel.json` with `iad1` region (closest to Orlando data sources). Created `firebase.json` pointing rules/indexes. All files designed to merge cleanly with Mouth's parallel Next.js scaffold.
+
+## Phase 1 Completion (2026-04-29)
+
+- **Firebase Setup:** Config, initialization guards, environment handling complete.
+- **Auth Module:** signUp, signIn (email + Google OAuth), signOut helpers implemented and tested.
+- **Firestore Layer:** Generic CRUD functions (`getDocument<T>`, `addDocument`, `updateDocument`, `deleteDocument`, etc.) with TypeScript generics. Ready for service layer composition.
+- **Security Rules:** Write-protected public collections (parks, attractions, wait-times, crowd-calendar). Admin SDK only for mutations. Matches ARCHITECTURE.md §3.9.
+- **Composite Indexes:** All 4 indexes from ARCHITECTURE.md §3.8 defined in `firestore.indexes.json`.
+- **Deployment:** Vercel config with `iad1` region. Environment template created. Firebase JSON manifests ready.
+- **Files:** 9 files — all build passes, no TS errors, lint clean.
+- **Decisions Filed:** Firebase Infrastructure Patterns (5 design decisions on auth context, Firestore helpers, security defaults, region, write protection).
+- **Next:** Merge with Mouth's frontend scaffold. Ready for Phase 2 park data seeding and live wait-times API.

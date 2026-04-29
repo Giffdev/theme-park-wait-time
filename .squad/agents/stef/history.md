@@ -44,3 +44,16 @@
 - **2026-04-28:** Created factory functions (`createMockPark`, `createMockUser`, etc.) with auto-incrementing IDs and full type safety. All tests should use these — no inline test data.
 - **2026-04-28:** Playwright configured for 4 browser targets (Chromium, Firefox, WebKit, Mobile Chrome). E2E tests should run against Firebase Emulators to stay deterministic.
 - **2026-04-28:** Auth/Firestore unit tests are `.todo` skeletons — they document the expected contract for the modules Mouth will build. They'll light up as code lands.
+
+## Phase 1 Completion (2026-04-29)
+
+- **Test Infrastructure:** Full Vitest + Playwright setup complete. Two vitest configs (unit + integration).
+- **Vitest Configuration:** Native ESM, TypeScript support, jsdom for unit tests, node for integration. Coverage thresholds: 80% lines/functions, 75% branches.
+- **Playwright Configuration:** 4 browser targets configured. Firebase Emulator ports set (Auth=9099, Firestore=8080, Functions=5001, UI=4000).
+- **Security Rules Tests:** 40+ tests covering full access matrix (unauth, owner, other user, admin) for every Firestore collection.
+- **Mock Data Factories:** Reusable factories (`createMockPark`, `createMockUser`, `createMockAttraction`, etc.) with auto-incrementing IDs and full type safety.
+- **E2E Smoke Tests:** Basic auth flow, park listing, wait-times display, trip logging tests defined.
+- **Files:** 13 files total — all configured, tests skeleton-complete with `.todo` markers.
+- **Decisions Filed:** Vitest over Jest (detailed rationale on TypeScript, ESM, speed, API compatibility, Vite ecosystem).
+- **Integration Points:** Security rules tests will light up as Data's Firestore module completes. E2E tests ready for Mouth's routes.
+- **Next:** Await Mouth + Data completion, then run full test suite. Phase 2 ready for feature tests.
