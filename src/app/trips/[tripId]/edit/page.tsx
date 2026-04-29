@@ -139,16 +139,28 @@ export default function EditTripPage() {
     }
   }, [user, trip, tripName, days, notes, router]);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.replace('/auth/signin');
-    }
-  }, [authLoading, user, router]);
-
-  if (authLoading || !user) {
+  if (authLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-4 text-center">
+        <div className="text-5xl">🔒</div>
+        <h2 className="text-xl font-semibold text-primary-800">Sign in to edit this trip</h2>
+        <p className="text-primary-500 max-w-sm">
+          Create an account or sign in to manage your trips.
+        </p>
+        <Link
+          href="/auth/signin"
+          className="mt-2 inline-flex items-center gap-2 rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary-700"
+        >
+          Sign In or Create Account
+        </Link>
       </div>
     );
   }
