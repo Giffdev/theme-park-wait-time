@@ -13,7 +13,7 @@ import AttractionFilterChips, {
 import RideDetailPanel from '@/components/parks/RideDetailPanel';
 import ParkScheduleBar from '@/components/parks/ParkScheduleBar';
 import type { AttractionType } from '@/types/attraction';
-import type { QueueData, ForecastEntry, OperatingHoursEntry, ScheduleSegment } from '@/types/queue';
+import type { QueueData, ForecastEntry, OperatingHoursEntry, ScheduleSegment, ForecastMeta } from '@/types/queue';
 
 interface Park {
   id: string;
@@ -43,6 +43,7 @@ interface WaitTimeEntry {
   fetchedAt: string;
   queue?: QueueData | null;
   forecast?: ForecastEntry[] | null;
+  forecastMeta?: ForecastMeta | null;
   operatingHours?: OperatingHoursEntry[] | null;
 }
 
@@ -71,6 +72,7 @@ export default function ParkDetailPage() {
     waitMinutes: number | null;
     queue?: QueueData | null;
     forecast?: ForecastEntry[] | null;
+    forecastMeta?: ForecastMeta | null;
     operatingHours?: OperatingHoursEntry[] | null;
   } | null>(null);
   const [schedule, setSchedule] = useState<ParkScheduleData | null>(null);
@@ -183,6 +185,7 @@ export default function ParkDetailPage() {
       waitMinutes: wt?.waitMinutes ?? null,
       queue: wt?.queue ?? null,
       forecast: wt?.forecast ?? null,
+      forecastMeta: wt?.forecastMeta ?? null,
       operatingHours: wt?.operatingHours ?? null,
     };
   });
@@ -349,7 +352,7 @@ export default function ParkDetailPage() {
               status={a.status}
               waitMinutes={a.waitMinutes}
               queue={a.queue}
-              onClick={() => setSelectedRide({ attractionId: a.id, name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, operatingHours: a.operatingHours })}
+              onClick={() => setSelectedRide({ attractionId: a.id, name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, forecastMeta: a.forecastMeta, operatingHours: a.operatingHours })}
             />
           ))}
           {operating.length === 0 && (
@@ -375,7 +378,7 @@ export default function ParkDetailPage() {
                 status={a.status}
                 waitMinutes={a.waitMinutes}
                 queue={a.queue}
-                onClick={() => setSelectedRide({ attractionId: a.id, name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, operatingHours: a.operatingHours })}
+                onClick={() => setSelectedRide({ attractionId: a.id, name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, forecastMeta: a.forecastMeta, operatingHours: a.operatingHours })}
               />
             ))}
           </div>
@@ -393,6 +396,7 @@ export default function ParkDetailPage() {
           waitMinutes={selectedRide.waitMinutes}
           queue={selectedRide.queue}
           forecast={selectedRide.forecast}
+          forecastMeta={selectedRide.forecastMeta}
           operatingHours={selectedRide.operatingHours}
           onClose={() => setSelectedRide(null)}
         />

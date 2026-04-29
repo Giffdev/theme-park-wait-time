@@ -53,3 +53,7 @@ export type {
   BestPlanDay,
   CrowdCalendarResponse,
 } from './parkFamily';
+export type {
+  ForecastAggregate,
+  ForecastMeta,
+} from './queue';

@@ -7,7 +7,7 @@ import ForecastChart from '@/components/parks/ForecastChart';
 import RecentReports from '@/components/parks/RecentReports';
 import ReportWaitTimeModal from '@/components/parks/ReportWaitTimeModal';
 import { useAuth } from '@/lib/firebase/auth-context';
-import type { QueueData, ForecastEntry, OperatingHoursEntry } from '@/types/queue';
+import type { QueueData, ForecastEntry, OperatingHoursEntry, ForecastMeta } from '@/types/queue';
 
 interface RideDetailPanelProps {
   attractionId: string;
@@ -18,6 +18,7 @@ interface RideDetailPanelProps {
   waitMinutes: number | null;
   queue?: QueueData | null;
   forecast?: ForecastEntry[] | null;
+  forecastMeta?: ForecastMeta | null;
   operatingHours?: OperatingHoursEntry[] | null;
   onClose: () => void;
 }
@@ -92,7 +93,7 @@ function VirtualQueueDetail({ queue }: { queue: QueueData }) {
   return <div className="space-y-2">{sections}</div>;
 }
 
-export default function RideDetailPanel({ attractionId, parkId, name, entityType, status, waitMinutes, queue, forecast, operatingHours, onClose }: RideDetailPanelProps) {
+export default function RideDetailPanel({ attractionId, parkId, name, entityType, status, waitMinutes, queue, forecast, forecastMeta, operatingHours, onClose }: RideDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const [showReportModal, setShowReportModal] = useState(false);
@@ -162,6 +163,7 @@ export default function RideDetailPanel({ attractionId, parkId, name, entityType
             </div>
             <ForecastChart
               forecast={forecast ?? null}
+              forecastMeta={forecastMeta}
               operatingHours={operatingHours ?? null}
               currentWait={waitMinutes}
             />

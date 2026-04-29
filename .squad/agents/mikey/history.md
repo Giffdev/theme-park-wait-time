@@ -66,3 +66,14 @@
 - Mouth built ForecastChart, ParkScheduleBar, virtual queue badges components
 - Stef wrote 44 comprehensive tests covering Phase 1 deliverables
 - Team ready for Devin review of Phase 1 + architecture directives
+
+### 2026-04-29 — Blended Forecast System Architecture
+- **Decision file:** `.squad/decisions/inbox/mikey-blended-forecast.md`
+- **Core pattern:** Pre-computed aggregates at `forecastAggregates/{parkId}/byDayOfWeek/{dayOfWeek}/attractions/{attractionId}` — avoids expensive multi-doc reads at query time.
+- **Blending rule:** Live API forecast always wins. Historical fallback only when `totalSamples >= 15` (confidence threshold). Below threshold = "not available" (never serve bad data).
+- **Decay strategy:** Exponential decay with 30-day half-life — recent Saturdays matter more than old Saturdays.
+- **Aggregation trigger:** Post-write in existing `/api/wait-times` route (no Cloud Functions needed). Incremental averaging keeps cost to 1 read + 1 write per attraction.
+- **Non-breaking API change:** `forecast` field stays as `ForecastEntry[]` for backward compat. New `forecastMeta` sibling field carries source/confidence/dataRange.
+- **Cold-start reality:** Need ~3 same-weekday visits with 5+ snapshots each before historical becomes useful. Popular parks: 3-4 weeks. Unpopular parks: may never reach threshold. Phased rollout handles this gracefully.
+- **Key files:** `src/lib/forecast/aggregation.ts` (Chunk), `src/lib/forecast/blender.ts` (Data), `ForecastChart.tsx` (Mouth adds source badge)
+- **Build order:** Chunk (aggregation pipeline) → Data (API blending logic + forecastMeta) → Mouth (source badge UI)

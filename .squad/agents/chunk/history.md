@@ -154,3 +154,30 @@ Built the data layer for the park-family crowd calendar feature:
 - Updated `src/lib/constants.ts` to include all 6 park families
 - Updated `src/types/index.ts` to export new types
 
+### 2026-04-29 — Forecast Aggregation Pipeline (Phase 1)
+
+Built the core aggregation pipeline for the blended forecast system per Mikey's architecture decision.
+
+**Files Created/Modified:**
+- `src/lib/forecast/aggregation.ts` — Main `updateForecastAggregates()` function
+- `src/lib/forecast/index.ts` — Barrel exports
+- `src/types/queue.ts` — Added `ForecastAggregate` and `ForecastMeta` interfaces
+- `src/types/index.ts` — Re-exported new types
+- `src/app/api/wait-times/route.ts` — Integrated aggregation call after archive writes
+
+**How It Works:**
+1. After each `archiveHistoricalSnapshot` call, `updateForecastAggregates(parkId, dateStr)` fires (non-blocking)
+2. Reads today's snapshot docs from `waitTimeHistory/{parkId}/daily/{date}/attractions/*`
+3. Filters to attractions with ≥3 valid snapshots, groups by UTC hour
+4. Reads existing aggregate docs from `forecastAggregates/{parkId}/byDayOfWeek/{dow}/attractions/{id}`
+5. Merges using incremental weighted averaging and pooled variance for stdDev
+6. Writes back with batched Firestore writes (499 per batch)
+
+**Design Decisions:**
+- Fire-and-forget: aggregation errors are logged but don't fail the API response
+- Incremental averaging: `newAvg = oldAvg + (value - oldAvg) * batchCount / newCount`
+- Pooled variance for combining stdDev across batches (statistically sound)
+- ≥3 snapshots per day minimum before contributing to aggregates (noise filter)
+- Phase 1 uses simple incremental averaging; exponential decay is Phase 2
+- Also fixed pre-existing compile errors in `blender.ts` by providing the types it depended on
+

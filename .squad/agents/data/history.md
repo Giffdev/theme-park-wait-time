@@ -177,3 +177,12 @@ service cloud.firestore {
 - ParkScheduleBar component renders color-coded timeline with event badges + LL pricing display
 - Stef validated 11 API tests passing for park-schedule endpoint
 - Decision #15 filed with full 3-feature (virtual queues, forecast chart, schedule bar) architecture
+
+- **2026-04-29:** Built blended forecast system (Phase 1) per Mikey's architecture decision. Deliverables:
+  - `src/lib/forecast/blender.ts` — `resolveForecast()` function implements decision logic: live wins, historical fallback at ≥15 totalSamples, confidence = min(totalSamples/50, 1), skips hours with <3 samples. Exports `BlendedForecastResult` interface.
+  - `src/types/queue.ts` — Added `ForecastAggregate` and `ForecastMeta` interfaces (Chunk's aggregation module also needs these).
+  - `src/app/api/wait-times/route.ts` — Added `blendForecasts()` helper that batch-reads aggregate docs for attractions missing live forecasts (uses `adminDb.getAll()` for efficiency). `formatWaitTimeEntry` now accepts and includes `forecastMeta` field. `forecast` field remains backward-compatible (entries array or null). Historical entries replace null forecasts when available.
+  - `firestore.rules` — Added `forecastAggregates/{parkId}/{document=**}` rule: public read, server-only write.
+  - Graceful degradation: aggregate read failures fall back to `source: 'none'` with console error. No user-facing errors.
+  - TypeScript compiles clean. Next.js build passes.
+

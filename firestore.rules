@@ -106,6 +106,12 @@ service cloud.firestore {
       allow write: if false; // Admin SDK only
     }
 
+    // ── FORECAST AGGREGATES (public read, server-only write) ──
+    match /forecastAggregates/{parkId}/{document=**} {
+      allow read: if true;
+      allow write: if false; // Admin SDK only
+    }
+
     // ── CROWDSOURCED WAIT TIMES (anonymized — public read, server write) ──
     match /crowdsourcedWaitTimes/{parkId}/reports/{reportId} {
       allow read: if true;

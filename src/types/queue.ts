@@ -50,3 +50,22 @@ export interface ScheduleSegment {
     available: boolean;
   }>;
 }
+
+export interface ForecastAggregate {
+  attractionId: string;
+  attractionName: string;
+  dayOfWeek: number;
+  hourlyAverages: { [hour: string]: { avgWait: number; sampleCount: number; stdDev: number } };
+  totalSamples: number;
+  lastUpdated: string;
+  oldestDataDate: string;
+  newestDataDate: string;
+}
+
+export interface ForecastMeta {
+  source: 'live' | 'historical' | 'none';
+  confidence: number | null;
+  dataRange: { oldest: string; newest: string; sampleCount: number } | null;
+}
+
+

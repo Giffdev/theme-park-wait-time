@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { updateForecastAggregates } from '@/lib/forecast/aggregation';
+import { resolveForecast } from '@/lib/forecast/blender';
+import type { ForecastAggregate, ForecastMeta } from '@/types/queue';
 
 const API_BASE = 'https://api.themeparks.wiki/v1';
 
@@ -106,7 +109,7 @@ async function fetchLiveDataForPark(parkId: string): Promise<{ liveData: LiveEnt
   }
 }
 
-function formatWaitTimeEntry(entry: LiveEntry, fetchedAt: Timestamp) {
+function formatWaitTimeEntry(entry: LiveEntry, fetchedAt: Timestamp, forecastMeta?: ForecastMeta) {
   return {
     attractionId: entry.id,
     attractionName: entry.name,
@@ -150,6 +153,8 @@ function formatWaitTimeEntry(entry: LiveEntry, fetchedAt: Timestamp) {
           percentage: f.percentage,
         }))
       : null,
+    // Forecast metadata (source, confidence, data range)
+    forecastMeta: forecastMeta ?? { source: 'none' as const, confidence: null, dataRange: null },
     // Per-attraction operating hours
     operatingHours: entry.operatingHours?.length
       ? entry.operatingHours.map((h) => ({
@@ -199,6 +204,65 @@ async function archiveHistoricalSnapshot(
   }
 }
 
+/**
+ * For each attraction, resolve forecast using live data or historical aggregate fallback.
+ * Reads aggregate docs only for attractions missing a live forecast.
+ */
+async function blendForecasts(
+  parkId: string,
+  liveData: LiveEntry[],
+  fetchedAt: Timestamp
+) {
+  const dayOfWeek = fetchedAt.toDate().getDay(); // 0=Sunday, 6=Saturday
+
+  // Identify attractions without a live forecast
+  const needsHistorical = liveData.filter(
+    (entry) => !entry.forecast || entry.forecast.length === 0
+  );
+
+  // Batch-read aggregate docs for those attractions
+  const aggregateMap: Record<string, ForecastAggregate | null> = {};
+
+  if (needsHistorical.length > 0) {
+    try {
+      const refs = needsHistorical.map((entry) =>
+        adminDb
+          .collection('forecastAggregates')
+          .doc(parkId)
+          .collection('byDayOfWeek')
+          .doc(String(dayOfWeek))
+          .collection('attractions')
+          .doc(entry.id)
+      );
+
+      const docs = await adminDb.getAll(...refs);
+      for (let i = 0; i < docs.length; i++) {
+        const doc = docs[i];
+        aggregateMap[needsHistorical[i].id] = doc.exists
+          ? (doc.data() as ForecastAggregate)
+          : null;
+      }
+    } catch (err) {
+      // Graceful degradation: if aggregate read fails, all get source:'none'
+      console.error('Failed to read forecast aggregates:', err);
+    }
+  }
+
+  // Format each entry with resolved forecastMeta
+  return liveData.map((entry) => {
+    const liveForecast = entry.forecast?.length ? entry.forecast : null;
+    const aggregate = aggregateMap[entry.id] ?? null;
+    const { entries, meta } = resolveForecast(liveForecast, aggregate);
+
+    // If blender provided historical entries and no live forecast, use them
+    const formattedEntry = formatWaitTimeEntry(entry, fetchedAt, meta);
+    if (meta.source === 'historical' && entries) {
+      formattedEntry.forecast = entries;
+    }
+    return formattedEntry;
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -211,27 +275,35 @@ export async function GET(request: NextRequest) {
     if (parkId) {
       const { liveData, stale } = await fetchLiveDataForPark(parkId);
       isStale = stale;
-      const formatted = liveData.map((entry) => formatWaitTimeEntry(entry, fetchedAt));
+
+      // Resolve forecast for each attraction (blend live + historical)
+      const formatted = await blendForecasts(parkId, liveData, fetchedAt);
       results[parkId] = formatted;
 
       // Cache in Firestore
       const BATCH_SIZE = 499;
-      for (let i = 0; i < liveData.length; i += BATCH_SIZE) {
+      for (let i = 0; i < formatted.length; i += BATCH_SIZE) {
         const batch = adminDb.batch();
-        const chunk = liveData.slice(i, i + BATCH_SIZE);
+        const chunk = formatted.slice(i, i + BATCH_SIZE);
         for (const entry of chunk) {
           const ref = adminDb
             .collection('waitTimes')
             .doc(parkId)
             .collection('current')
-            .doc(entry.id);
-          batch.set(ref, formatWaitTimeEntry(entry, fetchedAt), { merge: true });
+            .doc(entry.attractionId as string);
+          batch.set(ref, entry, { merge: true });
         }
         await batch.commit();
       }
 
       // Archive historical snapshot
       await archiveHistoricalSnapshot(parkId, liveData, fetchedAt);
+
+      // Update forecast aggregates for today's day-of-week (fire-and-forget)
+      const todayStr = fetchedAt.toDate().toISOString().slice(0, 10);
+      updateForecastAggregates(parkId, todayStr).catch((err) =>
+        console.error('Forecast aggregation error:', err)
+      );
     } else {
       // Fetch for all parks
       const parksSnapshot = await adminDb.collection('parks').get();
@@ -241,9 +313,15 @@ export async function GET(request: NextRequest) {
         try {
           const { liveData, stale } = await fetchLiveDataForPark(park.id);
           if (stale) isStale = true;
-          results[park.id] = liveData.map((entry) => formatWaitTimeEntry(entry, fetchedAt));
+          results[park.id] = await blendForecasts(park.id, liveData, fetchedAt);
           // Archive historical snapshot for each park
           await archiveHistoricalSnapshot(park.id, liveData, fetchedAt);
+
+          // Update forecast aggregates (fire-and-forget)
+          const todayStr = fetchedAt.toDate().toISOString().slice(0, 10);
+          updateForecastAggregates(park.id, todayStr).catch((err) =>
+            console.error('Forecast aggregation error:', err)
+          );
         } catch {
           results[park.id] = [];
         }

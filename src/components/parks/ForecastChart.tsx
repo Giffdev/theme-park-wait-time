@@ -2,10 +2,11 @@
 
 import { useMemo } from 'react';
 import { Zap } from 'lucide-react';
-import type { ForecastEntry, OperatingHoursEntry } from '@/types/queue';
+import type { ForecastEntry, ForecastMeta, OperatingHoursEntry } from '@/types/queue';
 
 interface ForecastChartProps {
   forecast: ForecastEntry[] | null;
+  forecastMeta?: ForecastMeta | null;
   operatingHours: OperatingHoursEntry[] | null;
   currentWait: number | null;
   currentTime?: Date;
@@ -20,7 +21,7 @@ function formatTime(date: Date): string {
   return m === 0 ? `${h}a` : `${h}:${String(m).padStart(2, '0')}a`;
 }
 
-export default function ForecastChart({ forecast, operatingHours, currentWait, currentTime }: ForecastChartProps) {
+export default function ForecastChart({ forecast, forecastMeta, operatingHours, currentWait, currentTime }: ForecastChartProps) {
   const now = currentTime || new Date();
 
   const chartData = useMemo(() => {
@@ -157,6 +158,23 @@ export default function ForecastChart({ forecast, operatingHours, currentWait, c
         {/* Best time marker */}
         <circle cx={bestX} cy={bestY} r="4" fill="rgb(22, 163, 74)" stroke="white" strokeWidth="1.5" />
       </svg>
+
+      {/* Forecast source badge */}
+      {forecastMeta?.source === 'live' && (
+        <div className="mt-2 flex items-center">
+          <span className="bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2.5 py-0.5 text-xs font-medium inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+            Live forecast
+          </span>
+        </div>
+      )}
+      {forecastMeta?.source === 'historical' && (
+        <div className="mt-2 flex items-center">
+          <span className="bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2.5 py-0.5 text-xs font-medium">
+            Based on past visits{forecastMeta.confidence != null ? ` · ${Math.round(forecastMeta.confidence * 100)}% confidence` : ''}
+          </span>
+        </div>
+      )}
 
       {/* Best time callout */}
       <div className="mt-3 flex items-center gap-2 rounded-lg bg-sage-50 px-3 py-2 text-sm">
