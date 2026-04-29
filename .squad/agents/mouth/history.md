@@ -180,3 +180,41 @@
 - **Dead code removed:** Unused `areaPath` variable deleted from DayChart.
 - **Disclaimer label:** Added "Based on historical averages" below Best Time suggestion.
 - Build clean at 232kB first-load JS for park detail page.
+
+## Phase 1: Virtual Queues, Forecast Chart, Park Schedule (2026-04-29)
+
+- **AttractionRow** expanded with inline `QueueBadges` subcomponent:
+  - ⚡ LL (amber), 💰 ILL w/price (gold), 🎟️ VQ (purple)
+  - Hover/tap tooltip shows return time window or group range
+  - Badges hidden on smallest breakpoints (icon-only), labels shown sm+
+- **RideDetailPanel** fully rewritten:
+  - Removed ALL seeded PRNG logic (seededRandom, generateHourlyData, DayChart)
+  - Added `VirtualQueueDetail` section: LL return window, ILL price, boarding group state
+  - Replaced DayChart with `ForecastChart` using real API forecast data
+- **ForecastChart** (`src/components/parks/ForecastChart.tsx`):
+  - SVG area chart with orange gradient fill, 400×200 viewBox, full responsive width
+  - X-axis bounded by operatingHours, Y-axis auto-scaled to max wait
+  - Vertical dashed "NOW" line (blue), current wait dot (blue circle)
+  - Green "best time" dot at forecast minimum
+  - Graceful fallback: "No forecast available" message when data is null
+- **ParkScheduleBar** (`src/components/parks/ParkScheduleBar.tsx`):
+  - Horizontal timeline bar with proportional color segments
+  - Blue = OPERATING, Purple = TICKETED_EVENT, Amber = EXTRA_HOURS
+  - Text labels with emoji icons (🌙, ☀️, 🎉) and time ranges
+  - Shows LL Multi Pass price from purchases array
+- **Park page** wiring:
+  - Fetches `/api/park-schedule?parkId=X` alongside existing data
+  - Passes `queue`, `forecast`, `operatingHours` through merged attractions
+  - ParkScheduleBar rendered in header area below park name
+- **Types:** `src/types/queue.ts` defines all VQ/forecast/schedule interfaces
+- Build clean. TypeScript passes with zero errors.
+
+## Learnings
+
+- The ThemeParks Wiki API returns `forecast` and `operatingHours` per-attraction in liveData — eliminates need for PRNG placeholders entirely.
+- `React.ReactElement` replaces `JSX.Element` for type annotations when JSX namespace isn't auto-imported (depends on tsconfig jsx setting).
+- SVG gradient fills with `linearGradient` + `stopOpacity` transitioning to near-zero creates a clean area chart look without a separate fill polygon.
+- Schedule timeline proportions: use `(segmentDuration / totalDayDuration) * 100%` for CSS width — simple and accurate.
+- Non-critical fetches (schedule) should be fire-and-forget in the main data load — wrap in try/catch to avoid blocking the primary wait time display.
+- Queue badge tooltips: `onTouchStart` toggle (not just `onMouseEnter`) enables mobile tap-to-reveal without needing a separate modal.
+
