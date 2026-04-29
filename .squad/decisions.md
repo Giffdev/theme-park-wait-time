@@ -499,6 +499,249 @@ The `/api/trips/[shareId]` route uses simple in-memory rate limiting (60 req/min
 
 ---
 
+### 10. Full ThemeParks Wiki API Data Capture
+
+**Author:** Chunk (Data Engineer)  
+**Date:** 2026-04-29  
+**Status:** Implemented  
+**Requested by:** Devin Sinha
+
+#### Context
+
+The ThemeParks Wiki `/entity/{id}/live` endpoint returns rich data per attraction that we were discarding — virtual queue states, hourly forecasts, and operating hours. We only captured `queue.STANDBY.waitTime`.
+
+#### Decision
+
+Widen the wait-times API route to capture and store ALL queue types, forecast data, and operating hours in a single pass. Add stale-cache resilience and begin historical archiving.
+
+#### Changes Made
+
+**`src/app/api/wait-times/route.ts`:**
+
+1. **Expanded `LiveEntry` interface** — full typed interfaces for `RETURN_TIME`, `PAID_RETURN_TIME`, `BOARDING_GROUP`, `ForecastEntry`, `OperatingHoursEntry`
+2. **Updated `formatWaitTimeEntry()`** — passes through all queue types, forecast, and operatingHours to Firestore. Null-safe throughout.
+3. **API resilience** — In-memory `parkDataCache` serves stale data on 429/5xx/network errors. Response includes `stale: boolean` indicator.
+4. **Historical archiving** — Each poll appends `{time, waitMinutes}` to `waitTimeHistory/{parkId}/daily/{YYYY-MM-DD}/attractions/{attractionId}` via `FieldValue.arrayUnion`.
+
+#### Implications for Team
+
+- **Mouth (Frontend):** Firestore documents now include `queue`, `forecast`, and `operatingHours` fields. You can build virtual queue badges and the ForecastChart against real data immediately.
+- **Mikey (Architect):** The response shape has a new top-level `stale` boolean. Clients should handle this (e.g., show a "data may be outdated" indicator).
+- **All:** Historical data starts accumulating now. After 30 days we'll have enough for "typical day" patterns.
+
+#### Trade-offs
+
+- **In-memory cache** — Lost on cold start / deploy. Acceptable since it's only a resilience fallback, not primary storage. Firestore has the persistent copy.
+- **Array append pattern** — Firestore docs have a 1MB limit. At 5-min polling, one attraction generates ~288 entries/day × ~50 bytes = ~14KB/day. Well within limits.
+- **Null over empty arrays** — Chose `null` for missing forecast/operatingHours rather than `[]`. Makes client-side "does this attraction have forecasts?" checks simpler (`if (forecast)` vs checking `.length`).
+
+---
+
+### 11. User Directives — Park UX & Crowd Calendar
+
+**Date:** 2026-04-29  
+**By:** Devin Sinha (via Copilot)
+
+#### Directives
+
+1. **Sort rides by wait time (longest first)** — Operating rides on park pages should default to busiest-first (longest wait at top)
+2. **Crowd calendar multi-month view** — Show 2-3 months at once for easier planning
+3. **Historical temperature on calendar** — Show a small icon with historical temperature range per day
+
+#### Rationale
+
+User request — UX improvements for park browsing and trip planning.
+
+---
+
+### 12. No Merchandise/Shops
+
+**Date:** 2026-04-29  
+**By:** Devin Sinha (via Copilot)
+
+#### Decision
+
+Do not show MERCHANDISE/shops anywhere on the website. Remove from filters and hide from park listings.
+
+#### Rationale
+
+User request — shops aren't relevant to the app's purpose (wait times & ride planning).
+
+---
+
+### 13. Park Detail Page Redesign
+
+**Date:** 2026-04-29  
+**By:** Devin Sinha (via Copilot)
+
+#### Decision
+
+Modernize park detail page layout and sort behavior:
+
+1. **N/A wait times** — Must NOT be labeled as the longest wait. Sort to the bottom regardless of sort direction.
+2. **Single-column compact list** — Replace the 3-column grid layout with a single-column compact list. Each ride on its own line with useful data.
+3. **Trend sparklines** — Add wait time trend lines (sparklines) to each ride row.
+4. **Expanded ride view** — Selecting a ride opens a sidebar or expanded view showing its wait time history throughout the day.
+
+#### Rationale
+
+User feedback — current 3-column grid is harder to scan; users want denser, more data-rich ride information at a glance.
+
+---
+
+### 14. QA Process: Review UI Changes Before Presenting
+
+**Date:** 2026-04-29  
+**By:** Devin Sinha (via Copilot)
+
+#### Decision
+
+Always run Stef (QA) to review UI changes BEFORE presenting work to the user. Catch sort logic bugs, UX issues, and visual inconsistencies proactively.
+
+#### Rationale
+
+User had to find N/A sort bug and color mismatch themselves — QA should catch these first. Improves team accountability for quality.
+
+---
+
+### 15. Virtual Queues, Enhanced Sidebar, & Special Events Architecture
+
+**Author:** Mikey (Lead / Architect)  
+**Date:** 2026-04-29  
+**Status:** Proposed  
+**Requested by:** Devin Sinha
+
+#### Executive Summary
+
+Three features, one API upgrade. The ThemeParks Wiki API already provides **far more data than we're consuming**. Our current `route.ts` only reads `queue.STANDBY.waitTime` — but the API returns virtual queue states, hourly forecasts, per-attraction operating hours, park schedules with ticketed events, and Lightning Lane pricing. This proposal surfaces that data with minimal backend work.
+
+#### Feature 1: Virtual Queue Indicators
+
+- ⚡ Lightning Lane badge (yellow) when `queue.RETURN_TIME` exists
+- 💰 Paid LL badge (gold) when `queue.PAID_RETURN_TIME` exists  
+- 🎟️ Boarding Group badge (purple) when `queue.BOARDING_GROUP` exists
+
+Modify `AttractionRow.tsx` to render badges. Requires: Expanded `LiveEntry` interface + `formatWaitTimeEntry()` updates in `route.ts`.
+
+#### Feature 2: Enhanced Ride Detail Sidebar
+
+- Replace PRNG `DayChart` with real `ForecastChart` using API forecast data
+- Display park operating hours overlay
+- Mark "now" on the timeline with current actual wait
+
+The API forecast field already provides hourly predictions. No need for historical data collection in v1.
+
+#### Feature 3: Special Event Reopenings
+
+- New `/api/park-schedule` endpoint → fetches park schedule from ThemeParks Wiki
+- Cache in Firestore for 1 hour
+- Show schedule bar on park page: operating hours + special events (Early Entry, Extended Evening, etc.)
+- Show Lightning Lane daily pricing
+
+#### Phased Implementation
+
+| Phase | Features | Timeline |
+|---|---|---|
+| 1 | Virtual queue badges, ForecastChart, park schedule bar | Week 1 — ~7 person-days |
+| 2 | Historical data archiving, typical day patterns | Week 1 start, use Week 4+ |
+| 3 | LL pricing display, event notifications | Week 3+ |
+
+#### Impact
+
+All three features use **data that's already flowing through the pipeline**. Only new endpoint: `/api/park-schedule`. Everything else is widening existing data capture + new UI components.
+
+---
+
+### 16. Auth Guard Pattern for Trip Pages
+
+**Author:** Mouth (Frontend Dev)  
+**Date:** 2026-04-29  
+**Status:** Implemented
+
+#### Decision
+
+All trip routes (`/trips`, `/trips/new`, `/trips/[tripId]`, `/trips/[tripId]/edit`) now use a consistent auth redirect pattern:
+
+```tsx
+const { user, loading: authLoading } = useAuth();
+const router = useRouter();
+
+useEffect(() => {
+  if (!authLoading && !user) {
+    router.replace('/auth/signin');
+  }
+}, [authLoading, user, router]);
+
+if (authLoading || !user) {
+  return <LoadingSpinner />;
+}
+```
+
+#### Impact
+
+- 4 trip routes hard-redirect unauthenticated users
+- No page content flashes before redirect
+- Consistent with the auth boundary (private: trip plans, ride logs)
+
+---
+
+### 17. Trip Pages Navigation Structure
+
+**Author:** Mouth (Frontend Dev)  
+**Date:** 2026-04-29  
+**Status:** Proposed
+
+#### Decision
+
+- "Trips" added as a top-level nav item in both desktop header and mobile bottom bar
+- Mobile bottom bar: Home | Parks | Trips | Profile (replaced "My Rides" with "Trips")
+- Desktop keeps: Parks, Crowd Calendar, Trips, My Rides, Dashboard
+
+#### Rationale
+
+1. Trips is the marquee feature — deserves top-level nav presence
+2. Mobile has 4 slots max; "My Rides" accessible from trip detail
+3. Trips subsumes ride logging conceptually
+
+#### Impact
+
+- `src/app/layout.tsx` nav updated
+- Mobile users navigate to rides via Trips → Trip Detail → "Log Ride"
+
+---
+
+## Directives (Unprocessed Decisions)
+
+### D1: Distinguish Rides with Virtual Queues
+
+**Date:** 2026-04-29  
+**By:** Devin Sinha
+
+Show virtual queue availability/status (Lightning Lane, boarding groups, return times) alongside standby wait times on ride cards. **Action:** See decision 15 (Feature 1).
+
+### D2: Wait Time Map — Geographical Visualization
+
+**Date:** 2026-04-29  
+**By:** Devin Sinha
+
+Add a visual map of the park showing rides with their current wait times overlaid geographically. Could live on the ride detail flyout or parks page. **Action:** Future phase — requires park map geometry.
+
+### D3: API Resilience & Rate Limiting
+
+**Date:** 2026-04-29  
+**By:** Devin Sinha
+
+Always handle ThemeParks Wiki API data refresh rates and errors gracefully. Respect rate limits, implement proper error handling, caching strategies, and fallback behavior when the API is slow or unavailable. **Action:** See decision 10 (in-memory cache + stale indicator). Verify Chunk's implementation.
+
+### D4: Crowdsourced Wait Times Validation
+
+**Date:** 2026-04-29  
+**By:** Devin Sinha
+
+When a user starts a timer while standing in line and stops it (or manually enters wait duration), store that crowdsourced data alongside live API data to form a more accurate picture of actual wait times. Investigate whether we can contribute data back to ThemeParks Wiki (lower priority). **Action:** Awaits decision 7 (Ride Logging & Crowdsourced Wait Times) implementation.
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus

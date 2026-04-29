@@ -54,3 +54,15 @@
 - **Historical data strategy:** Start archiving snapshots now to `waitTimeHistory/{parkId}/daily/{date}/attractions/{attractionId}` — don't block features on it, use for "typical day" overlays after 30 days.
 - **Lightning Lane pricing:** Available in schedule `purchases[]` array — real-time pricing with availability flags. Major differentiator vs competitors.
 - **Implementation estimate:** 7 person-days for Phase 1, all using existing API data. No new infrastructure or third-party services.
+
+## Scribe Orchestration Log (2026-04-29 18:47:57Z)
+
+**Phase 1 Team Delivery:**
+- Architecture spec for virtual queues, enhanced sidebar, special events finalized
+- All three features use existing API data — zero new infrastructure
+- Decision #15 merged into decisions.md with full phased implementation plan (Phase 1: 7 days, Phase 2: background, Phase 3: enrichment)
+- Chunk widened wait-times API to capture queue types, forecast, operatingHours
+- Data built `/api/park-schedule` endpoint with 1-hour caching
+- Mouth built ForecastChart, ParkScheduleBar, virtual queue badges components
+- Stef wrote 44 comprehensive tests covering Phase 1 deliverables
+- Team ready for Devin review of Phase 1 + architecture directives

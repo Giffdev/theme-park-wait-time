@@ -87,6 +87,16 @@ Created `scripts/enrich-attraction-types.ts` and `scripts/attraction-overrides.t
 
 **Status:** Attraction enrichment complete. Ready for Phase 2 UI integration (Mouth). Trip filters shipped; attraction type taxonomy available for future refinement.
 
+## Scribe Orchestration Log (2026-04-29 18:47:57Z)
+
+**Phase 1 Team Delivery:**
+- Widened wait-times API per Mikey's architecture: captures queue types, forecast, operatingHours, historical snapshots
+- In-memory cache resilience: 429/5xx errors fall back to stale data with `stale` boolean indicator
+- Response shape includes all virtual queue states (RETURN_TIME, PAID_RETURN_TIME, BOARDING_GROUP)
+- Historical archiving started: snapshots appended to `waitTimeHistory/{parkId}/daily/{YYYY-MM-DD}/attractions/{attractionId}`
+- Data team ready for Phase 2 aggregation work (time-weighted averages, outlier detection)
+- Stef validated 14 API tests passing for expanded wait-times endpoint
+
 ### 2026-04-29 — Wait-Times API Expanded (Full Data Capture)
 
 Widened `src/app/api/wait-times/route.ts` to capture all data from the ThemeParks Wiki `/entity/{id}/live` endpoint that we were previously discarding.

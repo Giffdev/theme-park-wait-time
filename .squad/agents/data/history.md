@@ -157,3 +157,23 @@ service cloud.firestore {
 - Inbox cleared
 
 **Status:** Trip service layer complete. 12 functions tested. Vercel deployment decision documented (iad1 region, env var strategy). Ready for Phase 2 (API integration, trip pages UI).
+
+- **2026-04-29:** Created `/api/park-schedule` endpoint per Mikey's virtual-queue-sidebar-events architecture decision. Deliverables:
+  - `src/app/api/park-schedule/route.ts` — GET endpoint with `parkId` (required) and `date` (optional, defaults to today) params. Fetches from ThemeParks Wiki `/entity/{parkId}/schedule`, transforms to `ParkDaySchedule` shape, caches in Firestore at `parkSchedules/{parkId}/daily/{YYYY-MM-DD}`.
+  - Cache strategy: 1-hour TTL. On API 429/5xx, returns stale cached data with `stale: true` flag. If no cache exists and API is down, returns 503 with friendly message.
+  - `firestore.rules` — Added `parkSchedules/{parkId}/daily/{date}`: public read, server-only write (Admin SDK bypasses rules).
+  - Response shape: `ParkDaySchedule` with parkId, date, timezone, segments array (type/description/openingTime/closingTime/purchases), fetchedAt.
+  - Follows same patterns as wait-times route: uses `adminDb` from `@/lib/firebase/admin`, `Timestamp` from firebase-admin, NextResponse.
+  - TypeScript compiles clean. No new dependencies.
+  - Key pattern: Graceful degradation — stale cache is better than no data. API errors are categorized (retryable vs fatal).
+
+## Scribe Orchestration Log (2026-04-29 18:47:57Z)
+
+**Phase 1 Team Delivery:**
+- Park schedule endpoint complete: fetches ThemeParks Wiki schedule, caches in Firestore at 1-hour TTL
+- Response includes park open/close times + special events (Early Entry, Extended Evening, etc.) + Lightning Lane pricing
+- Resilience pattern: 429/5xx fallback to stale cache with indicator
+- Mouth integrated endpoint into park detail page; fetches `/api/park-schedule?parkId=X` in parallel
+- ParkScheduleBar component renders color-coded timeline with event badges + LL pricing display
+- Stef validated 11 API tests passing for park-schedule endpoint
+- Decision #15 filed with full 3-feature (virtual queues, forecast chart, schedule bar) architecture

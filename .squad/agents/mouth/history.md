@@ -218,3 +218,15 @@
 - Non-critical fetches (schedule) should be fire-and-forget in the main data load — wrap in try/catch to avoid blocking the primary wait time display.
 - Queue badge tooltips: `onTouchStart` toggle (not just `onMouseEnter`) enables mobile tap-to-reveal without needing a separate modal.
 
+## Scribe Orchestration Log (2026-04-29 18:47:57Z)
+
+**Phase 1 Team Delivery:**
+- ForecastChart, ParkScheduleBar, virtual queue badge components completed
+- Replaced all PRNG fake data with real API forecast data (no historical collection needed for v1)
+- Park detail sidebar shows real hourly forecasts with "now" marker + "best time" callout
+- Schedule bar displays operating hours + special events (Early Entry, Extended Evening) with LL pricing
+- Virtual queue indicators: ⚡ LL (amber), 💰 ILL w/price (gold), 🎟️ VQ (purple) badges with hover tooltips
+- Park page integration: fetches `/api/park-schedule?parkId=X`, merges queue/forecast/operatingHours into attractions
+- Stef validated 18 UI tests passing for phase 1 components
+- Decision #15 (architecture) + Decision #16 (auth guard) + Decision #17 (nav structure) filed and merged
+

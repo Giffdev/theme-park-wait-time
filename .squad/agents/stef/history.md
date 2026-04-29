@@ -135,3 +135,13 @@
 - **2026-04-29:** The `wait-times-expanded.test.ts` tests are RED BY DESIGN. They define the contract for Chunk's expanded data capture. When Chunk lands the widened `formatWaitTimeEntry()`, these tests should go green with zero changes.
 - **2026-04-29:** Recharts must be mocked in jsdom tests (SVG rendering). Mock at module level with simple divs + data-testid attributes.
 - **2026-04-29:** Key files for Phase 1 expansion: `src/app/api/wait-times/route.ts`, `src/app/api/park-schedule/route.ts`, `src/components/AttractionRow.tsx` (needs queue prop + badges).
+
+## Scribe Orchestration Log (2026-04-29 18:47:57Z)
+
+**Phase 1 Team Delivery:**
+- 44 new tests written for Phase 1 expansion (15 for wait-times API, 11 for park-schedule API, 18 for UI components)
+- Wait-times API tests RED BY DESIGN — define contract for Chunk's widened data capture (queue types, forecast, operatingHours)
+- Park-schedule API tests passing: happy path, cache hit/miss, stale fallback, 503 error handling
+- UI component tests for ForecastChart (null/empty/valid states), ParkScheduleBar (colors, segments, a11y), enhanced AttractionRow (LL badges)
+- Total suite: 309 passing tests across all phases
+- All Phase 1 deliverables covered by test contracts — ready for Devin review
