@@ -2,6 +2,14 @@ import Link from 'next/link';
 
 const features = [
   {
+    href: '/trips/new',
+    emoji: '🎟️',
+    title: 'Log Your Trip',
+    description: 'Track wait times, rate attractions, and help the community with real-time insights.',
+    color: 'bg-coral-50 hover:bg-coral-100 border-coral-200',
+    textColor: 'text-coral-700',
+  },
+  {
     href: '/parks',
     emoji: '🏰',
     title: 'Live Wait Times',
@@ -16,14 +24,6 @@ const features = [
     description: 'See predicted crowd levels for every day. Pick the perfect date for your visit.',
     color: 'bg-sage-50 hover:bg-sage-100 border-sage-200',
     textColor: 'text-sage-700',
-  },
-  {
-    href: '/dashboard',
-    emoji: '📊',
-    title: 'Your Dashboard',
-    description: 'Track every ride, log your trips, and see your personal park stats.',
-    color: 'bg-coral-50 hover:bg-coral-100 border-coral-200',
-    textColor: 'text-coral-700',
   },
 ];
 

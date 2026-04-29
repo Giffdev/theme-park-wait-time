@@ -1,0 +1,145 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
+import { useAuth } from '@/lib/firebase/auth-context';
+import { getTrips } from '@/lib/services/trip-service';
+import TripCard from '@/components/trips/TripCard';
+import type { Trip, TripStatus } from '@/types/trip';
+
+type TabKey = 'active' | 'upcoming' | 'past';
+
+const TAB_STATUS_MAP: Record<TabKey, TripStatus> = {
+  active: 'active',
+  upcoming: 'planning',
+  past: 'completed',
+};
+
+export default function TripsPage() {
+  const { user, loading: authLoading } = useAuth();
+  const [trips, setTrips] = useState<(Trip & { id: string })[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<TabKey>('active');
+
+  const fetchTrips = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const data = await getTrips(user.uid, { status: TAB_STATUS_MAP[tab] });
+      setTrips(data);
+    } catch (err) {
+      console.error('Failed to load trips:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, tab]);
+
+  useEffect(() => {
+    if (user) fetchTrips();
+  }, [user, fetchTrips]);
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+        <div className="text-5xl mb-4">🔒</div>
+        <h1 className="text-2xl font-bold text-primary-900">Sign in to view your trips</h1>
+        <p className="mt-2 text-primary-500">Track your theme park adventures and ride history.</p>
+        <Link href="/auth/signin" className="mt-6 inline-block rounded-full bg-primary-600 px-6 py-3 text-white font-medium hover:bg-primary-700">
+          Sign In
+        </Link>
+      </div>
+    );
+  }
+
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: 'active', label: 'Active' },
+    { key: 'upcoming', label: 'Upcoming' },
+    { key: 'past', label: 'Past' },
+  ];
+
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-8 pb-24 md:pb-8">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-primary-900 sm:text-3xl">My Park Trips</h1>
+          <p className="mt-1 text-primary-500">Your complete theme park experience history</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={fetchTrips}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-white px-3 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            Refresh
+          </button>
+          <Link
+            href="/trips/new"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Create Trip
+          </Link>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="mt-6 flex gap-1 rounded-lg bg-primary-100 p-1">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-all ${
+              tab === t.key
+                ? 'bg-white text-primary-900 shadow-sm'
+                : 'text-primary-500 hover:text-primary-700'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div className="mt-6">
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
+          </div>
+        ) : trips.length === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-primary-200 py-16 text-center">
+            <div className="text-5xl mb-4">🎟️</div>
+            <h2 className="text-xl font-semibold text-primary-800">No Trips Logged Yet</h2>
+            <p className="mt-2 text-primary-500 max-w-sm mx-auto">
+              Start logging theme park trips to build your experience history
+            </p>
+            <Link
+              href="/trips/new"
+              className="mt-6 inline-flex items-center gap-2 rounded-lg bg-coral-500 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-coral-600"
+            >
+              Start Logging Trips
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {trips.map((trip) => (
+              <TripCard key={trip.id} trip={trip} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

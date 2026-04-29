@@ -31,23 +31,22 @@ vi.mock('lucide-react', () => ({
   Flag: () => <span data-testid="icon-flag" />,
 }));
 
-import AttractionFilterChips from '@/components/park/AttractionFilterChips';
+import AttractionFilterChips from '@/components/parks/AttractionFilterChips';
 
-// Filter value types expected by the component
-interface FilterState {
-  entityTypes: string[];
-  attractionTypes: string[];
-}
+// Component uses Set-based FilterState
+import type { FilterState } from '@/components/parks/AttractionFilterChips';
 
 describe('AttractionFilterChips', () => {
   const mockOnChange = vi.fn();
 
+  const defaultFilters: FilterState = {
+    entityTypes: new Set(['ATTRACTION', 'SHOW']),
+    attractionTypes: new Set(),
+  };
+
   const defaultProps = {
     onChange: mockOnChange,
-    filters: {
-      entityTypes: ['RIDE', 'SHOW'] as string[],
-      attractionTypes: [] as string[],
-    },
+    filters: defaultFilters,
   };
 
   beforeEach(() => {
@@ -62,13 +61,13 @@ describe('AttractionFilterChips', () => {
     it('renders all Tier 1 filter chips', () => {
       render(<AttractionFilterChips {...defaultProps} />);
 
-      expect(screen.getByRole('button', { name: /rides/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /all rides/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /shows/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /dining/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /shops/i })).toBeInTheDocument();
     });
 
-    it('renders Tier 2 sub-filter chips', () => {
+    it('renders Tier 2 sub-filter chips when ATTRACTION is selected', () => {
       render(<AttractionFilterChips {...defaultProps} />);
 
       expect(screen.getByRole('button', { name: /thrill/i })).toBeInTheDocument();
@@ -81,33 +80,22 @@ describe('AttractionFilterChips', () => {
     it('renders an "All" chip to reset filters', () => {
       render(<AttractionFilterChips {...defaultProps} />);
 
-      expect(screen.getByRole('button', { name: /all/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^all$/i })).toBeInTheDocument();
     });
 
-    it('highlights active filter chips visually', () => {
-      const filters = {
-        entityTypes: ['RIDE'],
-        attractionTypes: ['thrill'],
+    it('highlights active filter chips with active CSS classes', () => {
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION']),
+        attractionTypes: new Set(['thrill']),
       };
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
-      const ridesChip = screen.getByRole('button', { name: /rides/i });
+      const ridesChip = screen.getByRole('button', { name: /all rides/i });
       const thrillChip = screen.getByRole('button', { name: /thrill/i });
 
-      // Active chips should have a distinct styling (data-active or aria-pressed)
-      expect(
-        ridesChip.getAttribute('aria-pressed') === 'true' ||
-        ridesChip.getAttribute('data-active') === 'true' ||
-        ridesChip.classList.toString().includes('active') ||
-        ridesChip.classList.toString().includes('selected'),
-      ).toBe(true);
-
-      expect(
-        thrillChip.getAttribute('aria-pressed') === 'true' ||
-        thrillChip.getAttribute('data-active') === 'true' ||
-        thrillChip.classList.toString().includes('active') ||
-        thrillChip.classList.toString().includes('selected'),
-      ).toBe(true);
+      // Active chips get color-specific active classes (bg-coral-500, bg-blue-600, etc.)
+      expect(ridesChip.className).toMatch(/bg-coral-500/);
+      expect(thrillChip.className).toMatch(/bg-coral-500/);
     });
   });
 
@@ -117,42 +105,43 @@ describe('AttractionFilterChips', () => {
 
   describe('Tier 1 chip interactions', () => {
     it('clicking a Tier 1 chip toggles it on', () => {
-      const filters = { entityTypes: ['RIDE', 'SHOW'], attractionTypes: [] };
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION', 'SHOW']),
+        attractionTypes: new Set(),
+      };
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
       fireEvent.click(screen.getByRole('button', { name: /dining/i }));
 
-      expect(mockOnChange).toHaveBeenCalledWith(
-        expect.objectContaining({
-          entityTypes: expect.arrayContaining(['RESTAURANT']),
-        }),
-      );
+      const callArg = mockOnChange.mock.calls[0][0] as FilterState;
+      expect(callArg.entityTypes.has('RESTAURANT')).toBe(true);
     });
 
     it('clicking an active Tier 1 chip toggles it off', () => {
-      const filters = { entityTypes: ['RIDE', 'SHOW'], attractionTypes: [] };
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION', 'SHOW']),
+        attractionTypes: new Set(),
+      };
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
-      fireEvent.click(screen.getByRole('button', { name: /rides/i }));
+      fireEvent.click(screen.getByRole('button', { name: /all rides/i }));
 
-      expect(mockOnChange).toHaveBeenCalledWith(
-        expect.objectContaining({
-          entityTypes: expect.not.arrayContaining(['RIDE']),
-        }),
-      );
+      const callArg = mockOnChange.mock.calls[0][0] as FilterState;
+      expect(callArg.entityTypes.has('ATTRACTION')).toBe(false);
     });
 
     it('multiple Tier 1 chips can be active simultaneously', () => {
-      const filters = { entityTypes: ['RIDE'], attractionTypes: [] };
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION']),
+        attractionTypes: new Set(),
+      };
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
       fireEvent.click(screen.getByRole('button', { name: /shows/i }));
 
-      expect(mockOnChange).toHaveBeenCalledWith(
-        expect.objectContaining({
-          entityTypes: expect.arrayContaining(['RIDE', 'SHOW']),
-        }),
-      );
+      const callArg = mockOnChange.mock.calls[0][0] as FilterState;
+      expect(callArg.entityTypes.has('ATTRACTION')).toBe(true);
+      expect(callArg.entityTypes.has('SHOW')).toBe(true);
     });
   });
 
@@ -162,42 +151,44 @@ describe('AttractionFilterChips', () => {
 
   describe('Tier 2 chip interactions', () => {
     it('clicking a Tier 2 chip toggles it on', () => {
-      const filters = { entityTypes: ['RIDE'], attractionTypes: [] };
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION']),
+        attractionTypes: new Set(),
+      };
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
       fireEvent.click(screen.getByRole('button', { name: /thrill/i }));
 
-      expect(mockOnChange).toHaveBeenCalledWith(
-        expect.objectContaining({
-          attractionTypes: expect.arrayContaining(['thrill']),
-        }),
-      );
+      const callArg = mockOnChange.mock.calls[0][0] as FilterState;
+      expect(callArg.attractionTypes.has('thrill')).toBe(true);
     });
 
     it('clicking an active Tier 2 chip toggles it off', () => {
-      const filters = { entityTypes: ['RIDE'], attractionTypes: ['thrill', 'family'] };
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION']),
+        attractionTypes: new Set(['thrill', 'family']),
+      };
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
       fireEvent.click(screen.getByRole('button', { name: /thrill/i }));
 
-      expect(mockOnChange).toHaveBeenCalledWith(
-        expect.objectContaining({
-          attractionTypes: expect.not.arrayContaining(['thrill']),
-        }),
-      );
+      const callArg = mockOnChange.mock.calls[0][0] as FilterState;
+      expect(callArg.attractionTypes.has('thrill')).toBe(false);
+      expect(callArg.attractionTypes.has('family')).toBe(true);
     });
 
     it('multiple Tier 2 chips can be selected together', () => {
-      const filters = { entityTypes: ['RIDE'], attractionTypes: ['thrill'] };
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION']),
+        attractionTypes: new Set(['thrill']),
+      };
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
       fireEvent.click(screen.getByRole('button', { name: /family/i }));
 
-      expect(mockOnChange).toHaveBeenCalledWith(
-        expect.objectContaining({
-          attractionTypes: expect.arrayContaining(['thrill', 'family']),
-        }),
-      );
+      const callArg = mockOnChange.mock.calls[0][0] as FilterState;
+      expect(callArg.attractionTypes.has('thrill')).toBe(true);
+      expect(callArg.attractionTypes.has('family')).toBe(true);
     });
   });
 
@@ -207,40 +198,40 @@ describe('AttractionFilterChips', () => {
 
   describe('"All" chip behavior', () => {
     it('clicking "All" clears all entity type and attraction type filters', () => {
-      const filters = { entityTypes: ['RIDE'], attractionTypes: ['thrill'] };
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION']),
+        attractionTypes: new Set(['thrill']),
+      };
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
-      fireEvent.click(screen.getByRole('button', { name: /all/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^all$/i }));
 
-      expect(mockOnChange).toHaveBeenCalledWith({
-        entityTypes: [],
-        attractionTypes: [],
-      });
+      const callArg = mockOnChange.mock.calls[0][0] as FilterState;
+      expect(callArg.entityTypes.size).toBe(0);
+      expect(callArg.attractionTypes.size).toBe(0);
     });
 
     it('"All" chip appears active when no filters are selected', () => {
-      const filters = { entityTypes: [], attractionTypes: [] };
+      const filters: FilterState = {
+        entityTypes: new Set(),
+        attractionTypes: new Set(),
+      };
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
-      const allChip = screen.getByRole('button', { name: /all/i });
-      expect(
-        allChip.getAttribute('aria-pressed') === 'true' ||
-        allChip.getAttribute('data-active') === 'true' ||
-        allChip.classList.toString().includes('active') ||
-        allChip.classList.toString().includes('selected'),
-      ).toBe(true);
+      const allChip = screen.getByRole('button', { name: /^all$/i });
+      // Active "All" chip gets the primary-800 bg class
+      expect(allChip.className).toMatch(/bg-primary-800/);
     });
 
     it('"All" chip is not active when filters are selected', () => {
-      const filters = { entityTypes: ['RIDE'], attractionTypes: [] };
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION']),
+        attractionTypes: new Set(),
+      };
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
-      const allChip = screen.getByRole('button', { name: /all/i });
-      // "All" should NOT be marked active when specific filters are applied
-      expect(
-        allChip.getAttribute('aria-pressed') !== 'true' ||
-        allChip.getAttribute('data-active') !== 'true',
-      ).toBe(true);
+      const allChip = screen.getByRole('button', { name: /^all$/i });
+      expect(allChip.className).not.toMatch(/bg-primary-800/);
     });
   });
 
@@ -250,46 +241,32 @@ describe('AttractionFilterChips', () => {
 
   describe('default state', () => {
     it('default filter state hides restaurants and merchandise', () => {
-      // The default filters passed from the parent page should NOT include
-      // RESTAURANT or MERCHANDISE entity types — they show RIDE + SHOW only
-      const defaultFilters = { entityTypes: ['RIDE', 'SHOW'], attractionTypes: [] };
-      render(<AttractionFilterChips {...defaultProps} filters={defaultFilters} />);
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION', 'SHOW']),
+        attractionTypes: new Set(),
+      };
+      render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
-      // Rides and Shows should be active
-      const ridesChip = screen.getByRole('button', { name: /rides/i });
+      // Rides and Shows should have active styling
+      const ridesChip = screen.getByRole('button', { name: /all rides/i });
       const showsChip = screen.getByRole('button', { name: /shows/i });
-      expect(
-        ridesChip.getAttribute('aria-pressed') === 'true' ||
-        ridesChip.getAttribute('data-active') === 'true' ||
-        ridesChip.classList.toString().includes('active') ||
-        ridesChip.classList.toString().includes('selected'),
-      ).toBe(true);
-      expect(
-        showsChip.getAttribute('aria-pressed') === 'true' ||
-        showsChip.getAttribute('data-active') === 'true' ||
-        showsChip.classList.toString().includes('active') ||
-        showsChip.classList.toString().includes('selected'),
-      ).toBe(true);
+      expect(ridesChip.className).toMatch(/bg-coral-500/);
+      expect(showsChip.className).toMatch(/bg-blue-600/);
     });
 
     it('dining and shops chips are not active in default state', () => {
-      const defaultFilters = { entityTypes: ['RIDE', 'SHOW'], attractionTypes: [] };
-      render(<AttractionFilterChips {...defaultProps} filters={defaultFilters} />);
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION', 'SHOW']),
+        attractionTypes: new Set(),
+      };
+      render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
       const diningChip = screen.getByRole('button', { name: /dining/i });
       const shopsChip = screen.getByRole('button', { name: /shops/i });
 
-      // These should NOT be active since restaurants/shops are hidden by default
-      expect(
-        diningChip.getAttribute('aria-pressed') !== 'true' &&
-        !diningChip.classList.toString().includes('active') &&
-        !diningChip.classList.toString().includes('selected'),
-      ).toBe(true);
-      expect(
-        shopsChip.getAttribute('aria-pressed') !== 'true' &&
-        !shopsChip.classList.toString().includes('active') &&
-        !shopsChip.classList.toString().includes('selected'),
-      ).toBe(true);
+      // Inactive chips should NOT have active bg classes
+      expect(diningChip.className).not.toMatch(/bg-green-600/);
+      expect(shopsChip.className).not.toMatch(/bg-amber-500/);
     });
   });
 
@@ -298,8 +275,11 @@ describe('AttractionFilterChips', () => {
   // =========================================================================
 
   describe('onChange callback contract', () => {
-    it('fires onChange with both entityTypes and attractionTypes', () => {
-      const filters = { entityTypes: ['RIDE'], attractionTypes: [] };
+    it('fires onChange with both entityTypes and attractionTypes as Sets', () => {
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION']),
+        attractionTypes: new Set(),
+      };
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
       fireEvent.click(screen.getByRole('button', { name: /thrill/i }));
@@ -307,17 +287,22 @@ describe('AttractionFilterChips', () => {
       const callArg = mockOnChange.mock.calls[0][0];
       expect(callArg).toHaveProperty('entityTypes');
       expect(callArg).toHaveProperty('attractionTypes');
+      expect(callArg.entityTypes).toBeInstanceOf(Set);
+      expect(callArg.attractionTypes).toBeInstanceOf(Set);
     });
 
     it('does not mutate the original filters object', () => {
-      const filters = { entityTypes: ['RIDE'], attractionTypes: [] };
-      const originalEntityTypes = [...filters.entityTypes];
+      const filters: FilterState = {
+        entityTypes: new Set(['ATTRACTION']),
+        attractionTypes: new Set(),
+      };
+      const originalSize = filters.entityTypes.size;
       render(<AttractionFilterChips {...defaultProps} filters={filters} />);
 
       fireEvent.click(screen.getByRole('button', { name: /shows/i }));
 
       // Original should not be mutated
-      expect(filters.entityTypes).toEqual(originalEntityTypes);
+      expect(filters.entityTypes.size).toBe(originalSize);
     });
   });
 });

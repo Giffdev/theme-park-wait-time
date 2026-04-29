@@ -122,3 +122,26 @@
 - Inbox cleared
 
 **Status:** AttractionFilterChips component built + tested. 49 new tests written (265 total). Trip filters shipped and ready. Trip Planner pages (TripCard, TripForm, TripTimeline components) next in Phase 2.
+
+## Trip Pages UI Build (2026-04-29)
+
+- **Routes created:**
+  - `/trips` — Trip list with Active/Upcoming/Past tabs, empty state, refresh + create buttons
+  - `/trips/new` — Create trip with Single Day / Multi-Day tab switcher, day builder (date picker, resort group selector, park checkboxes)
+  - `/trips/[tripId]` — Trip detail with stats bar, timeline grouped by day, complete/share buttons
+  - `/trips/[tripId]/edit` — Edit trip (modify name, notes, add/remove days)
+- **Components:**
+  - `src/components/trips/TripCard.tsx` — Trip list card with name, date range, park badges, stats
+  - `src/components/trips/TripDayCard.tsx` — Day card showing date + parks with remove button
+  - `src/components/trips/ActiveTripBanner.tsx` — Global banner for active trips (added to Providers)
+- **Navigation:** Added "Trips" to desktop nav and replaced "My Rides" with "Trips" in mobile bottom bar
+- **Homepage:** Added "Log Your Trip" as first feature card (coral CTA) linking to /trips/new
+- **Services used:** `trip-service.ts` (createTrip, getTrips, getTrip, updateTrip, completeTrip, generateShareId, getTripRideLogs)
+- **Build:** Clean build, /trips 229kB, /trips/new 230kB, /trips/[tripId] 230kB first-load JS
+
+## Learnings
+
+- Trip types use ISO date strings (YYYY-MM-DD) not Date objects for startDate/endDate — simpler for date pickers and form state
+- Resort groups derived client-side by grouping parks from Firestore by `destinationId`/`destinationName` — no separate collection needed
+- The `getCollection<T>('parks', [])` call with empty constraints returns all parks — useful for dropdowns
+- ActiveTripBanner placed above QueueTimerBanner in Providers to give trip context visual priority

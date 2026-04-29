@@ -62,6 +62,8 @@ describe('ride-log-service', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // getActiveTrip calls getCollection — default to empty array (no active trip)
+    mockGetCollection.mockResolvedValue([]);
   });
 
   describe('addRideLog', () => {

@@ -69,6 +69,8 @@ describe('trip + ride log integration', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: getCollection returns empty array (no active trip, no ride logs)
+    mockGetCollection.mockResolvedValue([]);
   });
 
   // =========================================================================
@@ -136,12 +138,12 @@ describe('trip + ride log integration', () => {
     });
 
     it('getActiveTrip returns null when no trip is active — ride log gets null tripId', async () => {
-      mockGetCollection.mockResolvedValueOnce([]);
+      mockGetCollection.mockResolvedValue([]);
 
       const trip = await getActiveTrip(userId);
       expect(trip).toBeNull();
 
-      // Caller passes undefined (no trip)
+      // Caller passes undefined (no trip) — addRideLog will also call getActiveTrip internally
       mockAddDocument.mockResolvedValue({ id: 'log-5' });
       await addRideLog(userId, mockRideLogInput);
 

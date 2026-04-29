@@ -450,6 +450,55 @@ AttractionFilterChip.tsx     — Individual chip
 
 ---
 
+### 9. Trip Auto-Association + Shared Trips Security Model
+
+**Author:** Data  
+**Date:** 2026-04-29  
+**Status:** Proposed
+
+#### Context
+
+Wiring trip integration into ride logging required deciding how ride logs find their trip, and how the `sharedTrips` collection handles security.
+
+#### Decisions
+
+##### 1. Ride Log → Trip Auto-Association (Opt-In)
+
+When `addRideLog` is called without an explicit `tripId`, it automatically queries for the user's active trip and associates the log. This is **opt-in by default** — if no trip is active, `tripId` stays null. Explicit `tripId` parameter always wins.
+
+After every log added to a trip, `updateTripStats()` recomputes denormalized stats. This adds one extra read + one write per ride log but keeps trip stats always current.
+
+##### 2. sharedTrips Security: Client Write (Authenticated)
+
+The `sharedTrips` collection allows:
+- **Read:** Anyone (public, for share link viewing)
+- **Create:** Any authenticated user
+- **Update/Delete:** Only the document owner (`resource.data.userId == request.auth.uid`)
+
+This avoids requiring admin SDK for share link generation (trip-service runs client-side). Trade-off: a malicious authenticated user could write junk share docs, but they can't read other users' private data through them.
+
+##### 3. Sharing API Rate Limiting (In-Memory, v1)
+
+The `/api/trips/[shareId]` route uses simple in-memory rate limiting (60 req/min per IP). Resets on Vercel cold start. Acceptable for v1 — upgrade to edge KV or Redis if abuse is detected.
+
+#### Impact
+
+- All ride logging (timer complete + manual) now checks for active trip — no UI changes needed
+- Frontend can call `generateShareLink(userId, tripId)` to get a shareable URL
+- Public API at `/api/trips/{shareId}` returns trip + ride logs as JSON
+
+---
+
+#### Decisions Needing Devin's Input (prev)
+
+1. **Trip sharing** — Shareable via link (public read), or strictly private?
+2. **Trip export** — PDF/image for social sharing, or just in-app view?
+3. **Multi-trip overlap** — If two trips overlap, what happens? (Recommend: one active trip at a time)
+4. **Park page filter default** — Hide non-rides by default on wait times view?
+5. **Ride type enrichment priority** — Basic ATTRACTION/SHOW split sufficient for v1, or thrill/family from day one?
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus

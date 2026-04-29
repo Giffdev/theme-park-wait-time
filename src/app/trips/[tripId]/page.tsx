@@ -1,0 +1,293 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/lib/firebase/auth-context';
+import { getTrip, completeTrip, generateShareId, updateTrip } from '@/lib/services/trip-service';
+import { getTripRideLogs } from '@/lib/services/trip-service';
+import type { Trip } from '@/types/trip';
+import type { RideLog } from '@/types/ride-log';
+
+function statusBadge(status: Trip['status']) {
+  switch (status) {
+    case 'active':
+      return <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">Active</span>;
+    case 'planning':
+      return <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Upcoming</span>;
+    case 'completed':
+      return <span className="rounded-full bg-primary-100 px-3 py-1 text-xs font-semibold text-primary-700">Completed</span>;
+  }
+}
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function groupRidesByDay(logs: (RideLog & { id: string })[]): Record<string, (RideLog & { id: string })[]> {
+  const groups: Record<string, (RideLog & { id: string })[]> = {};
+  for (const log of logs) {
+    const date = log.rodeAt instanceof Date
+      ? log.rodeAt.toISOString().split('T')[0]
+      : new Date(log.rodeAt).toISOString().split('T')[0];
+    if (!groups[date]) groups[date] = [];
+    groups[date].push(log);
+  }
+  // Sort days newest first
+  return Object.fromEntries(
+    Object.entries(groups).sort(([a], [b]) => b.localeCompare(a))
+  );
+}
+
+export default function TripDetailPage() {
+  const { tripId } = useParams<{ tripId: string }>();
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  const [trip, setTrip] = useState<(Trip & { id: string }) | null>(null);
+  const [rideLogs, setRideLogs] = useState<(RideLog & { id: string })[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [completing, setCompleting] = useState(false);
+  const [sharing, setSharing] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    if (!user || !tripId) return;
+    setLoading(true);
+    try {
+      const [tripData, logs] = await Promise.all([
+        getTrip(user.uid, tripId),
+        getTripRideLogs(user.uid, tripId),
+      ]);
+      setTrip(tripData);
+      setRideLogs(logs);
+    } catch (err) {
+      console.error('Failed to load trip:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, tripId]);
+
+  useEffect(() => {
+    if (user) fetchData();
+  }, [user, fetchData]);
+
+  const handleComplete = async () => {
+    if (!user || !tripId) return;
+    setCompleting(true);
+    try {
+      await completeTrip(user.uid, tripId);
+      await fetchData();
+    } catch (err) {
+      console.error('Failed to complete trip:', err);
+    } finally {
+      setCompleting(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!user || !trip) return;
+    setSharing(true);
+    try {
+      const shareId = trip.shareId || generateShareId();
+      if (!trip.shareId) {
+        await updateTrip(user.uid, trip.id, { shareId });
+      }
+      const url = `${window.location.origin}/trips/shared/${shareId}`;
+      await navigator.clipboard.writeText(url);
+      alert('Share link copied to clipboard!');
+      await fetchData();
+    } catch (err) {
+      console.error('Failed to share trip:', err);
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  if (authLoading || loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+        <h1 className="text-2xl font-bold text-primary-900">Sign in to view trips</h1>
+        <Link href="/auth/signin" className="mt-4 inline-block rounded-full bg-primary-600 px-6 py-3 text-white font-medium hover:bg-primary-700">
+          Sign In
+        </Link>
+      </div>
+    );
+  }
+
+  if (!trip) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+        <div className="text-5xl mb-4">🔍</div>
+        <h1 className="text-2xl font-bold text-primary-900">Trip Not Found</h1>
+        <p className="mt-2 text-primary-500">This trip doesn&apos;t exist or you don&apos;t have access.</p>
+        <Link href="/trips" className="mt-4 inline-block text-primary-600 hover:text-primary-700 font-medium">
+          ← Back to My Trips
+        </Link>
+      </div>
+    );
+  }
+
+  const groupedLogs = groupRidesByDay(rideLogs);
+  const dateRange = trip.startDate === trip.endDate
+    ? formatDate(trip.startDate)
+    : `${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}`;
+
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-8 pb-24 md:pb-8">
+      {/* Back */}
+      <Link href="/trips" className="inline-flex items-center gap-1 text-sm text-primary-500 hover:text-primary-700 mb-4">
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+        </svg>
+        Back to My Trips
+      </Link>
+
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-primary-900 sm:text-3xl">{trip.name}</h1>
+            {statusBadge(trip.status)}
+          </div>
+          <p className="mt-1 text-primary-500">{dateRange}</p>
+          {Object.values(trip.parkNames).length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {Object.values(trip.parkNames).map((name) => (
+                <span key={name} className="rounded-md bg-primary-50 px-2 py-0.5 text-xs text-primary-600">
+                  {name}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={handleShare}
+            disabled={sharing}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-white px-3 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
+            </svg>
+            Share
+          </button>
+          {trip.status === 'active' && (
+            <>
+              <Link
+                href={`/trips/${trip.id}/edit`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-white px-3 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
+              >
+                Edit
+              </Link>
+              <button
+                onClick={handleComplete}
+                disabled={completing}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+              >
+                {completing ? 'Completing...' : 'Complete Trip'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Stats Bar */}
+      {trip.stats.totalRides > 0 && (
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-lg border border-primary-100 bg-white p-3 text-center">
+            <div className="text-xl font-bold text-primary-700">{trip.stats.totalRides}</div>
+            <div className="text-xs text-primary-500">Total Rides</div>
+          </div>
+          <div className="rounded-lg border border-primary-100 bg-white p-3 text-center">
+            <div className="text-xl font-bold text-primary-700">{trip.stats.totalWaitMinutes}</div>
+            <div className="text-xs text-primary-500">Min Waited</div>
+          </div>
+          <div className="rounded-lg border border-primary-100 bg-white p-3 text-center">
+            <div className="text-xl font-bold text-primary-700">{trip.stats.parksVisited}</div>
+            <div className="text-xs text-primary-500">Parks Visited</div>
+          </div>
+          <div className="rounded-lg border border-primary-100 bg-white p-3 text-center">
+            <div className="text-xl font-bold text-primary-700">{trip.stats.uniqueAttractions}</div>
+            <div className="text-xs text-primary-500">Unique Attractions</div>
+          </div>
+        </div>
+      )}
+
+      {/* Timeline */}
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold text-primary-900 mb-4">Trip Timeline</h2>
+
+        {rideLogs.length === 0 ? (
+          <div className="rounded-xl border-2 border-dashed border-primary-200 py-12 text-center">
+            <div className="text-4xl mb-3">🎢</div>
+            <p className="text-primary-600 font-medium">No rides logged yet</p>
+            <p className="text-sm text-primary-400 mt-1">Start riding and log your experiences!</p>
+            <Link
+              href="/ride-log"
+              className="mt-4 inline-flex items-center gap-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            >
+              Log a Ride
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {Object.entries(groupedLogs).map(([date, logs]) => (
+              <div key={date}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-2 w-2 rounded-full bg-primary-400" />
+                  <h3 className="text-sm font-semibold text-primary-700">{formatDate(date)}</h3>
+                  <span className="text-xs text-primary-400">{logs.length} ride{logs.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="ml-3 border-l-2 border-primary-100 pl-4 space-y-2">
+                  {logs.map((log) => {
+                    const time = log.rodeAt instanceof Date
+                      ? log.rodeAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                      : new Date(log.rodeAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                    return (
+                      <div key={log.id} className="rounded-lg border border-primary-100 bg-white p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-primary-800">{log.attractionName}</p>
+                            <p className="text-xs text-primary-500">{log.parkName} · {time}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {log.waitTimeMinutes != null && (
+                              <span className="rounded-md bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-600">
+                                {log.waitTimeMinutes} min
+                              </span>
+                            )}
+                            {log.rating && (
+                              <span className="text-xs text-amber-500">
+                                {'★'.repeat(log.rating)}{'☆'.repeat(5 - log.rating)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {log.notes && (
+                          <p className="mt-1.5 text-xs text-primary-500 italic">{log.notes}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
