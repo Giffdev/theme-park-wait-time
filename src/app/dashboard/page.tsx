@@ -1,36 +1,23 @@
 'use client';
 
-import Link from 'next/link';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/auth-context';
 
 export default function DashboardPage() {
   const { user, loading, signOut } = useAuth();
+  const router = useRouter();
 
-  if (loading) {
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/auth/signin');
+    }
+  }, [loading, user, router]);
+
+  if (loading || !user) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="text-primary-400">Loading…</div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-7xl px-4 py-10 pb-24 sm:px-6 md:pb-10 lg:px-8">
-        <h1 className="text-3xl font-bold text-primary-900">Dashboard</h1>
-        <p className="mt-2 text-primary-500">
-          Sign in to track your rides, log trips, and see your personal park stats.
-        </p>
-
-        <div className="mt-10 flex flex-col items-center gap-4 rounded-2xl bg-primary-50 p-8 text-center">
-          <p className="text-primary-600">Sign in to start tracking your park adventures.</p>
-          <Link
-            href="/auth/signin"
-            className="inline-flex rounded-full bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700"
-          >
-            Sign In
-          </Link>
-        </div>
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
       </div>
     );
   }

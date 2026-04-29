@@ -1,18 +1,19 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Plus, RefreshCw, Timer, MapPin, Clock } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getRideLogs, deleteRideLog } from '@/lib/services/ride-log-service';
 import RideLogList from '@/components/ride-log/RideLogList';
 import ManualLogForm from '@/components/ride-log/ManualLogForm';
 import type { RideLog } from '@/types/ride-log';
-import Link from 'next/link';
 
 type FilterTab = 'all' | 'park' | 'date';
 
 export default function RideLogPage() {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [logs, setLogs] = useState<(RideLog & { id: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterTab>('all');
@@ -30,6 +31,12 @@ export default function RideLogPage() {
   }, [user]);
 
   useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace('/auth/signin');
+    }
+  }, [authLoading, user, router]);
+
+  useEffect(() => {
     if (user) fetchLogs();
   }, [user, fetchLogs]);
 
@@ -44,29 +51,10 @@ export default function RideLogPage() {
   const parksVisited = new Set(logs.map((l) => l.parkId)).size;
   const totalWaitMinutes = logs.reduce((sum, l) => sum + (l.waitTimeMinutes ?? 0), 0);
 
-  // Auth gate
-  if (authLoading) {
+  if (authLoading || !user) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
-        <div className="mb-4 text-5xl">🎢</div>
-        <h1 className="text-2xl font-bold text-primary-900">Track Your Rides</h1>
-        <p className="mt-2 max-w-sm text-primary-500">
-          Sign in to start logging your ride history and see your personal park stats.
-        </p>
-        <Link
-          href="/auth/signin"
-          className="mt-6 rounded-full bg-primary-600 px-6 py-3 font-medium text-white hover:bg-primary-700"
-        >
-          Sign In
-        </Link>
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
       </div>
     );
   }
