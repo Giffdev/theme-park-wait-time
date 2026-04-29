@@ -29,7 +29,7 @@ export default function ActiveTripBanner() {
         </p>
         <div className="flex gap-2">
           <Link
-            href="/ride-log"
+            href={`/trips/${trip.id}/log`}
             className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
           >
             Log Ride

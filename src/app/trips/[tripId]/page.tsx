@@ -251,7 +251,7 @@ export default function TripDetailPage() {
             <p className="text-primary-600 font-medium">No rides logged yet</p>
             <p className="text-sm text-primary-400 mt-1">Start riding and log your experiences!</p>
             <Link
-              href="/ride-log"
+              href={`/trips/${trip.id}/log`}
               className="mt-4 inline-flex items-center gap-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
             >
               Log a Ride
