@@ -283,11 +283,12 @@ export default function TripDetailPage() {
     try {
       await deleteTrip(user.uid, tripId);
       notifyActiveTripChanged();
-      router.push('/trips');
     } catch (err) {
       console.error('Failed to delete trip:', err);
+    } finally {
       setDeletingTrip(false);
       setShowDeleteTrip(false);
+      router.replace('/trips');
     }
   };
 
