@@ -43,6 +43,11 @@ interface ApiChild {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Parks whose API name should be overridden in our system
+const PARK_NAME_OVERRIDES: Record<string, string> = {
+  'bb731eae-7bd3-4713-bd7b-89d79b031743': 'Worlds of Fun & Oceans of Fun',
+};
+
 function slugify(name: string): string {
   return name
     .toLowerCase()
@@ -103,11 +108,12 @@ async function syncPark(
     : null;
 
   const parkSlug = park.slug || slugify(park.name);
+  const parkName = PARK_NAME_OVERRIDES[park.id] || park.name;
 
   // Write park document
   const parkDoc = {
     id: park.id,
-    name: park.name,
+    name: parkName,
     slug: parkSlug,
     destinationName: destination.name,
     destinationId: destination.id,

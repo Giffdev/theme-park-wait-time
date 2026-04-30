@@ -381,10 +381,10 @@ const MICHIGANS_ADVENTURE: DestinationEntry = {
 
 const WORLDS_OF_FUN: DestinationEntry = {
   id: 'c4231018-dc6f-4d8d-bfc2-7a21a6c9e9fa',
-  name: 'Worlds of Fun',
+  name: 'Worlds of Fun & Oceans of Fun',
   slug: 'worlds-of-fun-dest',
   parks: [
-    { id: 'bb731eae-7bd3-4713-bd7b-89d79b031743', name: 'Worlds of Fun', slug: 'worlds-of-fun' },
+    { id: 'bb731eae-7bd3-4713-bd7b-89d79b031743', name: 'Worlds of Fun & Oceans of Fun', slug: 'worlds-of-fun' },
   ],
 };
 

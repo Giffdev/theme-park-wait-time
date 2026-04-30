@@ -41,6 +41,11 @@ interface EntityChild {
   slug?: string;
 }
 
+// Parks whose API name should be overridden in our system
+const PARK_NAME_OVERRIDES: Record<string, string> = {
+  'bb731eae-7bd3-4713-bd7b-89d79b031743': 'Worlds of Fun & Oceans of Fun',
+};
+
 function slugify(name: string): string {
   return name
     .toLowerCase()
@@ -141,9 +146,10 @@ async function seedParksAndAttractions(matches: MatchedDestination[]): Promise<v
       const finalTimezone = config.timezoneOverride || timezone || 'America/New_York';
 
       // Write park document
+      const parkName = PARK_NAME_OVERRIDES[park.id] || park.name;
       const parkDoc = {
         id: park.id,
-        name: park.name,
+        name: parkName,
         slug: park.slug || slugify(park.name),
         destinationName: dest.name,
         destinationId: dest.id,
