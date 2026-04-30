@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { RefreshCw, Search } from 'lucide-react';
 import { getCollection } from '@/lib/firebase/firestore';
+import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
+import { getLocationByDestinationId, formatLocation } from '@/lib/parks/park-locations';
 import ParkCard from '@/components/ParkCard';
 
 interface Park {
@@ -31,6 +33,25 @@ interface ParkHoursEntry {
 }
 
 const BATCH_SIZE = 10;
+
+/** Build a map of parkId → formatted location string from registry + locations */
+function buildLocationMap(): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const family of DESTINATION_FAMILIES) {
+    for (const dest of family.destinations) {
+      const loc = getLocationByDestinationId(dest.id);
+      if (loc) {
+        const formatted = formatLocation(loc);
+        for (const park of dest.parks) {
+          map[park.id] = formatted;
+        }
+      }
+    }
+  }
+  return map;
+}
+
+const PARK_LOCATIONS = buildLocationMap();
 
 export default function ParksPage() {
   const [parks, setParks] = useState<Park[]>([]);
@@ -170,14 +191,15 @@ export default function ParksPage() {
     }
   };
 
-  // Filter parks by search query
+  // Filter parks by search query (includes location)
   const filteredParks = useMemo(() => {
     if (!searchQuery.trim()) return parks;
     const q = searchQuery.toLowerCase();
     return parks.filter(
       (park) =>
         park.name.toLowerCase().includes(q) ||
-        park.destinationName.toLowerCase().includes(q)
+        park.destinationName.toLowerCase().includes(q) ||
+        (PARK_LOCATIONS[park.id] || '').toLowerCase().includes(q)
     );
   }, [parks, searchQuery]);
 
@@ -200,7 +222,7 @@ export default function ParksPage() {
   }, [filteredParks]);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 pb-24 sm:px-6 md:pb-10 lg:px-8">
+    <div className="mx-auto max-w-[1600px] px-4 py-10 pb-24 sm:px-6 md:pb-10 lg:px-8">
       <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-primary-900">Theme Parks</h1>
@@ -231,7 +253,7 @@ export default function ParksPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search parks or destinations..."
+            placeholder="Search parks, destinations, or locations..."
             className="w-full rounded-lg border border-primary-200 bg-white py-2.5 pl-10 pr-4 text-sm text-primary-800 placeholder:text-primary-300 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-400"
           />
         </div>
@@ -242,9 +264,9 @@ export default function ParksPage() {
           {[1, 2, 3].map((i) => (
             <section key={i}>
               <div className="mb-4 h-6 w-48 animate-pulse rounded bg-primary-100" />
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {[1, 2, 3, 4].map((j) => (
-                  <div key={j} className="h-36 animate-pulse rounded-xl border border-primary-100 bg-primary-50" />
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                {[1, 2, 3, 4, 5].map((j) => (
+                  <div key={j} className="h-32 animate-pulse rounded-xl border border-primary-100 bg-primary-50" />
                 ))}
               </div>
             </section>
@@ -261,7 +283,7 @@ export default function ParksPage() {
               <h2 className="mb-4 text-xl font-semibold text-primary-800">
                 {destination}
               </h2>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 {destParks.map((park) => {
                   const hours = parkHours[park.id];
                   return (
@@ -275,6 +297,7 @@ export default function ParksPage() {
                       todayHours={hours?.todayHours}
                       timezone={hours?.timezone}
                       localTime={hours?.localTime}
+                      location={PARK_LOCATIONS[park.id]}
                     />
                   );
                 })}

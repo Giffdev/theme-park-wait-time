@@ -421,3 +421,24 @@ Added open/closed state, hours, and local time to ParkCard and park detail page.
 - Timezone abbreviation mapping is a simple lookup table; covers US parks well, falls back to city name for international
 - `ParkOperatingStatus` on detail page derives open/closed from existing `schedule.segments` — no extra API call needed
 - Kept card height stable by using consistent element sizing in both open/closed states
+
+## Parks Page Wide-Screen Layout Overhaul (2026-04-29)
+
+### What was shipped:
+- **Responsive grid:** 1 col (mobile) → 2 col (sm) → 3 col (lg) → 4 col (xl) → 5 col (2xl)
+- **Container widened:** `max-w-7xl` → `max-w-[1600px]` for ultrawide monitors
+- **Location metadata:** New `src/lib/parks/park-locations.ts` — hand-curated city/state/country for all 80+ destinations
+- **ParkCard enriched:** Shows MapPin icon with location, Clock icon with local time — both in a compact meta row
+- **Search extended:** Now matches by location (e.g., search "Orlando" shows all Orlando parks)
+- **Gap tightened:** `gap-4` → `gap-3` for denser grid without sacrificing readability
+
+### Architecture decisions:
+- Location data lives in a separate file from park-registry (registry = API source of truth, locations = our curated enrichment)
+- Location map is built once at module level (`buildLocationMap()`) — no per-render computation
+- ParkCard `location` prop is optional — graceful fallback if a destination isn't in our map yet
+- Moved local time display into the top meta row (near location) instead of bottom-right — groups geographic context together
+
+### Key file paths:
+- `src/lib/parks/park-locations.ts` — destination ID → {city, state, country, countryCode}
+- `src/components/ParkCard.tsx` — enriched card with location + time in meta row
+- `src/app/parks/page.tsx` — wider container, denser responsive grid, location-aware search

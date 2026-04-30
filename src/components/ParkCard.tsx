@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { MapPin, Clock } from 'lucide-react';
 import WaitTimeBadge from './WaitTimeBadge';
 
 interface ParkHours {
@@ -18,6 +19,7 @@ interface ParkCardProps {
   todayHours?: ParkHours | null;
   timezone?: string;
   localTime?: string;
+  location?: string;
 }
 
 /** Format "09:00" → "9 AM", "21:00" → "9 PM" */
@@ -53,6 +55,7 @@ export default function ParkCard({
   todayHours,
   timezone,
   localTime,
+  location,
 }: ParkCardProps) {
   const hasStatus = isOpen !== undefined;
   const tz = timezone ? tzAbbr(timezone) : '';
@@ -60,15 +63,16 @@ export default function ParkCard({
   return (
     <Link
       href={`/parks/${slug}`}
-      className={`group flex flex-col justify-between rounded-xl border p-5 transition-all hover:shadow-lg ${
+      className={`group flex flex-col justify-between rounded-xl border p-4 transition-all hover:shadow-lg sm:p-5 ${
         hasStatus && !isOpen
           ? 'border-primary-150 bg-primary-50/60 hover:border-primary-300 hover:shadow-primary-100/50'
           : 'border-primary-200 bg-white hover:border-primary-300 hover:shadow-primary-100/50'
       }`}
     >
+      {/* Top section: name + status */}
       <div>
         <div className="flex items-start justify-between gap-2">
-          <h3 className={`font-semibold group-hover:text-coral-600 ${hasStatus && !isOpen ? 'text-primary-600' : 'text-primary-800'}`}>
+          <h3 className={`text-sm font-semibold leading-tight group-hover:text-coral-600 sm:text-base ${hasStatus && !isOpen ? 'text-primary-600' : 'text-primary-800'}`}>
             {name}
           </h3>
           {hasStatus && (
@@ -83,11 +87,26 @@ export default function ParkCard({
             </span>
           )}
         </div>
-        <p className="mt-1 text-xs text-primary-400">{destinationName}</p>
+
+        {/* Location + meta row */}
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+          {location && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-primary-500">
+              <MapPin className="h-3 w-3 shrink-0" />
+              {location}
+            </span>
+          )}
+          {localTime && tz && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-primary-400">
+              <Clock className="h-3 w-3 shrink-0" />
+              {localTime} {tz}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="mt-4 flex items-end justify-between gap-2">
-        {/* Left: wait data or status context */}
+      {/* Bottom section: wait time / hours info */}
+      <div className="mt-3 flex items-end justify-between gap-2">
         {hasStatus && !isOpen ? (
           <div className="min-w-0">
             {todayHours ? (
@@ -114,15 +133,11 @@ export default function ParkCard({
           <span className="text-xs text-primary-400">Live data unavailable</span>
         )}
 
-        {/* Right: local time or attraction count */}
+        {/* Right: attraction count if available */}
         <div className="shrink-0 text-right">
-          {localTime && tz ? (
-            <span className="text-[11px] text-primary-400">
-              {localTime} {tz}
-            </span>
-          ) : attractionCount !== undefined ? (
-            <span className="text-xs text-primary-400">{attractionCount} rides</span>
-          ) : null}
+          {attractionCount !== undefined && attractionCount > 0 && (
+            <span className="text-[11px] text-primary-400">{attractionCount} rides</span>
+          )}
         </div>
       </div>
     </Link>

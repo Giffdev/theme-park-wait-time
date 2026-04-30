@@ -23,6 +23,12 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+// Mock lucide-react icons used by ParkCard
+vi.mock('lucide-react', () => ({
+  MapPin: ({ className }: { className?: string }) => <span data-testid="map-pin-icon" className={className}>📍</span>,
+  Clock: ({ className }: { className?: string }) => <span data-testid="clock-icon" className={className}>🕐</span>,
+}));
+
 // Mock Firebase to prevent initialization errors in test environment
 vi.mock('@/lib/firebase/config', () => ({
   auth: {},
@@ -157,9 +163,9 @@ describe('ParkCard', () => {
     expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
   });
 
-  it('renders destination name', () => {
-    render(<ParkCard {...defaultProps} />);
-    expect(screen.getByText('Walt Disney World')).toBeInTheDocument();
+  it('renders location when provided', () => {
+    render(<ParkCard {...defaultProps} location="Orlando, FL" />);
+    expect(screen.getByText('Orlando, FL')).toBeInTheDocument();
   });
 
   it('links to the correct park detail page using slug', () => {
