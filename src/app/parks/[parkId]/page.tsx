@@ -3,8 +3,10 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { RefreshCw, ArrowUpDown, TrendingUp, Clock, AlertCircle } from 'lucide-react';
+import { RefreshCw, ArrowUpDown, TrendingUp, Clock, AlertCircle, MapPin } from 'lucide-react';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
+import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
+import { getLocationByDestinationId, formatLocation } from '@/lib/parks/park-locations';
 import AttractionRow from '@/components/AttractionRow';
 import AttractionFilterChips, {
   type FilterState,
@@ -288,7 +290,30 @@ export default function ParkDetailPage() {
               <ParkOperatingStatus segments={schedule.segments} timezone={schedule.timezone} />
             )}
           </div>
-          <p className="mt-1 text-sm text-primary-500">{park?.destinationName}</p>
+          {park && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-primary-500">
+              {(() => {
+                const loc = park.destinationId ? getLocationByDestinationId(park.destinationId) : undefined;
+                return loc ? (
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    {formatLocation(loc)}
+                  </span>
+                ) : null;
+              })()}
+              {(() => {
+                const family = DESTINATION_FAMILIES.find((f) =>
+                  f.destinations.some((d) => d.parks.some((p) => p.id === park.id))
+                );
+                return family ? (
+                  <span className="text-primary-400">
+                    Part of {park.destinationName}
+                    {family.familyName !== park.destinationName && ` · ${family.familyName}`}
+                  </span>
+                ) : null;
+              })()}
+            </div>
+          )}
         </div>
         <div className="flex flex-col items-end gap-1">
           <button
@@ -362,7 +387,7 @@ export default function ParkDetailPage() {
             <AlertCircle className="h-4 w-4" />
             <span>Longest Wait</span>
           </div>
-          <p className="mt-1 text-2xl font-bold text-red-600">
+          <p className="mt-1 text-2xl font-bold text-amber-600">
             {operatingWithWaits.length > 0 ? longestWait : '—'}<span className="ml-1 text-sm font-normal text-primary-400">{operatingWithWaits.length > 0 ? 'min' : ''}</span>
           </p>
         </div>

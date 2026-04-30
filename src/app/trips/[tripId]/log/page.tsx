@@ -463,7 +463,7 @@ export default function TripLogRidePage() {
                   <button
                     type="button"
                     onClick={handleStopTimer}
-                    className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-red-600 active:scale-95 animate-pulse"
+                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-indigo-600 active:scale-95 animate-pulse"
                   >
                     <Timer className="h-4 w-4" />
                     Stop Timer

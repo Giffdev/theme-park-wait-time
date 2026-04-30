@@ -489,7 +489,6 @@ export default function ParksPage() {
                         todayHours={hours?.todayHours}
                         timezone={hours?.timezone}
                         localTime={hours?.localTime}
-                        location={resolveLocation(park)}
                       />
                     );
                   })}
