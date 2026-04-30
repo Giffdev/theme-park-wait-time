@@ -347,7 +347,10 @@ export default function ParkDetailPage() {
           ✈️ Start a Trip
         </Link>
         <Link
-          href="/calendar"
+          href={`/calendar${(() => {
+            const dest = DESTINATION_FAMILIES.flatMap((f) => f.destinations).find((d) => d.id === park?.destinationId);
+            return dest ? `?family=${dest.slug.replace(/-dest$/, '')}` : '';
+          })()}`}
           className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
         >
           📅 Crowd Calendar
