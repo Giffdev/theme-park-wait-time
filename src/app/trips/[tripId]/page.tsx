@@ -8,9 +8,11 @@ import { useAuth } from '@/lib/firebase/auth-context';
 import { getTrip, completeTrip, generateShareId, updateTrip, deleteTrip } from '@/lib/services/trip-service';
 import { getTripRideLogs } from '@/lib/services/trip-service';
 import { deleteRideLog } from '@/lib/services/ride-log-service';
+import { getTripDiningLogs, deleteDiningLog } from '@/lib/services/dining-log-service';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import type { Trip } from '@/types/trip';
 import type { RideLog } from '@/types/ride-log';
+import type { DiningLog } from '@/types/dining-log';
 
 function statusBadge(status: Trip['status']) {
   switch (status) {
@@ -53,6 +55,7 @@ export default function TripDetailPage() {
 
   const [trip, setTrip] = useState<(Trip & { id: string }) | null>(null);
   const [rideLogs, setRideLogs] = useState<(RideLog & { id: string })[]>([]);
+  const [diningLogs, setDiningLogs] = useState<(DiningLog & { id: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
@@ -65,6 +68,10 @@ export default function TripDetailPage() {
   // Delete ride log state
   const [deleteLogId, setDeleteLogId] = useState<string | null>(null);
   const [deletingLog, setDeletingLog] = useState(false);
+
+  // Delete dining log state
+  const [deleteDiningId, setDeleteDiningId] = useState<string | null>(null);
+  const [deletingDining, setDeletingDining] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user || !tripId) return;
@@ -80,6 +87,12 @@ export default function TripDetailPage() {
       setRideLogs(logs);
     } catch (err) {
       console.error('Failed to load ride logs:', err);
+    }
+    try {
+      const dLogs = await getTripDiningLogs(user.uid, tripId);
+      setDiningLogs(dLogs);
+    } catch (err) {
+      console.error('Failed to load dining logs:', err);
     }
     setLoading(false);
   }, [user, tripId]);
@@ -146,6 +159,20 @@ export default function TripDetailPage() {
     } finally {
       setDeletingLog(false);
       setDeleteLogId(null);
+    }
+  };
+
+  const handleDeleteDiningLog = async () => {
+    if (!user || !deleteDiningId) return;
+    setDeletingDining(true);
+    try {
+      await deleteDiningLog(user.uid, deleteDiningId);
+      setDiningLogs((prev) => prev.filter((l) => l.id !== deleteDiningId));
+    } catch (err) {
+      console.error('Failed to delete dining log:', err);
+    } finally {
+      setDeletingDining(false);
+      setDeleteDiningId(null);
     }
   };
 
@@ -332,9 +359,13 @@ export default function TripDetailPage() {
                             <p className="text-xs text-primary-500">{log.parkName} · {time}</p>
                           </div>
                           <div className="flex items-center gap-2">
-                            {log.waitTimeMinutes != null && (
+                            {log.waitTimeMinutes != null ? (
                               <span className="rounded-md bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-600">
                                 {log.waitTimeMinutes} min
+                              </span>
+                            ) : (
+                              <span className="rounded-md bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-400">
+                                —
                               </span>
                             )}
                             {log.rating && (
@@ -364,6 +395,66 @@ export default function TripDetailPage() {
         )}
       </div>
 
+      {/* Dining Timeline */}
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold text-primary-900 mb-4">🍽️ Dining</h2>
+
+        {diningLogs.length === 0 ? (
+          <div className="rounded-xl border-2 border-dashed border-amber-200 py-8 text-center">
+            <div className="text-3xl mb-2">🍽️</div>
+            <p className="text-primary-600 font-medium text-sm">No dining logged yet</p>
+            <p className="text-xs text-primary-400 mt-1">Log your meals and snacks along the way!</p>
+            <Link
+              href={`/trips/${trip.id}/log`}
+              className="mt-3 inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600"
+            >
+              Log Dining
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {diningLogs.map((log) => {
+              const time = log.diningAt instanceof Date
+                ? log.diningAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                : new Date(log.diningAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+              const mealIcons: Record<string, string> = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿' };
+              return (
+                <div key={log.id} className="group rounded-lg border border-amber-100 bg-white p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{mealIcons[log.mealType] || '🍽️'}</span>
+                      <div>
+                        <p className="text-sm font-medium text-primary-800">{log.restaurantName}</p>
+                        <p className="text-xs text-primary-500">
+                          {log.parkName} · {time} · <span className="capitalize">{log.mealType}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {log.rating && (
+                        <span className="text-xs text-amber-500">
+                          {'★'.repeat(log.rating)}{'☆'.repeat(5 - log.rating)}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => setDeleteDiningId(log.id)}
+                        className="ml-1 rounded-md p-1 text-red-400 transition-opacity hover:bg-red-50 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100"
+                        aria-label={`Delete ${log.restaurantName} dining log`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  {log.notes && (
+                    <p className="mt-1.5 ml-8 text-xs text-primary-500 italic">{log.notes}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Delete Trip Confirmation */}
       <ConfirmDialog
         open={showDeleteTrip}
@@ -384,6 +475,17 @@ export default function TripDetailPage() {
         onConfirm={handleDeleteRideLog}
         onCancel={() => setDeleteLogId(null)}
         loading={deletingLog}
+      />
+
+      {/* Delete Dining Log Confirmation */}
+      <ConfirmDialog
+        open={deleteDiningId !== null}
+        title="Delete Dining Log"
+        description="Are you sure you want to delete this dining log entry? This action cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={handleDeleteDiningLog}
+        onCancel={() => setDeleteDiningId(null)}
+        loading={deletingDining}
       />
     </div>
   );

@@ -166,9 +166,13 @@ export default function SharedTripPage() {
                 <p className="text-xs text-primary-400">{log.parkName}</p>
               </div>
               <div className="text-right">
-                {log.waitTimeMinutes != null && (
+                {log.waitTimeMinutes != null ? (
                   <p className="text-sm font-semibold text-primary-700">
                     {log.waitTimeMinutes} min
+                  </p>
+                ) : (
+                  <p className="text-sm font-medium text-gray-400">
+                    —
                   </p>
                 )}
                 {log.rating != null && (

@@ -20,7 +20,11 @@ interface ParkOption {
 interface AttractionOption {
   id: string;
   name: string;
+  entityType?: string;
 }
+
+// Only these entity types are loggable (excludes RESTAURANT, SHOP, MERCHANDISE, HOTEL, etc.)
+const LOGGABLE_ENTITY_TYPES = new Set(['ATTRACTION', 'RIDE', 'SHOW', 'MEET_AND_GREET']);
 
 /**
  * Form for manually adding a ride log entry (without timer).
@@ -33,6 +37,7 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
   const [attractionId, setAttractionId] = useState('');
   const [dateTime, setDateTime] = useState(new Date().toISOString().slice(0, 16));
   const [waitTime, setWaitTime] = useState('');
+  const [waitTimeUnknown, setWaitTimeUnknown] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -50,8 +55,13 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
       setAttractions([]);
       return;
     }
-    getCollection<{ name: string }>('attractions', [whereConstraint('parkId', '==', parkId)]).then((docs) => {
-      setAttractions(docs.map((d) => ({ id: d.id, name: d.name })).sort((a, b) => a.name.localeCompare(b.name)));
+    getCollection<{ name: string; entityType?: string }>('attractions', [whereConstraint('parkId', '==', parkId)]).then((docs) => {
+      setAttractions(
+        docs
+          .filter((d) => !d.entityType || LOGGABLE_ENTITY_TYPES.has(d.entityType))
+          .map((d) => ({ id: d.id, name: d.name, entityType: d.entityType }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
     });
   }, [parkId]);
 
@@ -87,7 +97,7 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
         parkName: selectedParkName,
         attractionName: selectedAttractionName,
         rodeAt: new Date(dateTime),
-        waitTimeMinutes: waitTime ? parseInt(waitTime, 10) : null,
+        waitTimeMinutes: waitTimeUnknown ? null : (waitTime ? parseInt(waitTime, 10) : null),
         source: 'manual',
         rating,
         notes: '',
@@ -157,19 +167,38 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
         <label htmlFor="wait-time" className="mb-1 block text-sm font-medium text-primary-700">
           Wait Time (optional)
         </label>
-        <div className="relative">
+        {!waitTimeUnknown && (
+          <div className="relative">
+            <input
+              id="wait-time"
+              type="number"
+              min="0"
+              max="300"
+              value={waitTime}
+              onChange={(e) => setWaitTime(e.target.value)}
+              placeholder="Minutes"
+              className="w-full rounded-xl border border-primary-200 px-4 py-3 pr-12 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-primary-400">min</span>
+          </div>
+        )}
+        {waitTimeUnknown && (
+          <div className="flex items-center justify-center rounded-xl border border-primary-100 bg-primary-50/50 px-4 py-3">
+            <span className="text-sm font-medium text-primary-400">Unknown</span>
+          </div>
+        )}
+        <label className="mt-2 flex items-center gap-2 cursor-pointer">
           <input
-            id="wait-time"
-            type="number"
-            min="0"
-            max="300"
-            value={waitTime}
-            onChange={(e) => setWaitTime(e.target.value)}
-            placeholder="Minutes"
-            className="w-full rounded-xl border border-primary-200 px-4 py-3 pr-12 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            type="checkbox"
+            checked={waitTimeUnknown}
+            onChange={(e) => {
+              setWaitTimeUnknown(e.target.checked);
+              if (e.target.checked) setWaitTime('');
+            }}
+            className="h-4 w-4 rounded border-primary-300 text-primary-600 focus:ring-primary-500"
           />
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-primary-400">min</span>
-        </div>
+          <span className="text-xs text-primary-500">I don&apos;t remember</span>
+        </label>
       </div>
 
       {/* Rating */}

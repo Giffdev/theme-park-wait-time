@@ -41,10 +41,14 @@ export default function RideLogEntry({ log, onDelete }: RideLogEntryProps) {
         </div>
 
         {/* Wait time badge */}
-        {log.waitTimeMinutes !== null && (
+        {log.waitTimeMinutes !== null ? (
           <span className={`inline-flex items-baseline gap-0.5 rounded-full px-2.5 py-1 text-sm font-bold ${waitColor}`}>
             {log.waitTimeMinutes}
             <span className="text-[0.6em] font-medium opacity-70">min</span>
+          </span>
+        ) : (
+          <span className="inline-flex items-baseline rounded-full bg-gray-100 px-2.5 py-1 text-sm font-medium text-gray-400">
+            —
           </span>
         )}
       </div>
