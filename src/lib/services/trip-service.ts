@@ -114,8 +114,9 @@ export async function getTrips(
     constraints.push(limitConstraint(options.limit));
   }
 
+  let trips: (Trip & { id: string })[];
   try {
-    return await getCollection<Trip>(tripsPath(userId), constraints);
+    trips = await getCollection<Trip>(tripsPath(userId), constraints);
   } catch (error) {
     // Fallback: if the composite index isn't built yet, fetch all and filter client-side
     console.warn('[getTrips] Query failed (missing index?), falling back to client-side filter:', error);
@@ -130,8 +131,35 @@ export async function getTrips(
     if (options.limit) {
       results = results.slice(0, options.limit);
     }
-    return results;
+    trips = results;
   }
+
+  // Backfill parkNames for trips that have rides but missing parkNames
+  const tripsNeedingBackfill = trips.filter(
+    (t) => t.stats.totalRides > 0 && (!t.parkNames || Object.keys(t.parkNames).length === 0)
+  );
+  if (tripsNeedingBackfill.length > 0) {
+    // Fire-and-forget: update stats in the background so next load has parkNames
+    Promise.all(
+      tripsNeedingBackfill.map((t) => updateTripStats(userId, t.id))
+    ).catch((err) => console.warn('[getTrips] parkNames backfill failed:', err));
+
+    // Also fetch ride logs now to populate parkNames for this render
+    for (const trip of tripsNeedingBackfill) {
+      try {
+        const logs = await getTripRideLogs(userId, trip.id);
+        const names: Record<string, string> = {};
+        for (const log of logs) {
+          if (log.parkName && !names[log.parkId]) {
+            names[log.parkId] = log.parkName;
+          }
+        }
+        trip.parkNames = names;
+      } catch { /* skip */ }
+    }
+  }
+
+  return trips;
 }
 
 /** Get a single trip by ID. */
