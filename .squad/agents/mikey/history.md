@@ -77,3 +77,12 @@
 - **Cold-start reality:** Need ~3 same-weekday visits with 5+ snapshots each before historical becomes useful. Popular parks: 3-4 weeks. Unpopular parks: may never reach threshold. Phased rollout handles this gracefully.
 - **Key files:** `src/lib/forecast/aggregation.ts` (Chunk), `src/lib/forecast/blender.ts` (Data), `ForecastChart.tsx` (Mouth adds source badge)
 - **Build order:** Chunk (aggregation pipeline) → Data (API blending logic + forecastMeta) → Mouth (source badge UI)
+
+### 2026-04-30 — Park Card Wait Time Metrics Redesign
+- **Decision file:** `.squad/decisions/inbox/mikey-park-card-metrics.md`
+- **Problem:** "Shortest wait" on park cards was useless — every park has a 0-wait show or walk-through, making all parks look identical.
+- **Solution:** Replace `shortestWait` with `averageWait` across rides where `waitMinutes > 0`. Filtering out zero-wait entries eliminates shows/walk-throughs that skew the signal. Compute a rounded mean in `parks/page.tsx`.
+- **Crowd level badge:** Added `crowdLevel(avg)` helper in `ParkCard.tsx` mapping avg to Quiet/Moderate/Busy/Packed. Thresholds: < 20 min = Quiet (green), 20–34 = Moderate (amber), 35–54 = Busy (orange), ≥ 55 = Packed (indigo). No red used per project accent directive.
+- **State shape change:** `shortestWaits: Record<string, number | null>` → `waitMetrics: Record<string, { average: number | null; activeRideCount: number }>`. Passes `activeRideCount` so card shows "12 rides" context.
+- **No-data handling:** Null average falls through to existing "Live data unavailable" branches — no zero-minute display.
+- **Key rule:** Always filter `waitMinutes > 0` (not just `!== null`) before computing park-level averages. Zero-wait attractions are valid Firestore entries but meaningless for crowd-level inference.

@@ -13,13 +13,21 @@ interface ParkCardProps {
   slug: string;
   name: string;
   destinationName: string;
-  shortestWait: number | null;
-  attractionCount?: number;
+  averageWait: number | null;
+  activeRideCount?: number;
   isOpen?: boolean;
   todayHours?: ParkHours | null;
   timezone?: string;
   localTime?: string;
   location?: string;
+}
+
+/** Derive crowd level from average wait across active rides */
+function crowdLevel(avg: number): { label: string; className: string } {
+  if (avg < 20) return { label: 'Quiet', className: 'bg-green-100 text-green-700' };
+  if (avg < 35) return { label: 'Moderate', className: 'bg-amber-100 text-amber-700' };
+  if (avg < 55) return { label: 'Busy', className: 'bg-orange-100 text-orange-700' };
+  return { label: 'Packed', className: 'bg-indigo-100 text-indigo-700' };
 }
 
 /** Format "09:00" → "9 AM", "21:00" → "9 PM" */
@@ -49,8 +57,8 @@ export default function ParkCard({
   slug,
   name,
   destinationName,
-  shortestWait,
-  attractionCount,
+  averageWait,
+  activeRideCount,
   isOpen,
   todayHours,
   timezone,
@@ -117,10 +125,10 @@ export default function ParkCard({
               <span className="text-sm text-primary-300">Hours unavailable</span>
             )}
           </div>
-        ) : shortestWait !== null ? (
+        ) : averageWait !== null ? (
           <div>
-            <p className="text-[11px] uppercase tracking-wider text-primary-400">Shortest wait</p>
-            <WaitTimeBadge waitMinutes={shortestWait} size="sm" />
+            <p className="text-[11px] uppercase tracking-wider text-primary-400">Avg wait</p>
+            <WaitTimeBadge waitMinutes={averageWait} size="sm" />
           </div>
         ) : hasStatus && isOpen && todayHours ? (
           <div>
@@ -133,10 +141,15 @@ export default function ParkCard({
           <span className="text-sm text-primary-400">Live data unavailable</span>
         )}
 
-        {/* Right: attraction count if available */}
+        {/* Right: crowd level badge + ride count */}
         <div className="shrink-0 text-right">
-          {attractionCount !== undefined && attractionCount > 0 && (
-            <span className="text-xs text-primary-400">{attractionCount} rides</span>
+          {averageWait !== null && isOpen !== false && (
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${crowdLevel(averageWait).className}`}>
+              {crowdLevel(averageWait).label}
+            </span>
+          )}
+          {activeRideCount !== undefined && activeRideCount > 0 && (
+            <p className="mt-1 text-xs text-primary-400">{activeRideCount} rides</p>
           )}
         </div>
       </div>

@@ -122,7 +122,7 @@ export default function RideDetailPanel({ attractionId, parkId, name, entityType
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="relative w-full md:w-96 md:h-full bg-white rounded-t-2xl md:rounded-none shadow-xl animate-slide-up md:animate-none overflow-y-auto max-h-[80vh] md:max-h-full outline-none"
+        className="relative w-full md:w-[28rem] md:h-full bg-white rounded-t-2xl md:rounded-none shadow-xl animate-slide-up md:animate-none overflow-y-auto max-h-[90vh] md:max-h-full outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

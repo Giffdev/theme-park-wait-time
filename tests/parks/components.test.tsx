@@ -155,7 +155,8 @@ describe('ParkCard', () => {
     slug: 'magic-kingdom',
     name: 'Magic Kingdom',
     destinationName: 'Walt Disney World',
-    shortestWait: 15,
+    averageWait: 25,
+    activeRideCount: 18,
   };
 
   it('renders park name', () => {
@@ -174,20 +175,20 @@ describe('ParkCard', () => {
     expect(link).toHaveAttribute('href', '/parks/magic-kingdom');
   });
 
-  it('shows shortest wait time when available', () => {
-    render(<ParkCard {...defaultProps} shortestWait={15} />);
-    expect(screen.getByText('15')).toBeInTheDocument();
-    expect(screen.getByText('Shortest wait')).toBeInTheDocument();
+  it('shows average wait time when available', () => {
+    render(<ParkCard {...defaultProps} averageWait={25} />);
+    expect(screen.getByText('25')).toBeInTheDocument();
+    expect(screen.getByText('Avg wait')).toBeInTheDocument();
   });
 
-  it('shows "Live data unavailable" when shortestWait is null', () => {
-    render(<ParkCard {...defaultProps} shortestWait={null} />);
+  it('shows "Live data unavailable" when averageWait is null', () => {
+    render(<ParkCard {...defaultProps} averageWait={null} />);
     expect(screen.getAllByText('Live data unavailable').length).toBeGreaterThan(0);
   });
 
-  it('shows attraction count when provided', () => {
-    render(<ParkCard {...defaultProps} attractionCount={42} />);
-    expect(screen.getByText('42 rides')).toBeInTheDocument();
+  it('shows active ride count when provided', () => {
+    render(<ParkCard {...defaultProps} activeRideCount={18} />);
+    expect(screen.getByText(/18 rides/)).toBeInTheDocument();
   });
 });
 

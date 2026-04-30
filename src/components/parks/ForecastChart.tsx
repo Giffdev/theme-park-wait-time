@@ -103,7 +103,7 @@ export default function ForecastChart({ forecast, forecastMeta, operatingHours, 
 
   return (
     <div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ maxHeight: '200px' }} role="img" aria-label="Wait time forecast chart">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ maxHeight: '240px' }} role="img" aria-label="Wait time forecast chart">
         <defs>
           <linearGradient id="forecast-gradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="rgb(251, 146, 60)" stopOpacity="0.3" />
@@ -171,7 +171,9 @@ export default function ForecastChart({ forecast, forecastMeta, operatingHours, 
       {forecastMeta?.source === 'historical' && (
         <div className="mt-2 flex items-center">
           <span className="bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2.5 py-0.5 text-xs font-medium">
-            Based on past visits{forecastMeta.confidence != null ? ` · ${Math.round(forecastMeta.confidence * 100)}% confidence` : ''}
+            {forecastMeta.dataRange?.sampleCount
+              ? `Estimated · Based on ${forecastMeta.dataRange.sampleCount} reports`
+              : 'Estimated from historical data'}
           </span>
         </div>
       )}

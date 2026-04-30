@@ -77,7 +77,7 @@ export default function ParksPage() {
   const [parks, setParks] = useState<Park[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [shortestWaits, setShortestWaits] = useState<Record<string, number | null>>({});
+  const [waitMetrics, setWaitMetrics] = useState<Record<string, { average: number | null; activeRideCount: number }>>({});
   const [parkHours, setParkHours] = useState<Record<string, ParkHoursEntry>>({});
   const [latestFetchedAt, setLatestFetchedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -180,10 +180,17 @@ export default function ParksPage() {
           const waitData = await getCollection<WaitTimeEntry>(
             `waitTimes/${park.id}/current`
           );
-          const operatingWaits = waitData
-            .filter((w) => w.status === 'OPERATING' && w.waitMinutes !== null)
+          // Only count rides actively operating with a real (non-zero) wait.
+          // Filtering out 0-wait entries removes shows and walk-throughs that would
+          // otherwise drag the average down and make parks look identical.
+          const reportingWaits = waitData
+            .filter((w) => w.status === 'OPERATING' && w.waitMinutes !== null && w.waitMinutes > 0)
             .map((w) => w.waitMinutes as number);
-          const shortest = operatingWaits.length > 0 ? Math.min(...operatingWaits) : null;
+
+          const average =
+            reportingWaits.length > 0
+              ? Math.round(reportingWaits.reduce((sum, v) => sum + v, 0) / reportingWaits.length)
+              : null;
 
           for (const w of waitData) {
             if (w.fetchedAt) {
@@ -192,25 +199,28 @@ export default function ParksPage() {
             }
           }
 
-          return { parkId: park.id, shortest };
+          return { parkId: park.id, average, activeRideCount: reportingWaits.length };
         })
       );
 
       if (controller.signal.aborted) return;
 
       // Update state progressively after each batch
-      const batchWaits: Record<string, number | null> = {};
+      const batchMetrics: Record<string, { average: number | null; activeRideCount: number }> = {};
       for (const result of batchResults) {
         if (result.status === 'fulfilled') {
-          batchWaits[result.value.parkId] = result.value.shortest;
+          batchMetrics[result.value.parkId] = {
+            average: result.value.average,
+            activeRideCount: result.value.activeRideCount,
+          };
         } else {
-          // Failed fetch — mark as null
+          // Failed fetch — mark as no data
           const idx = batchResults.indexOf(result);
-          batchWaits[batch[idx].id] = null;
+          batchMetrics[batch[idx].id] = { average: null, activeRideCount: 0 };
         }
       }
 
-      setShortestWaits((prev) => ({ ...prev, ...batchWaits }));
+      setWaitMetrics((prev) => ({ ...prev, ...batchMetrics }));
       if (maxTimestamp > 0) setLatestFetchedAt(maxTimestamp);
     }
 
@@ -240,7 +250,7 @@ export default function ParksPage() {
     setRefreshing(true);
     try {
       await fetch('/api/wait-times');
-      setShortestWaits({});
+      setWaitMetrics({});
       await Promise.all([fetchParks(), fetchParkHours()]);
     } catch (error) {
       console.error('Refresh failed:', error);
@@ -543,7 +553,8 @@ export default function ParksPage() {
                         slug={park.slug}
                         name={park.name}
                         destinationName={park.destinationName}
-                        shortestWait={shortestWaits[park.id] ?? null}
+                        averageWait={waitMetrics[park.id]?.average ?? null}
+                        activeRideCount={waitMetrics[park.id]?.activeRideCount}
                         isOpen={hours?.isOpen}
                         todayHours={hours?.todayHours}
                         timezone={hours?.timezone}

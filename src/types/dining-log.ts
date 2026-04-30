@@ -16,6 +16,8 @@ export interface DiningLog {
   mealType: MealType;
   rating: number | null; // 1-5 stars
   notes: string; // what you had, brief review
+  hadReservation: boolean | null; // yes/no/unanswered
+  tableWaitMinutes: number | null; // approximate wait for table, null = unknown
   tripId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -28,5 +30,5 @@ export type DiningLogCreateData = Omit<DiningLog, 'id' | 'createdAt' | 'updatedA
 
 /** Fields that can be updated on an existing dining log. */
 export type DiningLogUpdateData = Partial<
-  Pick<DiningLog, 'rating' | 'notes' | 'mealType' | 'diningAt'>
+  Pick<DiningLog, 'rating' | 'notes' | 'mealType' | 'diningAt' | 'hadReservation' | 'tableWaitMinutes'>
 >;
