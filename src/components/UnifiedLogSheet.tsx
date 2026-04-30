@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/firebase/auth-context';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
 import { addRideLog } from '@/lib/services/ride-log-service';
 import { submitWaitTimeReport } from '@/lib/firebase/waitTimeReports';
-import { getActiveTrip } from '@/lib/services/trip-service';
+import { getActiveTrip, getTripRideLogs } from '@/lib/services/trip-service';
 import { classifyAttraction } from '@/lib/utils/classify-attraction';
 import WaitTimeInput from '@/components/ride-log/WaitTimeInput';
 import type { WaitTimeMode } from '@/components/ride-log/WaitTimeInput';
@@ -136,15 +136,37 @@ export default function UnifiedLogSheet({
     setSheetState('form');
   }, [open, initialAttractionId, initialAttractionName]);
 
-  // Check for active trip
+  // Check for active trip and default park from today's logs
   useEffect(() => {
     if (!open || !user) return;
-    getActiveTrip(user.uid).then((t) => {
+    getActiveTrip(user.uid).then(async (t) => {
       setActiveTripId(t?.id ?? null);
       setActiveTripName(t?.name ?? null);
       setTripCheckDone(true);
+
+      // If no explicit initialParkId, try to default from today's most recent ride log
+      if (!initialParkId && t?.id) {
+        try {
+          const logs = await getTripRideLogs(user.uid, t.id);
+          const todayStr = new Date().toISOString().split('T')[0];
+          const todayLog = logs.find((log) => {
+            const raw = log.rodeAt as unknown;
+            const d = raw instanceof Date
+              ? raw
+              : (raw && typeof (raw as { toDate?: () => Date }).toDate === 'function')
+                ? (raw as { toDate: () => Date }).toDate()
+                : new Date(raw as string | number);
+            return d.toISOString().split('T')[0] === todayStr;
+          });
+          if (todayLog) {
+            setSelectedParkId(todayLog.parkId);
+          }
+        } catch {
+          // Ignore — localStorage fallback already applied
+        }
+      }
     }).catch(() => { setActiveTripId(null); setActiveTripName(null); setTripCheckDone(true); });
-  }, [open, user]);
+  }, [open, user, initialParkId]);
 
   // Load attractions when park changes
   useEffect(() => {

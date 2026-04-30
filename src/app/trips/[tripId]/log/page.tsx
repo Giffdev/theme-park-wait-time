@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Search, X, Star, Timer, Clock, ChevronLeft, MapPin, Utensils } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
-import { getTrip } from '@/lib/services/trip-service';
+import { getTrip, getTripRideLogs } from '@/lib/services/trip-service';
 import { createRideLog } from '@/lib/services/ride-log-service';
 import { addDiningLog } from '@/lib/services/dining-log-service';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
@@ -105,15 +105,40 @@ export default function TripLogRidePage() {
     }
   }, [authLoading, user, router]);
 
-  // Load trip data
+  // Load trip data and default park to today's most recent ride log park
   useEffect(() => {
     if (!user || !tripId) return;
     setLoading(true);
     getTrip(user.uid, tripId)
-      .then((t) => {
+      .then(async (t) => {
         setTrip(t);
-        if (t && (t.parkIds ?? []).length > 0) {
-          setParkId((t.parkIds ?? [])[0]);
+        if (!t) return;
+
+        // Try to default park based on today's most recent ride log
+        const tripParkIds = t.parkIds ?? [];
+        try {
+          const logs = await getTripRideLogs(user.uid, tripId);
+          const todayStr = new Date().toISOString().split('T')[0];
+          const todayLog = logs.find((log) => {
+            const raw = log.rodeAt as unknown;
+            const d = raw instanceof Date
+              ? raw
+              : (raw && typeof (raw as { toDate?: () => Date }).toDate === 'function')
+                ? (raw as { toDate: () => Date }).toDate()
+                : new Date(raw as string | number);
+            return d.toISOString().split('T')[0] === todayStr;
+          });
+          if (todayLog) {
+            setParkId(todayLog.parkId);
+            return;
+          }
+        } catch {
+          // Fall through to default
+        }
+
+        // Fallback: first park in trip
+        if (tripParkIds.length > 0) {
+          setParkId(tripParkIds[0]);
         }
       })
       .catch(() => setTrip(null))
