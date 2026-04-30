@@ -98,6 +98,53 @@ export const DESTINATION_LOCATIONS: Record<string, ParkLocation> = {
   'd5487510-2e13-4eb5-9fab-9a9c11cec738': { city: 'Yongin', country: 'South Korea', countryCode: 'KR' },
   '126bee75-8235-4007-8fe8-48aa52e33188': { city: 'Seoul', country: 'South Korea', countryCode: 'KR' },
   'a39233ea-13b5-41b0-9f96-5da787e1de33': { city: 'Fujiyoshida', country: 'Japan', countryCode: 'JP' },
+  '259cf011-6195-42dd-bfdb-640969e0bfb9': { city: 'Guangzhou', country: 'China', countryCode: 'CN' },
+  '38ca7997-883b-4ae8-a87c-69a74967d59e': { city: 'Zhuhai', country: 'China', countryCode: 'CN' },
+  'cb785f25-3dac-48bb-9560-479aa9ebf942': { city: 'Chuncheon', country: 'South Korea', countryCode: 'KR' },
+  'ae0cd07c-87f3-41d9-a825-0fded65d626c': { city: 'Nagoya', country: 'Japan', countryCode: 'JP' },
+
+  // ─── Australian Parks ────────────────────────────────────────────────────────
+  '6b397295-c007-4965-83a3-ad8a3d329a0f': { city: 'Gold Coast', state: 'QLD', country: 'Australia', countryCode: 'AU' },
+  'ba435567-3d0b-48f0-b1b6-8121a4427ae2': { city: 'Gold Coast', state: 'QLD', country: 'Australia', countryCode: 'AU' },
+  '8245df87-88c2-48f0-a086-44b3e2ab90ce': { city: 'Gold Coast', state: 'QLD', country: 'Australia', countryCode: 'AU' },
+  '07d71a54-1409-4276-891a-569fc4d442cd': { city: 'Gold Coast', state: 'QLD', country: 'Australia', countryCode: 'AU' },
+
+  // ─── Additional European Parks ───────────────────────────────────────────────
+  'b55f40bd-7f8b-4cf5-b3f5-c3c2a4927832': { city: 'Nimtofte', country: 'Denmark', countryCode: 'DK' },
+  'c3975a6c-bd4c-4757-9a24-e67047a56cde': { city: 'Sierksdorf', country: 'Germany', countryCode: 'DE' },
+  '4809bc90-1580-4738-9a77-a713fed396a8': { city: 'Günzburg', country: 'Germany', countryCode: 'DE' },
+  '17058277-57f8-43f1-91c8-0af2c2fe50bc': { city: 'Madrid', country: 'Spain', countryCode: 'ES' },
+  '22489737-c1f7-4ac9-b79b-b664e5efd866': { city: 'Haßloch', country: 'Germany', countryCode: 'DE' },
+  'c0eddd5b-da82-4161-9a5f-2eb4ab5f82e7': { city: 'De Panne', country: 'Belgium', countryCode: 'BE' },
+  '7e95a960-dd7f-41a4-938c-4abe417c24f2': { city: 'Lichtaart', country: 'Belgium', countryCode: 'BE' },
+  'c4307928-fc3c-47df-b976-305026751727': { city: 'Chessington', country: 'United Kingdom', countryCode: 'GB' },
+  'f9497403-adf3-4409-bd79-bb5b54000e45': { city: 'Les Avenières', country: 'France', countryCode: 'FR' },
+  '46ad6ab4-90db-4c39-b9a4-be833266c210': { city: 'Chasseneuil-du-Poitou', country: 'France', countryCode: 'FR' },
+  '0976f1b8-5782-4cda-887f-dc1d537d8d6e': { city: 'Soltau', country: 'Germany', countryCode: 'DE' },
+  'bda7d2f4-6622-4f8f-80c6-a46986d73469': { city: 'Romsey', country: 'United Kingdom', countryCode: 'GB' },
+  'df686841-3a46-4ac7-a1c7-8f3cac840a2b': { city: 'San Martín de la Vega', country: 'Spain', countryCode: 'ES' },
+  'c11ad942-8f5d-4642-862c-30d8b7a414e3': { city: 'Sevenum', country: 'Netherlands', countryCode: 'NL' },
+  '66fbd0d1-14dd-4f1a-bb18-5e0b7447f07d': { city: 'Blackpool', country: 'United Kingdom', countryCode: 'GB' },
+  '9c6a0987-e519-4d6e-b011-e6c47a60641b': { city: 'Biddinghuizen', country: 'Netherlands', countryCode: 'NL' },
+  '85c5cdc5-95c3-4190-9a05-9707b634889d': { city: 'Ieper', country: 'Belgium', countryCode: 'BE' },
+  '8d8a8cc7-4523-4437-8bb6-5c87a26ba5ce': { city: 'Wavre', country: 'Belgium', countryCode: 'BE' },
+  'd7d1b145-234d-4c30-91e9-e0638cc1e4d8': { city: 'Savio', country: 'Italy', countryCode: 'IT' },
+  '7b1d2346-363e-4a36-be23-5637fc6d508a': { city: 'Bottrop', country: 'Germany', countryCode: 'DE' },
+
+  // ─── Middle East ─────────────────────────────────────────────────────────────
+  '0307219d-b1a1-4be6-a1e0-ae8cff7a0b63': { city: 'Riyadh', country: 'Saudi Arabia', countryCode: 'SA' },
+
+  // ─── Additional US Water Parks / Six Flags ───────────────────────────────────
+  '2b6b1661-1eef-4d93-9861-920fd11a567e': { city: 'Galveston', state: 'TX', country: 'United States', countryCode: 'US' },
+  '6e425f9f-8193-46cf-a30c-8ababdaa48de': { city: 'Marietta', state: 'GA', country: 'United States', countryCode: 'US' },
+  '264d93c9-815b-4aa1-99a9-874d4afc2fd6': { city: 'Oklahoma City', state: 'OK', country: 'United States', countryCode: 'US' },
+  '24198718-af4d-4306-b34f-0f36b40af61c': { city: 'Spring', state: 'TX', country: 'United States', countryCode: 'US' },
+  '3708aa63-8d54-4ed0-ae3a-37b726aaae46': { city: 'New Braunfels', state: 'TX', country: 'United States', countryCode: 'US' },
+  '1b41ac41-e8bd-4085-b39a-7ae3181efe1d': { city: 'Concord', state: 'CA', country: 'United States', countryCode: 'US' },
+  'afd094fc-7675-47f3-a3d8-1674fd80fec0': { city: 'Rockford', state: 'IL', country: 'United States', countryCode: 'US' },
+  '86d891aa-c2e5-47ff-9da7-d8ab160c1cb5': { city: 'Oaxtepec', country: 'Mexico', countryCode: 'MX' },
+  'f342a6ed-ea22-43e0-a092-89996c4e8db7': { city: 'Phoenix', state: 'AZ', country: 'United States', countryCode: 'US' },
+  '4a2cc72e-04ef-4108-ab63-6d8416263efd': { city: 'Winter Haven', state: 'FL', country: 'United States', countryCode: 'US' },
 };
 
 /**

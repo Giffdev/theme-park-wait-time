@@ -1,10 +1,20 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { RefreshCw, Search } from 'lucide-react';
+import { RefreshCw, Search, ChevronDown, X, Star } from 'lucide-react';
 import { getCollection } from '@/lib/firebase/firestore';
 import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
 import { getLocationByDestinationId, formatLocation } from '@/lib/parks/park-locations';
+
+const FAVORITES_STORAGE_KEY = 'parkflow-favorite-families';
+
+/** Map family names to familyIds and vice versa for localStorage persistence */
+const FAMILY_NAME_TO_ID: Record<string, string> = {};
+const FAMILY_ID_TO_NAME: Record<string, string> = {};
+for (const family of DESTINATION_FAMILIES) {
+  FAMILY_NAME_TO_ID[family.familyName] = family.familyId;
+  FAMILY_ID_TO_NAME[family.familyId] = family.familyName;
+}
 import ParkCard from '@/components/ParkCard';
 
 interface Park {
@@ -53,6 +63,16 @@ function buildLocationMap(): Record<string, string> {
 
 const PARK_LOCATIONS = buildLocationMap();
 
+/** Resolve location for any park — uses pre-built map first, falls back to destinationId lookup */
+function resolveLocation(park: { id: string; destinationId?: string }): string | undefined {
+  if (PARK_LOCATIONS[park.id]) return PARK_LOCATIONS[park.id];
+  if (park.destinationId) {
+    const loc = getLocationByDestinationId(park.destinationId);
+    return loc ? formatLocation(loc) : undefined;
+  }
+  return undefined;
+}
+
 export default function ParksPage() {
   const [parks, setParks] = useState<Park[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,7 +82,45 @@ export default function ParksPage() {
   const [latestFetchedAt, setLatestFetchedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFamily, setSelectedFamily] = useState('');
+  const [familyDropdownOpen, setFamilyDropdownOpen] = useState(false);
+  const [familySearchQuery, setFamilySearchQuery] = useState('');
+  const [favorites, setFavorites] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Initialize favorites from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) setFavorites(parsed);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, []);
+
+  const toggleFavorite = useCallback((familyName: string) => {
+    const familyId = FAMILY_NAME_TO_ID[familyName] || familyName;
+    setFavorites((prev) => {
+      const next = prev.includes(familyId)
+        ? prev.filter((id) => id !== familyId)
+        : [...prev, familyId];
+      try {
+        localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Storage full or unavailable
+      }
+      return next;
+    });
+  }, []);
+
+  const isFavorited = useCallback((familyName: string) => {
+    const familyId = FAMILY_NAME_TO_ID[familyName] || familyName;
+    return favorites.includes(familyId);
+  }, [favorites]);
 
   // Tick every 30s for freshness label
   useEffect(() => {
@@ -191,19 +249,52 @@ export default function ParksPage() {
     }
   };
 
-  // Filter parks by search query (includes location)
-  const filteredParks = useMemo(() => {
-    if (!searchQuery.trim()) return parks;
-    const q = searchQuery.toLowerCase();
-    return parks.filter(
-      (park) =>
-        park.name.toLowerCase().includes(q) ||
-        park.destinationName.toLowerCase().includes(q) ||
-        (PARK_LOCATIONS[park.id] || '').toLowerCase().includes(q)
-    );
-  }, [parks, searchQuery]);
+  // All unique destination family names sorted alphabetically
+  const allFamilies = useMemo(() => {
+    const names = [...new Set(parks.map((p) => p.destinationName || 'Other'))];
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [parks]);
 
-  // Group parks by destination, sorted alphabetically
+  // Filtered family options for the searchable dropdown
+  const filteredFamilyOptions = useMemo(() => {
+    if (!familySearchQuery.trim()) return allFamilies;
+    const q = familySearchQuery.toLowerCase();
+    return allFamilies.filter((f) => f.toLowerCase().includes(q));
+  }, [allFamilies, familySearchQuery]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setFamilyDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Filter parks by search query AND selected family
+  const filteredParks = useMemo(() => {
+    let result = parks;
+
+    if (selectedFamily) {
+      result = result.filter((park) => (park.destinationName || 'Other') === selectedFamily);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (park) =>
+          park.name.toLowerCase().includes(q) ||
+          park.destinationName.toLowerCase().includes(q) ||
+          (resolveLocation(park) || '').toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  }, [parks, searchQuery, selectedFamily]);
+
+  // Group parks by destination, favorites first then alphabetical
   const grouped = useMemo(() => {
     const groups = filteredParks.reduce<Record<string, Park[]>>((acc, park) => {
       const dest = park.destinationName || 'Other';
@@ -217,9 +308,15 @@ export default function ParksPage() {
       groups[dest].sort((a, b) => a.name.localeCompare(b.name));
     }
 
-    // Return sorted destination entries
-    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
-  }, [filteredParks]);
+    // Sort: favorites first (alphabetical), then non-favorites (alphabetical)
+    return Object.entries(groups).sort(([a], [b]) => {
+      const aFav = isFavorited(a);
+      const bFav = isFavorited(b);
+      if (aFav && !bFav) return -1;
+      if (!aFav && bFav) return 1;
+      return a.localeCompare(b);
+    });
+  }, [filteredParks, isFavorited]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 pb-24 sm:px-6 md:pb-10 lg:px-8">
@@ -245,17 +342,89 @@ export default function ParksPage() {
         </p>
       )}
 
-      {/* Search input */}
+      {/* Search & Filter row */}
       {!loading && (
-        <div className="relative mb-8">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search parks, destinations, or locations..."
-            className="w-full rounded-lg border border-primary-200 bg-white py-2.5 pl-10 pr-4 text-sm text-primary-800 placeholder:text-primary-300 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-400"
-          />
+        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+          {/* Text search */}
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search parks, destinations, or locations..."
+              className="w-full rounded-lg border border-primary-200 bg-white py-2.5 pl-10 pr-4 text-sm text-primary-800 placeholder:text-primary-300 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-400"
+            />
+          </div>
+
+          {/* Searchable family dropdown */}
+          <div className="relative w-full sm:w-64" ref={dropdownRef}>
+            <div
+              className="flex cursor-pointer items-center rounded-lg border border-primary-200 bg-white py-2.5 pl-3 pr-2 text-sm transition-colors focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-400"
+              onClick={() => setFamilyDropdownOpen(true)}
+            >
+              <input
+                type="text"
+                value={familyDropdownOpen ? familySearchQuery : (selectedFamily || '')}
+                onChange={(e) => {
+                  setFamilySearchQuery(e.target.value);
+                  setFamilyDropdownOpen(true);
+                }}
+                onFocus={() => {
+                  setFamilyDropdownOpen(true);
+                  setFamilySearchQuery('');
+                }}
+                placeholder="All Parks"
+                className="flex-1 bg-transparent text-primary-800 placeholder:text-primary-400 focus:outline-none"
+              />
+              {selectedFamily ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedFamily('');
+                    setFamilySearchQuery('');
+                    setFamilyDropdownOpen(false);
+                  }}
+                  className="mr-1 rounded p-0.5 text-primary-400 hover:text-primary-600"
+                  aria-label="Clear filter"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+              <ChevronDown className={`h-4 w-4 text-primary-400 transition-transform ${familyDropdownOpen ? 'rotate-180' : ''}`} />
+            </div>
+
+            {familyDropdownOpen && (
+              <ul className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-primary-200 bg-white py-1 shadow-lg">
+                <li
+                  onClick={() => {
+                    setSelectedFamily('');
+                    setFamilySearchQuery('');
+                    setFamilyDropdownOpen(false);
+                  }}
+                  className={`cursor-pointer px-3 py-2 text-sm transition-colors hover:bg-primary-50 ${!selectedFamily ? 'font-medium text-coral-600' : 'text-primary-700'}`}
+                >
+                  All Parks
+                </li>
+                {filteredFamilyOptions.map((family) => (
+                  <li
+                    key={family}
+                    onClick={() => {
+                      setSelectedFamily(family);
+                      setFamilySearchQuery('');
+                      setFamilyDropdownOpen(false);
+                    }}
+                    className={`cursor-pointer px-3 py-2 text-sm transition-colors hover:bg-primary-50 ${selectedFamily === family ? 'font-medium text-coral-600' : 'text-primary-700'}`}
+                  >
+                    {family}
+                  </li>
+                ))}
+                {filteredFamilyOptions.length === 0 && (
+                  <li className="px-3 py-2 text-sm text-primary-400">No matches</li>
+                )}
+              </ul>
+            )}
+          </div>
         </div>
       )}
 
@@ -279,13 +448,29 @@ export default function ParksPage() {
       ) : (
         <div className="space-y-12">
           {grouped.map(([destination, destParks]) => {
-            const destLocation = PARK_LOCATIONS[destParks[0]?.id];
+            const destLocation = destParks[0] ? resolveLocation(destParks[0]) : undefined;
             return (
               <section key={destination}>
                 <div className="mb-5 border-b border-primary-100 pb-3">
-                  <h2 className="text-xl font-semibold text-primary-800">
-                    {destination}
-                  </h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-semibold text-primary-800">
+                      {destination}
+                    </h2>
+                    <button
+                      onClick={() => toggleFavorite(destination)}
+                      className="rounded-md p-1 transition-colors hover:bg-primary-100"
+                      aria-label={isFavorited(destination) ? `Unfavorite ${destination}` : `Favorite ${destination}`}
+                      title={isFavorited(destination) ? 'Remove from favorites' : 'Add to favorites'}
+                    >
+                      <Star
+                        className={`h-5 w-5 transition-colors ${
+                          isFavorited(destination)
+                            ? 'fill-amber-400 text-amber-400'
+                            : 'text-primary-300 hover:text-amber-400'
+                        }`}
+                      />
+                    </button>
+                  </div>
                   {destLocation && (
                     <p className="mt-0.5 text-sm text-primary-400">{destLocation}</p>
                   )}
@@ -304,7 +489,7 @@ export default function ParksPage() {
                         todayHours={hours?.todayHours}
                         timezone={hours?.timezone}
                         localTime={hours?.localTime}
-                        location={PARK_LOCATIONS[park.id]}
+                        location={resolveLocation(park)}
                       />
                     );
                   })}
