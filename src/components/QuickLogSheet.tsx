@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { X, Search, Clock, Star, Check } from 'lucide-react';
+import { X, Search, Clock, Star, Check, MapPin } from 'lucide-react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
 import { addRideLog } from '@/lib/services/ride-log-service';
@@ -85,6 +86,8 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
   // Trip association
   const [activeTripId, setActiveTripId] = useState<string | null>(null);
   const [activeTripName, setActiveTripName] = useState<string | null>(null);
+  const [tripCheckDone, setTripCheckDone] = useState(false);
+  const [standaloneMode, setStandaloneMode] = useState(false);
 
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -127,12 +130,14 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
     if (!open || !user) return;
     if (initialTripId) {
       setActiveTripId(initialTripId);
+      setTripCheckDone(true);
       return;
     }
     getActiveTrip(user.uid).then((t) => {
       setActiveTripId(t?.id ?? null);
       setActiveTripName(t?.name ?? null);
-    }).catch(() => { setActiveTripId(null); setActiveTripName(null); });
+      setTripCheckDone(true);
+    }).catch(() => { setActiveTripId(null); setActiveTripName(null); setTripCheckDone(true); });
   }, [open, user, initialTripId]);
 
   // Load attractions when park changes
@@ -241,6 +246,8 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
     setSearchQuery('');
     setTypeFilter('');
     setTemporalMode('now');
+    setStandaloneMode(false);
+    setTripCheckDone(false);
     onClose();
   };
 
@@ -292,6 +299,31 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
             </div>
           )}
 
+          {/* No active trip prompt */}
+          {tripCheckDone && !activeTripId && !standaloneMode && (
+            <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <MapPin className="h-4 w-4 text-amber-600" />
+                <span className="text-sm font-semibold text-amber-800">No active trip</span>
+              </div>
+              <p className="text-xs text-amber-700 mb-3">Start a trip to group your rides together, or log this one standalone.</p>
+              <div className="flex gap-2">
+                <Link
+                  href="/trips/new"
+                  className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-center text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors"
+                >
+                  Start a Trip
+                </Link>
+                <button
+                  onClick={() => setStandaloneMode(true)}
+                  className="flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-amber-800 hover:bg-amber-50 transition-colors"
+                >
+                  Log Standalone
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Temporal mode selector */}
           <div className="mt-3 flex gap-1 rounded-lg bg-primary-100 p-1">
             {(['now', 'earlier', 'past'] as TemporalMode[]).map((mode) => (
@@ -336,7 +368,7 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
 
         <div className="px-4 py-4">
           {/* ─── SELECT STATE ─── */}
-          {sheetState === 'select' && (
+          {sheetState === 'select' && (activeTripId || standaloneMode || !tripCheckDone) && (
             <>
               {/* Park selector */}
               <div className="mb-4">
@@ -480,6 +512,9 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
               <p className="text-sm text-primary-500 mt-1">{selectedAttraction?.name}</p>
               {activeTripId && activeTripName && (
                 <p className="text-xs text-green-600 mt-2 font-medium">✓ Added to trip: {activeTripName}</p>
+              )}
+              {!activeTripId && standaloneMode && (
+                <p className="text-xs text-primary-400 mt-2">Logged standalone — not linked to a trip</p>
               )}
 
               <div className="mt-6 flex gap-3 w-full">
