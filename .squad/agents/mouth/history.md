@@ -91,4 +91,44 @@
 - **Park Group rename + keyword search (2026-04-30):** Renamed "Resort Group" → "Park Group" across all UI surfaces (trips/new, trips/edit, parks page stats). Added `keywords` field to `SearchableSelectOption` interface — filter logic now matches against both label and keywords array. Trip pages pass child park names as keywords so typing "Epcot" finds "Walt Disney World". Variable names updated from `resortGroups`/`resortGroupOptions` → `parkGroups`/`parkGroupOptions`.
 - **Dining filter consolidation (2026-04-30):** Removed separate "Rides & Shows / Dining" tab toggle from trip log page. Dining is now accessed via the "🍽️ Dining" filter pill alongside other type filters (Thrill, Family, Show, etc.). When selected, the same list shows restaurants instead of rides. Tapping a restaurant opens the dining-specific modal (reservation, table wait, experience rating). Single unified list — filter pills are the pivot. No separate sections/tabs needed.
 - **Multi-day park group carry-forward (2026-04-30):** When user adds a day in multi-day trip flow, park group selection now persists for the next day instead of resetting to empty. Applied to both `src/app/trips/new/page.tsx` and `src/app/trips/[tripId]/edit/page.tsx`. Only `selectedParks` resets (so user picks which parks each day), but group stays selected. First day still has no default. Pattern: remove `setSelectedGroup('')` from `addDay()` reset logic.
+- **Trips page unified scroll (2026-04-30):** Replaced tab-based trips page with single scrollable view showing Active → Upcoming → Past sections. One `getTrips()` call (no status filter) fetches all, grouped client-side via `useMemo`. Empty sections hidden; global empty state only when zero trips. Active section has green left-border accent; past section has `opacity-75` muting. Sections use semantic `<section>` with `aria-labelledby` for accessibility. Pattern: prefer one API call + client grouping over multiple filtered calls when dataset is small.
+
+---
+
+## Scribe Batch Update (2026-04-30T11:24:12Z)
+
+**Orchestration:** Trips Page Redesign — Unified Scrollable Layout  
+**Status:** ✅ Complete. Deployed to production.
+
+### Your Contributions (2026-04-30)
+
+1. **Trips Page Unified Layout**
+   - Replaced tab-based navigation with single scrollable layout
+   - All trip states (active/upcoming/past) visible without switching
+   - TripIt-style continuous scroll pattern for improved UX
+
+2. **Wait Time UX — Unknown Default**
+   - Changed wait time default from required entry to "Unknown"
+   - Added quick-toggle buttons: "No Wait" and "Closed"
+   - Improves accessibility for users without concrete data
+
+### Directives Captured
+
+- ✅ Trips show all states on same page
+- ✅ Wait time default: unknown (with quick actions)
+
+### Deployment
+
+✅ Deployed to production  
+✅ User directives implemented end-to-end
+
+### Key Learnings
+
+- **Default state UX:** Unknown/indeterminate states improve form accessibility and reduce user friction
+- **Unified layouts vs tabs:** Single scrollable view reduces cognitive load on mobile (no tab switching)
+
+### Related Decisions
+
+- [Trips Wait-Time UX](../decisions.md) — Wait time defaults
+- [Unified Trips Layout](../decisions.md) — Layout pattern
 
