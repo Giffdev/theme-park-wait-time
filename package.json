@@ -14,7 +14,8 @@
     "type-check": "tsc --noEmit",
     "seed:parks": "npx tsx scripts/seed-parks.ts",
     "fetch:wait-times": "npx tsx scripts/fetch-wait-times.ts",
-    "enrich-types": "npx tsx scripts/enrich-attraction-types.ts"
+    "enrich-types": "npx tsx scripts/enrich-attraction-types.ts",
+    "sync:all-parks": "npx tsx scripts/sync-all-parks.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
