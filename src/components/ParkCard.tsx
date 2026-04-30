@@ -24,7 +24,7 @@ interface ParkCardProps {
 
 /** Derive crowd level from average wait across active rides */
 function crowdLevel(avg: number): { label: string; className: string } {
-  if (avg < 20) return { label: 'Quiet', className: 'bg-green-100 text-green-700' };
+  if (avg < 20) return { label: 'Low', className: 'bg-green-100 text-green-700' };
   if (avg < 35) return { label: 'Moderate', className: 'bg-amber-100 text-amber-700' };
   if (avg < 55) return { label: 'Busy', className: 'bg-orange-100 text-orange-700' };
   return { label: 'Packed', className: 'bg-indigo-100 text-indigo-700' };
