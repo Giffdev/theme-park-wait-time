@@ -233,8 +233,7 @@ export default function ParkDetailPage() {
 
     // Tier 2: attraction sub-type filter (only applies to ATTRACTION entity type)
     if (filters.attractionTypes.size > 0 && a.entityType === 'ATTRACTION') {
-      // If attractionType is null/undefined, still show it (don't filter out un-enriched records)
-      if (a.attractionType && !filters.attractionTypes.has(a.attractionType)) return false;
+      if (!a.attractionType || !filters.attractionTypes.has(a.attractionType)) return false;
     }
 
     return true;
