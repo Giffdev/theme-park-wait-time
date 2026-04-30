@@ -145,3 +145,29 @@
 - **Background refresh unmount bug (2026-04-30):** Trip detail page had `window.addEventListener('focus', handleRefresh)` calling `fetchData()` which set `setLoading(true)`. Clicking the Edit `<Link>` triggered a focus event → loading spinner replaced the UI → Link unmounted before navigation → required double-tap. Fix: `fetchData(background=true)` parameter that skips `setLoading(true)` for non-initial fetches. Rule: never unmount interactive UI for background data refreshes.
 - **Legacy data fallback pattern (2026-04-30):** When a new field (`parkNames`) is added via a write-path fix (e.g., `updateTripStats`), existing documents won't have it. Always add a fallback in read-path components (TripCard shows "X parks visited" when `parkNames` is empty but `stats.parksVisited > 0`). Don't rely solely on migration scripts for backfill.
 
+---
+
+## UX Fixes Sprint (2026-04-30)
+
+**Orchestration:** UX Bug-Fix Sprint + PRD Documentation  
+**Status:** ✅ Complete. Production patches deployed.
+
+### Session Work Summary
+
+1. **Double-tap bug fixed** — Trip detail page Edit link unmounting due to background refresh firing on window focus. Applied `background` flag to `fetchData` calls triggered by focus events, preventing loading state remount.
+
+2. **Section header fallbacks** — Park drill-down timeline now shows park name fallback chain: `log.parkName || trip.parkNames[parkIndex] || getParkById(parkId) || 'Unknown'`. Alphabetical sort also applied as secondary fallback when park names missing.
+
+3. **Ride count display** — Section counts and per-park ride tallies now gracefully degrade when `parkNames` is missing. TripCard shows "X parks visited" based on `stats.parksVisited` even when `parkNames` is empty. Pattern: always chain data sources.
+
+4. **Park names root cause + fix** — New trips have empty `parkNames` array on first save. Fixed: `updateTripStats` now uses `getParkById` registry lookup for any park without name data in the document. Backfill: read-path components use `availableParks` fallback list for display.
+
+5. **PRD documentation** — Comprehensive PRD written documenting full app state: auth patterns, data architecture (Firestore schema), UI components (Park browsing, Trip logging, Crowd forecasting), UX flows, and deployment setup. Serves as team reference for Phase 2 onboarding.
+
+### Deployed Changes
+
+- Fixed window focus refresh to use background flag
+- Park name fallbacks in log grouping and timeline
+- Updated `trip-service.ts` with `getParkById` backfill in `updateTripStats` and `getTrips`
+- Park drill-down page now sorts parks alphabetically when names missing
+

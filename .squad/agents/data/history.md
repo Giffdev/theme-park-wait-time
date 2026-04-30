@@ -216,3 +216,16 @@ All tests pass (vitest).
 - Park slug → UUID resolution: Firestore `parks` collection has a `slug` field. Query `where('slug', '==', slug).limit(1)` to resolve.
 - Compound Firestore queries (multiple `where` + `orderBy`) require composite indexes. If the index is missing, the query throws and can cascade-fail other fetches if wrapped in `Promise.all`. Always separate independent fetches so one failure doesn't mask the other.
 - `firestore.indexes.json` is the source of truth for deployed indexes. Always add new composite indexes there when adding compound queries.
+
+## Recent Work (2026-04-30T15:07:41-07:00)
+
+### UX Bug-Fix Sprint — Park Names & Background Refresh
+
+**Trip-service.ts updates:**
+- `updateTripStats()` now uses `getParkById` registry lookup when `parkNames` is missing or incomplete. Backfill strategy: write-path adds registry data; read-path uses fallbacks when data absent.
+- `getTrips()` now applies `availableParks` fallback list for trips with empty `parkNames`, enabling card display to work with "X parks visited" summary without requiring populated names array.
+
+**Park drill-down page alphabetical sort:**
+- When parks in timeline have no names (empty `parkNames` array), fallback to alphabetical sort by parkId after applying `getParkById` registry lookup. Ensures consistent ordering even with incomplete data.
+
+**Key pattern applied:** `log.parkName || trip.parkNames[index] || getParkById(parkId) || 'Unknown'` — three-level fallback for any displayed park name.
