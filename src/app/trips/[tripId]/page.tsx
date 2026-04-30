@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Trash2, Pencil, X, PlusCircle, Clock, MapPin } from 'lucide-react';
+import { Trash2, Pencil, X, PlusCircle, Clock, MapPin, Check, Loader2, Copy } from 'lucide-react';
 import WaitTimeInput, { WaitTimeMode } from '@/components/ride-log/WaitTimeInput';
 import { classifyAttraction } from '@/lib/utils/classify-attraction';
 import { useAuth } from '@/lib/firebase/auth-context';
@@ -131,6 +131,9 @@ export default function TripDetailPage() {
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [shareToast, setShareToast] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [shareFallbackUrl, setShareFallbackUrl] = useState<string | null>(null);
 
   // Delete trip state
   const [showDeleteTrip, setShowDeleteTrip] = useState(false);
@@ -217,19 +220,58 @@ export default function TripDetailPage() {
   };
 
   const handleShare = async () => {
-    if (!user || !trip) return;
+    if (!user || !trip) {
+      setShareError('You must be logged in to share a trip.');
+      setTimeout(() => setShareError(null), 3000);
+      return;
+    }
     setSharing(true);
+    setShareError(null);
+    setShareToast(null);
+    setShareFallbackUrl(null);
     try {
       const shareId = trip.shareId || generateShareId();
       if (!trip.shareId) {
         await updateTrip(user.uid, trip.id, { shareId });
       }
       const url = `${window.location.origin}/trips/shared/${shareId}`;
-      await navigator.clipboard.writeText(url);
-      alert('Share link copied to clipboard!');
+
+      // Try native share (best on mobile)
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: `${trip.name} — ParkFlow Trip`, url });
+          setShareToast('Shared successfully!');
+          setTimeout(() => setShareToast(null), 3000);
+          await fetchData();
+          return;
+        } catch (shareErr: unknown) {
+          // User cancelled native share — fall through to clipboard
+          if (shareErr instanceof Error && shareErr.name === 'AbortError') {
+            return;
+          }
+        }
+      }
+
+      // Try clipboard API
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(url);
+          setShareToast('✓ Link copied to clipboard!');
+          setTimeout(() => setShareToast(null), 3000);
+          await fetchData();
+          return;
+        } catch {
+          // Clipboard failed — fall through to manual copy
+        }
+      }
+
+      // Fallback: show URL for manual copy
+      setShareFallbackUrl(url);
       await fetchData();
     } catch (err) {
       console.error('Failed to share trip:', err);
+      setShareError('Failed to generate share link. Please try again.');
+      setTimeout(() => setShareError(null), 4000);
     } finally {
       setSharing(false);
     }
@@ -458,12 +500,16 @@ export default function TripDetailPage() {
           <button
             onClick={handleShare}
             disabled={sharing}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-white px-3 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-white px-3 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-60 transition-colors"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
-            </svg>
-            Share
+            {sharing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
+              </svg>
+            )}
+            {sharing ? 'Sharing…' : 'Share'}
           </button>
           <button
             onClick={() => setShowDeleteTrip(true)}
@@ -494,6 +540,50 @@ export default function TripDetailPage() {
             </>
           )}
         </div>
+
+        {/* Share feedback */}
+        {shareToast && (
+          <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm font-medium text-green-700 animate-in fade-in">
+            <Check className="h-4 w-4" />
+            {shareToast}
+          </div>
+        )}
+        {shareError && (
+          <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm font-medium text-red-600">
+            {shareError}
+          </div>
+        )}
+        {shareFallbackUrl && (
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2">
+            <input
+              type="text"
+              readOnly
+              value={shareFallbackUrl}
+              className="flex-1 bg-transparent text-sm text-primary-700 outline-none select-all"
+              onFocus={(e) => e.target.select()}
+            />
+            <button
+              onClick={() => {
+                navigator.clipboard?.writeText(shareFallbackUrl).then(() => {
+                  setShareToast('✓ Link copied!');
+                  setShareFallbackUrl(null);
+                  setTimeout(() => setShareToast(null), 3000);
+                });
+              }}
+              className="inline-flex items-center gap-1 rounded bg-primary-600 px-2 py-1 text-xs font-medium text-white hover:bg-primary-700"
+            >
+              <Copy className="h-3 w-3" />
+              Copy
+            </button>
+            <button
+              onClick={() => setShareFallbackUrl(null)}
+              className="text-primary-400 hover:text-primary-600"
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Stats Bar */}
