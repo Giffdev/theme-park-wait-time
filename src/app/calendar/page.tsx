@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Thermometer } from 'lucide-react';
 import { PARK_FAMILIES, CROWD_LEVEL_COLORS } from '@/lib/constants';
 import { FamilySelector } from '@/components/crowd-calendar/FamilySelector';
@@ -196,18 +197,28 @@ export default function CalendarPage() {
         {currentFamily.parks.map((park) => {
           const isOn = enabledParks.has(park.id);
           return (
-            <button
-              key={park.id}
-              onClick={() => togglePark(park.id)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
-                isOn
-                  ? 'bg-primary-100 text-primary-800 ring-1 ring-primary-300'
-                  : 'bg-gray-100 text-gray-400 line-through'
-              }`}
-            >
-              <span className={`h-2 w-2 rounded-full ${isOn ? 'bg-primary-500' : 'bg-gray-300'}`} />
-              {park.name}
-            </button>
+            <div key={park.id} className="inline-flex items-center gap-0.5">
+              <button
+                onClick={() => togglePark(park.id)}
+                className={`inline-flex items-center gap-1.5 rounded-l-full px-3 py-1.5 text-xs font-medium transition-all ${
+                  isOn
+                    ? 'bg-primary-100 text-primary-800 ring-1 ring-primary-300'
+                    : 'bg-gray-100 text-gray-400 line-through'
+                }`}
+              >
+                <span className={`h-2 w-2 rounded-full ${isOn ? 'bg-primary-500' : 'bg-gray-300'}`} />
+                {park.name}
+              </button>
+              <Link
+                href={`/parks/${park.id}`}
+                className={`rounded-r-full px-2 py-1.5 text-xs transition-all hover:bg-primary-200 ${
+                  isOn ? 'bg-primary-100 ring-1 ring-primary-300 text-primary-600' : 'bg-gray-100 text-gray-400'
+                }`}
+                title={`View ${park.name} live wait times`}
+              >
+                →
+              </Link>
+            </div>
           );
         })}
       </div>

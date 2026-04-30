@@ -307,6 +307,28 @@ export default function ParkDetailPage() {
         </div>
       </div>
 
+      {/* Quick Actions */}
+      <div className="mb-6 flex flex-wrap gap-2">
+        <Link
+          href="/ride-log"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-coral-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-coral-600"
+        >
+          🎢 Log a Ride
+        </Link>
+        <Link
+          href="/trips/new"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
+        >
+          ✈️ Start a Trip
+        </Link>
+        <Link
+          href="/calendar"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
+        >
+          📅 Crowd Calendar
+        </Link>
+      </div>
+
       {/* Park Schedule Bar */}
       {schedule && schedule.segments.length > 0 && (
         <div className="mb-8">
