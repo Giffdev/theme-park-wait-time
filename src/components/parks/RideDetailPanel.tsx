@@ -5,7 +5,7 @@ import { X, Clock, MessageSquarePlus } from 'lucide-react';
 import WaitTimeBadge from '@/components/WaitTimeBadge';
 import ForecastChart from '@/components/parks/ForecastChart';
 import RecentReports from '@/components/parks/RecentReports';
-import ReportWaitTimeModal from '@/components/parks/ReportWaitTimeModal';
+import UnifiedLogSheet from '@/components/UnifiedLogSheet';
 import { useAuth } from '@/lib/firebase/auth-context';
 import type { QueueData, ForecastEntry, OperatingHoursEntry, ForecastMeta } from '@/types/queue';
 
@@ -191,12 +191,13 @@ export default function RideDetailPanel({ attractionId, parkId, name, entityType
 
       {/* Report Modal */}
       {showReportModal && (
-        <ReportWaitTimeModal
-          attractionId={attractionId}
-          attractionName={name}
-          parkId={parkId}
+        <UnifiedLogSheet
+          open={showReportModal}
           onClose={() => setShowReportModal(false)}
-          onSuccess={() => setReportRefreshKey((k) => k + 1)}
+          initialParkId={parkId}
+          initialAttractionId={attractionId}
+          initialAttractionName={name}
+          onWaitTimeReported={() => setReportRefreshKey((k) => k + 1)}
         />
       )}
     </div>

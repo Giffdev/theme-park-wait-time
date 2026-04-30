@@ -7,7 +7,7 @@ import { Clock, TrendingUp, MessageSquarePlus, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getRecentReports, getConsensusWaitTime, type WaitTimeReport } from '@/lib/firebase/waitTimeReports';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
-import ReportWaitTimeModal from '@/components/parks/ReportWaitTimeModal';
+import UnifiedLogSheet from '@/components/UnifiedLogSheet';
 import RecentReports from '@/components/parks/RecentReports';
 
 function slugToName(slug: string): string {
@@ -214,12 +214,13 @@ export default function AttractionDetailPage() {
 
       {/* Report Modal */}
       {showReportModal && attractionUuid && parkUuid && (
-        <ReportWaitTimeModal
-          attractionId={attractionUuid}
-          attractionName={attractionName}
-          parkId={parkUuid}
+        <UnifiedLogSheet
+          open={showReportModal}
           onClose={() => setShowReportModal(false)}
-          onSuccess={() => setReportRefreshKey((k) => k + 1)}
+          initialParkId={parkUuid}
+          initialAttractionId={attractionUuid}
+          initialAttractionName={attractionName}
+          onWaitTimeReported={() => setReportRefreshKey((k) => k + 1)}
         />
       )}
     </div>

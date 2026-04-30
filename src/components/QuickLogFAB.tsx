@@ -4,12 +4,13 @@ import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { usePathname } from 'next/navigation';
-import QuickLogSheet from './QuickLogSheet';
+import UnifiedLogSheet from './UnifiedLogSheet';
 
 /**
  * Global Floating Action Button for quick ride logging.
  * Visible on all pages when authenticated, EXCEPT the dedicated log page.
  * Positioned above mobile nav bar on small screens.
+ * Opens the unified sheet with ride-log section expanded by default (user's intent is logging).
  */
 export default function QuickLogFAB() {
   const { user } = useAuth();
@@ -32,7 +33,7 @@ export default function QuickLogFAB() {
         <Plus className="h-7 w-7" strokeWidth={2.5} />
       </button>
 
-      <QuickLogSheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
+      <UnifiedLogSheet open={sheetOpen} onClose={() => setSheetOpen(false)} expandedByDefault={true} />
     </>
   );
 }
