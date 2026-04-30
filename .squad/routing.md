@@ -8,6 +8,7 @@ How to decide who handles what.
 |-----------|----------|----------|
 | Architecture, schema, migration | Mikey | Firebase schema design, system architecture, migration strategy, tech decisions |
 | Frontend, UI, components, design | Mouth | React pages, Tailwind styling, data viz, responsive layout, UX |
+| UX review, flow verification, deploy gate | Brand | End-to-end flow checks, state refresh bugs, navigation verification, mobile UX |
 | Backend, Firebase, auth, API, deploy | Data | Firestore collections, security rules, Cloud Functions, Vercel config, auth flows |
 | Data sourcing, scraping, APIs, crowd cal | Chunk | Theme park APIs, wait time scraping, crowd calendar algorithms, ride databases |
 | Testing, QA, security testing | Stef | Unit/integration/E2E tests, Firebase Rules testing, edge cases, CI config |

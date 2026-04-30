@@ -14,6 +14,7 @@
 |------|------|---------|--------|
 | Mikey | Lead / Architect | `.squad/agents/mikey/charter.md` | 🏗️ Active |
 | Mouth | Frontend Dev | `.squad/agents/mouth/charter.md` | ⚛️ Active |
+| Brand | UX Reviewer | `.squad/agents/brand/charter.md` | 🔍 Active |
 | Data | Backend Dev | `.squad/agents/data/charter.md` | 🔧 Active |
 | Chunk | Data Engineer | `.squad/agents/chunk/charter.md` | 📊 Active |
 | Stef | Tester | `.squad/agents/stef/charter.md` | 🧪 Active |

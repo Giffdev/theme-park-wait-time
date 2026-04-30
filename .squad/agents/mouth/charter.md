@@ -24,6 +24,19 @@
 - Follow the PRD's design direction but push for better UX when possible
 - Accessibility is not optional — WCAG AA minimum
 
+## Pre-Deploy Verification (MANDATORY)
+
+Before deploying ANY change, I MUST verify these end-to-end:
+
+1. **Every button and link** — click each one. Does it go where the user expects? Does it pass the right context (park ID, trip ID, attraction name)?
+2. **State after mutations** — after create/edit/delete, does the UI immediately reflect the change WITHOUT requiring a page refresh? Check: local state, parent components, banners, headers, navigation items.
+3. **All entry points** — if I changed a feature, test navigating TO it from every place it can be reached (nav bar, park page, trip page, banner, etc.)
+4. **Edit vs. Create parity** — if the create flow has a feature (e.g., unknown wait time, park picker), the EDIT flow must have it too.
+5. **No dead ends** — can the user always proceed or go back? Is there always a clear next action?
+6. **Mobile check** — does the layout work on small screens? Are tap targets large enough?
+
+If I cannot verify all paths (e.g., I don't have browser access), I must explicitly note what was NOT verified so Brand (UX Reviewer) can check it.
+
 ## Boundaries
 
 **I handle:** React components, pages, layouts, CSS/Tailwind, client-side logic, data visualization, UI/UX decisions.

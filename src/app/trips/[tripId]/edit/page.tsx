@@ -141,7 +141,10 @@ export default function EditTripPage() {
       };
 
       await updateTrip(user.uid, trip.id, updateData);
+      // Notify trip detail page to refresh after edit
+      window.dispatchEvent(new CustomEvent('trip-updated'));
       router.push(`/trips/${trip.id}`);
+      router.refresh();
     } catch (err) {
       console.error('Failed to update trip:', err);
       alert('Failed to save changes. Please try again.');

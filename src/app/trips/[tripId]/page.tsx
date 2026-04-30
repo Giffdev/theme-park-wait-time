@@ -141,6 +141,24 @@ export default function TripDetailPage() {
     if (user) fetchData();
   }, [user, fetchData]);
 
+  // Re-fetch trip data when page regains focus (e.g. after editing trip name)
+  useEffect(() => {
+    const handleRefresh = () => {
+      if (user) fetchData();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') handleRefresh();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleRefresh);
+    window.addEventListener('trip-updated', handleRefresh);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleRefresh);
+      window.removeEventListener('trip-updated', handleRefresh);
+    };
+  }, [user, fetchData]);
+
   const handleComplete = async () => {
     if (!user || !tripId) return;
     setCompleting(true);

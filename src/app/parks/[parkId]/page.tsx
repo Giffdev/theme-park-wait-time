@@ -351,12 +351,12 @@ export default function ParkDetailPage() {
 
       {/* Quick Actions */}
       <div className="mb-6 flex flex-wrap gap-2">
-        <Link
-          href="/ride-log"
+        <button
+          onClick={() => setQuickLogOpen(true)}
           className="inline-flex items-center gap-1.5 rounded-lg bg-coral-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-coral-600"
         >
           🎢 Log a Ride
-        </Link>
+        </button>
         <Link
           href="/trips/new"
           className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
@@ -533,6 +533,12 @@ export default function ParkDetailPage() {
           onClose={() => setSelectedRide(null)}
         />
       )}
+
+      <QuickLogSheet
+        open={quickLogOpen}
+        onClose={() => setQuickLogOpen(false)}
+        initialParkId={park?.id}
+      />
     </div>
   );
 }
