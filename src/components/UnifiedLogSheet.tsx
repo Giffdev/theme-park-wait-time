@@ -337,31 +337,6 @@ export default function UnifiedLogSheet({
               <span className="text-xs font-medium text-green-700">Adding to trip: <strong>{activeTripName}</strong></span>
             </div>
           )}
-
-          {/* No active trip prompt (only in expanded mode) */}
-          {expanded && tripCheckDone && !activeTripId && !standaloneMode && (
-            <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-3">
-              <div className="flex items-center gap-2 mb-1.5">
-                <MapPin className="h-4 w-4 text-amber-600" />
-                <span className="text-sm font-semibold text-amber-800">No active trip</span>
-              </div>
-              <p className="text-xs text-amber-700 mb-3">Start a trip to group your rides together, or log this one standalone.</p>
-              <div className="flex gap-2">
-                <Link
-                  href="/trips/new"
-                  className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-center text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors"
-                >
-                  Start a Trip
-                </Link>
-                <button
-                  onClick={() => setStandaloneMode(true)}
-                  className="flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-amber-800 hover:bg-amber-50 transition-colors"
-                >
-                  Log Standalone
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="px-4 py-4">
