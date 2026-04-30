@@ -147,7 +147,8 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
           type="datetime-local"
           value={dateTime}
           onChange={(e) => setDateTime(e.target.value)}
-          className="w-full rounded-xl border border-primary-200 px-4 py-3 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+          onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker()}
+          className="w-full rounded-xl border border-primary-200 px-4 py-3 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100 cursor-pointer"
         />
       </div>
 

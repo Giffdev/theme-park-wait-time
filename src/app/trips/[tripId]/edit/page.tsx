@@ -254,7 +254,8 @@ export default function EditTripPage() {
               type="date"
               value={dayDate}
               onChange={(e) => setDayDate(e.target.value)}
-              className="w-full rounded-lg border border-primary-200 px-3 py-2.5 text-sm text-primary-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+              onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker()}
+              className="w-full rounded-lg border border-primary-200 px-3 py-2.5 text-sm text-primary-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 cursor-pointer"
             />
           </div>
 
