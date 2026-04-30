@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Search, X, Star, Timer, Clock, ChevronLeft, MapPin } from 'lucide-react';
+import { Search, X, Star, Timer, Clock, ChevronLeft, MapPin, Utensils } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getTrip } from '@/lib/services/trip-service';
 import { createRideLog } from '@/lib/services/ride-log-service';
@@ -32,6 +32,9 @@ const TYPE_FILTERS: { value: string; label: string }[] = [
   { value: 'experience', label: '✨ Experience' },
   { value: 'character-meet', label: '🤝 Characters' },
 ];
+
+const LOGGABLE_ENTITY_TYPES = new Set(['ATTRACTION', 'RIDE', 'SHOW', 'MEET_AND_GREET']);
+const RESTAURANT_ENTITY_TYPES = new Set(['RESTAURANT']);
 
 const MEAL_TYPES: { value: MealType; label: string; icon: string }[] = [
   { value: 'breakfast', label: 'Breakfast', icon: '🌅' },
@@ -80,6 +83,9 @@ export default function TripLogRidePage() {
   const [mealType, setMealType] = useState<MealType>('lunch');
   const [diningRating, setDiningRating] = useState<number | null>(null);
   const [diningNotes, setDiningNotes] = useState('');
+  const [hadReservation, setHadReservation] = useState<boolean | null>(null);
+  const [tableWait, setTableWait] = useState('');
+  const [tableWaitUnknown, setTableWaitUnknown] = useState(true);
   const [diningSaving, setDiningSaving] = useState(false);
   const [diningError, setDiningError] = useState('');
 
@@ -150,13 +156,10 @@ export default function TripLogRidePage() {
     };
   }, [timerStart]);
 
-  // Entity type sets
-  const LOGGABLE_ENTITY_TYPES = new Set(['ATTRACTION', 'RIDE', 'SHOW', 'MEET_AND_GREET']);
-  const RESTAURANT_ENTITY_TYPES = new Set(['RESTAURANT']);
-
   // Filter attractions for rides tab
   const filteredAttractions = useMemo(() => {
     return attractions.filter((a) => {
+      // Exclude non-loggable entity types (restaurants, merchandise, etc.)
       if (a.entityType && !LOGGABLE_ENTITY_TYPES.has(a.entityType)) return false;
 
       if (searchQuery) {
@@ -166,8 +169,10 @@ export default function TripLogRidePage() {
       if (typeFilter !== 'all') {
         if (typeFilter === 'show') {
           if (a.entityType !== 'SHOW' && a.attractionType !== 'show') return false;
-        } else if (a.attractionType !== typeFilter) {
-          return false;
+        } else {
+          // Only exclude if attractionType is set and doesn't match the filter
+          // (don't filter out un-enriched records with null/undefined attractionType)
+          if (a.attractionType && a.attractionType !== typeFilter) return false;
         }
       }
       return true;
@@ -202,6 +207,9 @@ export default function TripLogRidePage() {
     setMealType('lunch');
     setDiningRating(null);
     setDiningNotes('');
+    setHadReservation(null);
+    setTableWait('');
+    setTableWaitUnknown(true);
     setDiningError('');
   }, []);
 
@@ -278,6 +286,8 @@ export default function TripLogRidePage() {
           mealType,
           rating: diningRating,
           notes: diningNotes,
+          hadReservation,
+          tableWaitMinutes: tableWaitUnknown ? null : (tableWait ? parseInt(tableWait, 10) : null),
         },
         tripId,
       );
@@ -286,6 +296,9 @@ export default function TripLogRidePage() {
       setMealType('lunch');
       setDiningRating(null);
       setDiningNotes('');
+      setHadReservation(null);
+      setTableWait('');
+      setTableWaitUnknown(true);
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch {
       setDiningError('Failed to save dining log. Please try again.');
@@ -443,10 +456,17 @@ export default function TripLogRidePage() {
                 <button
                   key={f.value}
                   type="button"
-                  onClick={() => setTypeFilter(f.value)}
+                  onClick={() => {
+                    if (f.value === 'dining') {
+                      setActiveTab('dining');
+                      setSearchQuery('');
+                    } else {
+                      setTypeFilter(f.value);
+                    }
+                  }}
                   className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
                     typeFilter === f.value
-                      ? 'bg-coral-500 text-white shadow-sm'
+                      ? 'bg-indigo-500 text-white shadow-sm'
                       : 'bg-primary-50 text-primary-600 hover:bg-primary-100'
                   }`}
                 >
@@ -536,8 +556,8 @@ export default function TripLogRidePage() {
                   onClick={() => handleSelectRestaurant(r)}
                   className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-amber-50 active:bg-amber-100"
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-lg">
-                    🍽️
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50">
+                    <Utensils className="h-5 w-5 text-amber-600" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-primary-800">
@@ -773,10 +793,12 @@ export default function TripLogRidePage() {
             <div className="mb-4 flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">🍽️</span>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100">
+                    <Utensils className="h-4.5 w-4.5 text-amber-600" />
+                  </div>
                   <h2 className="text-lg font-bold text-primary-900">{selectedRestaurant.name}</h2>
                 </div>
-                <p className="ml-8 text-xs text-primary-500">{trip.parkNames[parkId]}</p>
+                <p className="ml-10 text-xs text-primary-500">{trip.parkNames[parkId]}</p>
               </div>
               <button
                 type="button"
@@ -816,10 +838,81 @@ export default function TripLogRidePage() {
               </div>
             </div>
 
+            {/* Reservation question */}
+            <div className="mb-4">
+              <label className="mb-2 block text-xs font-medium text-primary-600">
+                Did you have a reservation? <span className="text-primary-300">(optional)</span>
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setHadReservation(hadReservation === true ? null : true)}
+                  className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                    hadReservation === true
+                      ? 'bg-indigo-100 text-indigo-800 ring-2 ring-indigo-300'
+                      : 'bg-primary-50 text-primary-600 hover:bg-primary-100'
+                  }`}
+                >
+                  Yes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHadReservation(hadReservation === false ? null : false)}
+                  className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                    hadReservation === false
+                      ? 'bg-indigo-100 text-indigo-800 ring-2 ring-indigo-300'
+                      : 'bg-primary-50 text-primary-600 hover:bg-primary-100'
+                  }`}
+                >
+                  No / Walk-up
+                </button>
+              </div>
+            </div>
+
+            {/* Table wait */}
+            <div className="mb-4">
+              <label className="mb-1.5 block text-xs font-medium text-primary-600">
+                Wait for table <span className="text-primary-300">(optional)</span>
+              </label>
+              {!tableWaitUnknown && (
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="180"
+                    value={tableWait}
+                    onChange={(e) => setTableWait(e.target.value)}
+                    placeholder="0"
+                    className="w-full rounded-xl border border-primary-200 px-4 py-3 pr-14 text-lg font-medium focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-amber-100"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-primary-400">
+                    min
+                  </span>
+                </div>
+              )}
+              {tableWaitUnknown && (
+                <div className="flex items-center justify-center rounded-xl border border-primary-100 bg-primary-50/50 px-4 py-3">
+                  <span className="text-sm font-medium text-primary-400">Not tracked</span>
+                </div>
+              )}
+              <label className="mt-2 flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!tableWaitUnknown}
+                  onChange={(e) => {
+                    setTableWaitUnknown(!e.target.checked);
+                    if (!e.target.checked) setTableWait('');
+                  }}
+                  className="h-4 w-4 rounded border-primary-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-xs text-primary-500">I remember how long I waited</span>
+              </label>
+            </div>
+
             {/* Rating */}
             <div className="mb-4">
               <label className="mb-1.5 block text-xs font-medium text-primary-600">
-                Rating <span className="text-primary-300">(optional)</span>
+                How was your dining experience? <span className="text-primary-300">(optional)</span>
               </label>
               <div className="flex gap-1.5">
                 {[1, 2, 3, 4, 5].map((star) => (
