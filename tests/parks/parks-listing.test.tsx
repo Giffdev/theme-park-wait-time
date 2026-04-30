@@ -39,11 +39,46 @@ vi.mock('@/lib/firebase/firestore', () => ({
 vi.mock('lucide-react', () => ({
   RefreshCw: ({ className }: { className?: string }) => <span data-testid="refresh-icon" className={className}>↻</span>,
   Search: () => <span data-testid="search-icon">🔍</span>,
+  ChevronDown: ({ className }: { className?: string }) => <span data-testid="chevron-icon" className={className}>▼</span>,
+  X: ({ className }: { className?: string }) => <span data-testid="x-icon" className={className}>✕</span>,
+  Star: ({ className }: { className?: string }) => <span data-testid="star-icon" className={className}>★</span>,
+}));
+
+// Mock park registry and locations
+vi.mock('@/lib/parks/park-registry', () => ({
+  DESTINATION_FAMILIES: [],
+}));
+
+vi.mock('@/lib/parks/park-locations', () => ({
+  getLocationByDestinationId: () => null,
+  formatLocation: () => '',
+}));
+
+// Mock ParkCard component
+vi.mock('@/components/ParkCard', () => ({
+  default: ({ name, destinationName }: { name: string; destinationName: string; slug?: string; shortestWait?: number | null; isOpen?: boolean; todayHours?: unknown; timezone?: string; localTime?: string; location?: string }) => (
+    <div data-testid={`park-card-${name}`}>
+      <span>{name}</span>
+      <span>{destinationName}</span>
+    </div>
+  ),
 }));
 
 // Mock fetch for API calls
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
+
+// Mock localStorage
+const localStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] ?? null,
+    setItem: (key: string, value: string) => { store[key] = value; },
+    removeItem: (key: string) => { delete store[key]; },
+    clear: () => { store = {}; },
+  };
+})();
+Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
 const mockParks = [
   { id: 'magic-kingdom', name: 'Magic Kingdom', slug: 'magic-kingdom', destinationName: 'Walt Disney World', destinationId: 'wdw' },
@@ -56,7 +91,8 @@ describe('Parks Listing Page', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockFetch.mockResolvedValue({ ok: true });
+    localStorageMock.clear();
+    mockFetch.mockResolvedValue({ ok: true, json: async () => [] });
     const mod = await import('@/app/parks/page');
     ParksPage = mod.default;
   });

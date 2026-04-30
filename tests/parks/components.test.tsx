@@ -83,17 +83,17 @@ describe('WaitTimeBadge', () => {
     expect(badge?.className).toContain('bg-yellow-100');
   });
 
-  it('shows red color for wait times over 45 minutes', () => {
+  it('shows amber color for wait times over 45 minutes', () => {
     const { container } = render(<WaitTimeBadge waitMinutes={60} />);
     const badge = container.querySelector('span');
-    expect(badge?.className).toContain('bg-red-100');
-    expect(badge?.className).toContain('text-red-800');
+    expect(badge?.className).toContain('bg-amber-100');
+    expect(badge?.className).toContain('text-amber-800');
   });
 
-  it('shows red at boundary: 46 minutes', () => {
+  it('shows amber at boundary: 46 minutes', () => {
     const { container } = render(<WaitTimeBadge waitMinutes={46} />);
     const badge = container.querySelector('span');
-    expect(badge?.className).toContain('bg-red-100');
+    expect(badge?.className).toContain('bg-amber-100');
   });
 
   it('shows "N/A" when waitMinutes is null', () => {
@@ -230,8 +230,8 @@ describe('AttractionRow', () => {
     const { container } = render(
       <AttractionRow name="Space Mountain" entityType="ATTRACTION" status="OPERATING" waitMinutes={60} />,
     );
-    // 60 min → red badge
-    const badge = container.querySelector('[class*="bg-red-100"]');
+    // 60 min → amber badge
+    const badge = container.querySelector('[class*="bg-amber-100"]');
     expect(badge).not.toBeNull();
   });
 });

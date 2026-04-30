@@ -1,7 +1,26 @@
+'use client';
+
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+import { useAuth } from '@/lib/firebase/auth-context';
 import { FeatureCards } from '@/components/FeatureCards';
 
 export default function HomePage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace('/parks');
+    }
+  }, [user, loading, router]);
+
+  // Don't flash the landing page for authenticated users
+  if (loading || user) {
+    return null;
+  }
+
   return (
     <div className="pb-20 md:pb-0">
       {/* Hero */}

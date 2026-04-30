@@ -79,4 +79,6 @@
 - **Graceful degradation:** Non-blocking API calls (schedule, hours) should not prevent primary content display
 - **Progressive responsive grid:** Use Tailwind breakpoints strategically; lg:grid-cols-3 works better at 1280px than lg:grid-cols-4
 - **Location metadata:** Keep curated location data separate from upstream API registry structure
+- **Favorite park families (2026-04-29):** Added localStorage-based favorites (`parkflow-favorite-families` key) that pin families to top of Parks page. Stores `familyId` values (not names) for stability. Star icon toggle (lucide `Star`, amber fill when active). Sorted: favorites alphabetical first, then non-favorites alphabetical. No page jump — uses CSS transition on icon color. Name↔ID mapping built from `DESTINATION_FAMILIES` registry at module level.
+- **Homepage auth redirect (2026-04-29):** Converted `src/app/page.tsx` to client component with `useAuth()` + `useRouter()`. Authenticated users get `router.replace('/parks')` — returns `null` during loading/redirect to avoid flash. FeatureCards merged "Log Your Trip" + "My Ride History" into single card (uses "My Ride History" description), grid now `lg:grid-cols-3`.
 

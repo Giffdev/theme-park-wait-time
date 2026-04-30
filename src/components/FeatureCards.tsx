@@ -6,19 +6,15 @@ import { useAuth } from '@/lib/firebase/auth-context';
 export function FeatureCards() {
   const { user, loading } = useAuth();
 
-  const tripCard = {
-    href: !loading && !user ? '/auth/signin' : '/trips/new',
-    emoji: '🎟️',
-    title: !loading && !user ? 'Start Your Park Journal' : 'Log Your Trip',
-    description: !loading && !user
-      ? 'Sign in to log rides, track wait times, and build your ultimate theme park history. 🎢'
-      : 'Track wait times, rate attractions, and help the community with real-time insights.',
-    color: 'bg-violet-50 hover:bg-violet-100 border-violet-200',
-    textColor: 'text-violet-700',
-  };
-
   const features = [
-    tripCard,
+    {
+      href: !loading && !user ? '/auth/signin' : '/trips/new',
+      emoji: '🎟️',
+      title: !loading && !user ? 'Start Your Park Journal' : 'Log Your Trip',
+      description: 'Log every ride, time your waits, and build your personal ride history across all parks.',
+      color: 'bg-violet-50 hover:bg-violet-100 border-violet-200',
+      textColor: 'text-violet-700',
+    },
     {
       href: '/parks',
       emoji: '🏰',
@@ -35,18 +31,10 @@ export function FeatureCards() {
       color: 'bg-sage-50 hover:bg-sage-100 border-sage-200',
       textColor: 'text-sage-700',
     },
-    {
-      href: !loading && !user ? '/auth/signin' : '/ride-log',
-      emoji: '🎢',
-      title: !loading && !user ? 'Track Your Rides' : 'My Ride History',
-      description: 'Log every ride, time your waits, and build your personal ride history across all parks.',
-      color: 'bg-coral-50 hover:bg-coral-100 border-coral-200',
-      textColor: 'text-coral-700',
-    },
   ];
 
   return (
-    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
       {features.map((feature) => (
         <Link
           key={feature.title}
