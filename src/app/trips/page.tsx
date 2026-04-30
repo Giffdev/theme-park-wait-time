@@ -140,9 +140,6 @@ export default function TripsPage() {
                     }`}
                   >
                     {section.label}
-                    <span className="ml-2 text-sm font-normal text-primary-400">
-                      ({sectionTrips.length})
-                    </span>
                   </h2>
                   <div className={`space-y-3 ${section.accent ? `border-l-4 ${section.accent} pl-4` : ''} ${section.muted ? 'opacity-75' : ''}`}>
                     {sectionTrips.map((trip) => (
