@@ -1,43 +1,58 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { RefreshCw } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getTrips } from '@/lib/services/trip-service';
 import TripCard from '@/components/trips/TripCard';
-import type { Trip, TripStatus } from '@/types/trip';
+import type { Trip } from '@/types/trip';
 
-type TabKey = 'active' | 'upcoming' | 'past';
+interface TripSection {
+  key: string;
+  label: string;
+  status: Trip['status'];
+  accent?: string;
+  muted?: boolean;
+}
 
-const TAB_STATUS_MAP: Record<TabKey, TripStatus> = {
-  active: 'active',
-  upcoming: 'planning',
-  past: 'completed',
-};
+const SECTIONS: TripSection[] = [
+  { key: 'active', label: 'Active Trips', status: 'active', accent: 'border-l-green-500' },
+  { key: 'upcoming', label: 'Upcoming Trips', status: 'planning' },
+  { key: 'past', label: 'Past Trips', status: 'completed', muted: true },
+];
 
 export default function TripsPage() {
   const { user, loading: authLoading } = useAuth();
-  const [trips, setTrips] = useState<(Trip & { id: string })[]>([]);
+  const [allTrips, setAllTrips] = useState<(Trip & { id: string })[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<TabKey>('active');
 
   const fetchTrips = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const data = await getTrips(user.uid, { status: TAB_STATUS_MAP[tab] });
-      setTrips(data);
+      const data = await getTrips(user.uid);
+      setAllTrips(data);
     } catch (err) {
       console.error('Failed to load trips:', err);
     } finally {
       setLoading(false);
     }
-  }, [user, tab]);
+  }, [user]);
 
   useEffect(() => {
     if (user) fetchTrips();
   }, [user, fetchTrips]);
+
+  const grouped = useMemo(() => {
+    const map: Record<string, (Trip & { id: string })[]> = {};
+    for (const section of SECTIONS) {
+      map[section.key] = allTrips.filter((t) => t.status === section.status);
+    }
+    return map;
+  }, [allTrips]);
+
+  const hasAnyTrips = allTrips.length > 0;
 
   if (authLoading) {
     return (
@@ -65,12 +80,6 @@ export default function TripsPage() {
     );
   }
 
-  const tabs: { key: TabKey; label: string }[] = [
-    { key: 'active', label: 'Active' },
-    { key: 'upcoming', label: 'Upcoming' },
-    { key: 'past', label: 'Past' },
-  ];
-
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 pb-24 md:pb-8">
       {/* Header */}
@@ -80,7 +89,7 @@ export default function TripsPage() {
           <p className="mt-1 text-primary-500">Your complete theme park experience history</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={fetchTrips} disabled={loading} className="rounded-full p-2 text-primary-500 hover:bg-primary-50 disabled:opacity-50">
+          <button onClick={fetchTrips} disabled={loading} className="rounded-full p-2 text-primary-500 hover:bg-primary-50 disabled:opacity-50" aria-label="Refresh trips">
             <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <Link
@@ -95,30 +104,13 @@ export default function TripsPage() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="mt-6 flex gap-1 rounded-lg bg-primary-100 p-1">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-all ${
-              tab === t.key
-                ? 'bg-white text-primary-900 shadow-sm'
-                : 'text-primary-500 hover:text-primary-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
       {/* Content */}
-      <div className="mt-6">
+      <div className="mt-8">
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
           </div>
-        ) : trips.length === 0 ? (
+        ) : !hasAnyTrips ? (
           <div className="rounded-2xl border-2 border-dashed border-primary-200 py-16 text-center">
             <div className="text-5xl mb-4">🎟️</div>
             <h2 className="text-xl font-semibold text-primary-800">No Trips Logged Yet</h2>
@@ -134,10 +126,32 @@ export default function TripsPage() {
             </Link>
           </div>
         ) : (
-          <div className="space-y-3">
-            {trips.map((trip) => (
-              <TripCard key={trip.id} trip={trip} />
-            ))}
+          <div className="space-y-10">
+            {SECTIONS.map((section) => {
+              const sectionTrips = grouped[section.key];
+              if (sectionTrips.length === 0) return null;
+
+              return (
+                <section key={section.key} aria-labelledby={`section-${section.key}`}>
+                  <h2
+                    id={`section-${section.key}`}
+                    className={`mb-4 text-lg font-semibold ${
+                      section.muted ? 'text-primary-400' : 'text-primary-800'
+                    }`}
+                  >
+                    {section.label}
+                    <span className="ml-2 text-sm font-normal text-primary-400">
+                      ({sectionTrips.length})
+                    </span>
+                  </h2>
+                  <div className={`space-y-3 ${section.accent ? `border-l-4 ${section.accent} pl-4` : ''} ${section.muted ? 'opacity-75' : ''}`}>
+                    {sectionTrips.map((trip) => (
+                      <TripCard key={trip.id} trip={trip} />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         )}
       </div>
