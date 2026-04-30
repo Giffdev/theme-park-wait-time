@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RefreshCw, ArrowUpDown, TrendingUp, Clock, AlertCircle, MapPin } from 'lucide-react';
+import QuickLogSheet from '@/components/QuickLogSheet';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
 import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
 import { getLocationByDestinationId, formatLocation } from '@/lib/parks/park-locations';
@@ -81,6 +82,7 @@ export default function ParkDetailPage() {
   } | null>(null);
   const [schedule, setSchedule] = useState<ParkScheduleData | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [quickLogOpen, setQuickLogOpen] = useState(false);
 
   // Tick every 30s so relative time stays fresh
   useEffect(() => {

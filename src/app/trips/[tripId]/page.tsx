@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Trash2, Pencil, X, PlusCircle } from 'lucide-react';
+import WaitTimeInput, { WaitTimeMode } from '@/components/ride-log/WaitTimeInput';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getTrip, completeTrip, generateShareId, updateTrip, deleteTrip } from '@/lib/services/trip-service';
 import { getTripRideLogs } from '@/lib/services/trip-service';
@@ -104,7 +105,7 @@ export default function TripDetailPage() {
 
   // Edit ride log state
   const [editingRideLog, setEditingRideLog] = useState<(RideLog & { id: string }) | null>(null);
-  const [editRideData, setEditRideData] = useState<{ rodeAt: string; waitTimeMinutes: string; rating: string; notes: string }>({ rodeAt: '', waitTimeMinutes: '', rating: '', notes: '' });
+  const [editRideData, setEditRideData] = useState<{ rodeAt: string; waitTimeMinutes: string; rating: string; notes: string; waitTimeMode: WaitTimeMode }>({ rodeAt: '', waitTimeMinutes: '', rating: '', notes: '', waitTimeMode: 'unknown' });
   const [savingRide, setSavingRide] = useState(false);
 
   // Edit dining log state
@@ -220,11 +221,21 @@ export default function TripDetailPage() {
   const openEditRideLog = (log: RideLog & { id: string }) => {
     const date = toSafeDate(log.rodeAt);
     const localIso = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    // Determine wait time mode from existing log data
+    let waitTimeMode: WaitTimeMode = 'unknown';
+    if (log.attractionClosed) {
+      waitTimeMode = 'closed';
+    } else if (log.waitTimeMinutes === 0) {
+      waitTimeMode = 'no-wait';
+    } else if (log.waitTimeMinutes != null) {
+      waitTimeMode = 'manual';
+    }
     setEditRideData({
       rodeAt: localIso,
       waitTimeMinutes: log.waitTimeMinutes != null ? String(log.waitTimeMinutes) : '',
       rating: log.rating != null ? String(log.rating) : '',
       notes: log.notes || '',
+      waitTimeMode,
     });
     setEditingRideLog(log);
   };
@@ -235,7 +246,16 @@ export default function TripDetailPage() {
     try {
       const data: RideLogUpdateData = {};
       if (editRideData.rodeAt) data.rodeAt = new Date(editRideData.rodeAt);
-      data.waitTimeMinutes = editRideData.waitTimeMinutes ? Number(editRideData.waitTimeMinutes) : null;
+      if (editRideData.waitTimeMode === 'closed') {
+        data.attractionClosed = true;
+        data.waitTimeMinutes = null;
+      } else if (editRideData.waitTimeMode === 'no-wait') {
+        data.attractionClosed = false;
+        data.waitTimeMinutes = 0;
+      } else {
+        data.attractionClosed = false;
+        data.waitTimeMinutes = editRideData.waitTimeMinutes ? Number(editRideData.waitTimeMinutes) : null;
+      }
       data.rating = editRideData.rating ? Number(editRideData.rating) : null;
       data.notes = editRideData.notes;
       await updateRideLog(user.uid, editingRideLog.id, data);
@@ -633,17 +653,12 @@ export default function TripDetailPage() {
                   className="w-full cursor-pointer rounded-lg border border-primary-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-primary-700 mb-1">Wait Time (minutes)</label>
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="Optional"
-                  value={editRideData.waitTimeMinutes}
-                  onChange={(e) => setEditRideData((d) => ({ ...d, waitTimeMinutes: e.target.value }))}
-                  className="w-full rounded-lg border border-primary-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                />
-              </div>
+              <WaitTimeInput
+                    value={editRideData.waitTimeMinutes}
+                    onChange={(val) => setEditRideData((d) => ({ ...d, waitTimeMinutes: val }))}
+                    mode={editRideData.waitTimeMode}
+                    onModeChange={(mode) => setEditRideData((d) => ({ ...d, waitTimeMode: mode }))}
+                  />
               <div>
                 <label className="block text-sm font-medium text-primary-700 mb-1">Rating</label>
                 <select
@@ -740,7 +755,6 @@ export default function TripDetailPage() {
                 <label className="block text-sm font-medium text-primary-700 mb-1">Wait for Table (minutes)</label>
                 <input
                   type="number"
-                  min="0"
                   placeholder="Optional"
                   value={editDiningData.tableWaitMinutes}
                   onChange={(e) => setEditDiningData((d) => ({ ...d, tableWaitMinutes: e.target.value }))}
