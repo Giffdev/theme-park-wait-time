@@ -279,13 +279,14 @@ export default function ParkDetailPage() {
     .sort((a, b) => {
       const aWait = a.waitMinutes;
       const bWait = b.waitMinutes;
+      // If neither has wait times, sort alphabetically
+      if (aWait === null && bWait === null) return a.name.localeCompare(b.name);
       // n/a always at bottom regardless of sort direction
-      if (aWait === null && bWait === null) return 0;
       if (aWait === null) return 1;
       if (bWait === null) return -1;
       return sortAsc ? aWait - bWait : bWait - aWait;
     });
-  const notOperating = filteredAttractions.filter((a) => a.status !== 'OPERATING');
+  const notOperating = filteredAttractions.filter((a) => a.status !== 'OPERATING').sort((a, b) => a.name.localeCompare(b.name));
 
   // Stats
   const operatingCount = operating.length;
