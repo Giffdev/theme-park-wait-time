@@ -9,6 +9,7 @@ interface RideLogListProps {
   logs: (RideLog & { id: string })[];
   onDelete?: (id: string) => void;
   loading?: boolean;
+  groupBy?: 'date' | 'park';
 }
 
 function groupLabel(date: Date): string {
@@ -20,23 +21,36 @@ function groupLabel(date: Date): string {
 /**
  * Scrollable ride history list, grouped by date.
  */
-export default function RideLogList({ logs, onDelete, loading }: RideLogListProps) {
+export default function RideLogList({ logs, onDelete, loading, groupBy = 'date' }: RideLogListProps) {
   const grouped = useMemo(() => {
     const groups: { label: string; entries: (RideLog & { id: string })[] }[] = [];
-    let currentLabel = '';
 
-    for (const log of logs) {
-      const date = log.rodeAt instanceof Date ? log.rodeAt : new Date(log.rodeAt);
-      const label = groupLabel(date);
-      if (label !== currentLabel) {
-        currentLabel = label;
-        groups.push({ label, entries: [] });
+    if (groupBy === 'park') {
+      const byPark = new Map<string, (RideLog & { id: string })[]>();
+      for (const log of logs) {
+        const key = log.parkName || 'Unknown Park';
+        if (!byPark.has(key)) byPark.set(key, []);
+        byPark.get(key)!.push(log);
       }
-      groups[groups.length - 1].entries.push(log);
+      for (const [label, entries] of byPark) {
+        groups.push({ label, entries });
+      }
+      groups.sort((a, b) => a.label.localeCompare(b.label));
+    } else {
+      let currentLabel = '';
+      for (const log of logs) {
+        const date = log.rodeAt instanceof Date ? log.rodeAt : new Date(log.rodeAt);
+        const label = groupLabel(date);
+        if (label !== currentLabel) {
+          currentLabel = label;
+          groups.push({ label, entries: [] });
+        }
+        groups[groups.length - 1].entries.push(log);
+      }
     }
 
     return groups;
-  }, [logs]);
+  }, [logs, groupBy]);
 
   if (loading) {
     return (

@@ -1,18 +1,39 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Star } from 'lucide-react';
+import { Search, X, Star, Timer, Clock, ChevronLeft, MapPin } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getTrip } from '@/lib/services/trip-service';
 import { createRideLog } from '@/lib/services/ride-log-service';
-import { getCollection } from '@/lib/firebase/firestore';
+import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
 import type { Trip } from '@/types/trip';
+import type { AttractionType } from '@/types/attraction';
 
 interface AttractionOption {
   id: string;
   name: string;
+  entityType?: string;
+  attractionType?: AttractionType | null;
+}
+
+type LogMode = 'quick' | 'timer';
+
+const TYPE_FILTERS: { value: string; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'thrill', label: '🎢 Thrill' },
+  { value: 'family', label: '👨‍👩‍👧 Family' },
+  { value: 'show', label: '🎭 Show' },
+  { value: 'experience', label: '✨ Experience' },
+  { value: 'character-meet', label: '🤝 Characters' },
+];
+
+function formatElapsed(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
 }
 
 export default function TripLogRidePage() {
@@ -24,18 +45,32 @@ export default function TripLogRidePage() {
   const [loading, setLoading] = useState(true);
   const [attractions, setAttractions] = useState<AttractionOption[]>([]);
   const [parkId, setParkId] = useState('');
-  const [attractionId, setAttractionId] = useState('');
-  const [dateTime, setDateTime] = useState(new Date().toISOString().slice(0, 16));
+
+  // Search & filter
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+
+  // Log form state
+  const [selectedAttraction, setSelectedAttraction] = useState<AttractionOption | null>(null);
+  const [logMode, setLogMode] = useState<LogMode>('quick');
   const [waitTime, setWaitTime] = useState('');
   const [rating, setRating] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // Timer state
+  const [timerStart, setTimerStart] = useState<number | null>(null);
+  const [timerElapsed, setTimerElapsed] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Redirect to sign-in if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push('/signin');
+      router.push('/auth/signin');
     }
   }, [authLoading, user, router]);
 
@@ -46,8 +81,7 @@ export default function TripLogRidePage() {
     getTrip(user.uid, tripId)
       .then((t) => {
         setTrip(t);
-        // Auto-select if only one park
-        if (t && t.parkIds.length === 1) {
+        if (t && t.parkIds.length > 0) {
           setParkId(t.parkIds[0]);
         }
       })
@@ -61,50 +95,125 @@ export default function TripLogRidePage() {
       setAttractions([]);
       return;
     }
-    getCollection<{ name: string }>(`parks/${parkId}/attractions`).then((docs) => {
+    getCollection<{ name: string; entityType?: string; attractionType?: AttractionType | null }>(
+      'attractions',
+      [whereConstraint('parkId', '==', parkId)]
+    ).then((docs) => {
       setAttractions(
-        docs.map((d) => ({ id: d.id, name: d.name })).sort((a, b) => a.name.localeCompare(b.name))
+        docs
+          .map((d) => ({
+            id: d.id,
+            name: d.name,
+            entityType: d.entityType,
+            attractionType: d.attractionType,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name))
       );
     });
   }, [parkId]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !trip) return;
-
-    if (!parkId || !attractionId) {
-      setError('Please select a park and attraction.');
-      return;
+  // Timer tick
+  useEffect(() => {
+    if (timerStart !== null) {
+      timerRef.current = setInterval(() => {
+        setTimerElapsed(Date.now() - timerStart);
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setTimerElapsed(0);
     }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [timerStart]);
+
+  // Filter attractions
+  const filteredAttractions = useMemo(() => {
+    return attractions.filter((a) => {
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (!a.name.toLowerCase().includes(q)) return false;
+      }
+      if (typeFilter !== 'all') {
+        if (typeFilter === 'show') {
+          if (a.entityType !== 'SHOW' && a.attractionType !== 'show') return false;
+        } else if (a.attractionType !== typeFilter) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [attractions, searchQuery, typeFilter]);
+
+  const handleSelectAttraction = useCallback((attraction: AttractionOption) => {
+    setSelectedAttraction(attraction);
+    setLogMode('quick');
+    setWaitTime('');
+    setRating(null);
+    setNotes('');
+    setError('');
+    setTimerStart(null);
+  }, []);
+
+  const handleStartTimer = () => {
+    setTimerStart(Date.now());
+    setLogMode('timer');
+  };
+
+  const handleStopTimer = () => {
+    if (timerStart) {
+      const elapsed = Date.now() - timerStart;
+      const minutes = Math.round(elapsed / 60000);
+      setWaitTime(minutes.toString());
+      setTimerStart(null);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!user || !trip || !selectedAttraction) return;
 
     setSaving(true);
     setError('');
 
     const parkName = trip.parkNames[parkId] ?? '';
-    const attractionName = attractions.find((a) => a.id === attractionId)?.name ?? '';
 
     try {
       await createRideLog(
         user.uid,
         {
           parkId,
-          attractionId,
+          attractionId: selectedAttraction.id,
           parkName,
-          attractionName,
-          rodeAt: new Date(dateTime),
+          attractionName: selectedAttraction.name,
+          rodeAt: new Date(),
           waitTimeMinutes: waitTime ? parseInt(waitTime, 10) : null,
-          source: 'manual',
+          source: logMode === 'timer' ? 'timer' : 'manual',
           rating,
           notes,
         },
         tripId,
       );
-      router.push(`/trips/${tripId}`);
+      setSuccessMessage(`${selectedAttraction.name} logged! 🎉`);
+      setSelectedAttraction(null);
+      setWaitTime('');
+      setRating(null);
+      setNotes('');
+      setTimerStart(null);
+      setTimeout(() => setSuccessMessage(''), 3000);
     } catch {
       setError('Failed to save ride log. Please try again.');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleClosePanel = () => {
+    if (timerStart) {
+      const confirmed = window.confirm('Timer is running. Discard?');
+      if (!confirmed) return;
+    }
+    setSelectedAttraction(null);
+    setTimerStart(null);
   };
 
   if (authLoading || loading) {
@@ -127,159 +236,324 @@ export default function TripLogRidePage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-8">
-      {/* Header */}
-      <div className="mb-6">
-        <Link
-          href={`/trips/${tripId}`}
-          className="text-sm text-primary-500 hover:underline"
-        >
-          ← Back to {trip.name}
-        </Link>
-        <h1 className="mt-2 text-2xl font-bold text-primary-900">Log a Ride 🎢</h1>
-        <p className="mt-1 text-sm text-primary-500">
-          Recording for <span className="font-medium text-primary-700">{trip.name}</span>
-        </p>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {error && (
-          <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-        )}
-
-        {/* Park selector */}
-        <div>
-          <label htmlFor="park-select" className="mb-1 block text-sm font-medium text-primary-700">
-            Park
-          </label>
-          {trip.parkIds.length === 1 ? (
-            <div className="rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm font-medium text-primary-700">
-              {trip.parkNames[trip.parkIds[0]]}
-            </div>
-          ) : (
-            <select
-              id="park-select"
-              value={parkId}
-              onChange={(e) => { setParkId(e.target.value); setAttractionId(''); }}
-              className="w-full rounded-xl border border-primary-200 px-4 py-3 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+    <div className="mx-auto max-w-lg px-4 pb-24 pt-4 sm:pb-8">
+      {/* Trip Context Banner */}
+      <div className="mb-4 rounded-xl bg-gradient-to-r from-primary-600 to-primary-700 px-4 py-3 text-white shadow-md">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/trips/${tripId}`}
+              className="rounded-lg p-1 transition-colors hover:bg-white/20"
+              aria-label="Back to trip"
             >
-              <option value="">Select a park...</option>
-              {trip.parkIds.map((id) => (
-                <option key={id} value={id}>{trip.parkNames[id]}</option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        {/* Attraction selector */}
-        <div>
-          <label htmlFor="attraction-select" className="mb-1 block text-sm font-medium text-primary-700">
-            Attraction
-          </label>
-          <select
-            id="attraction-select"
-            value={attractionId}
-            onChange={(e) => setAttractionId(e.target.value)}
-            disabled={!parkId || attractions.length === 0}
-            className="w-full rounded-xl border border-primary-200 px-4 py-3 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:bg-gray-50 disabled:text-gray-400"
-          >
-            <option value="">{parkId && attractions.length === 0 ? 'Loading attractions...' : 'Select an attraction...'}</option>
-            {attractions.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Date/Time */}
-        <div>
-          <label htmlFor="ride-datetime" className="mb-1 block text-sm font-medium text-primary-700">
-            Date & Time
-          </label>
-          <input
-            id="ride-datetime"
-            type="datetime-local"
-            value={dateTime}
-            onChange={(e) => setDateTime(e.target.value)}
-            className="w-full rounded-xl border border-primary-200 px-4 py-3 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-          />
-        </div>
-
-        {/* Wait time */}
-        <div>
-          <label htmlFor="wait-time" className="mb-1 block text-sm font-medium text-primary-700">
-            Wait Time (optional)
-          </label>
-          <div className="relative">
-            <input
-              id="wait-time"
-              type="number"
-              min="0"
-              max="300"
-              value={waitTime}
-              onChange={(e) => setWaitTime(e.target.value)}
-              placeholder="Minutes"
-              className="w-full rounded-xl border border-primary-200 px-4 py-3 pr-12 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-primary-400">min</span>
+              <ChevronLeft className="h-5 w-5" />
+            </Link>
+            <div>
+              <h1 className="text-base font-bold">Log a Ride 🎢</h1>
+              <p className="text-xs text-white/80">{trip.name}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-white/70">
+            <MapPin className="h-3 w-3" />
+            <span>{trip.parkNames[parkId] || 'Select park'}</span>
           </div>
         </div>
+      </div>
 
-        {/* Rating */}
-        <div>
-          <label className="mb-2 block text-sm font-medium text-primary-700">Rating (optional)</label>
-          <div className="flex gap-2">
-            {[1, 2, 3, 4, 5].map((star) => (
+      {/* Park selector (only if multiple parks) */}
+      {trip.parkIds.length > 1 && (
+        <div className="mb-4">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            {trip.parkIds.map((id) => (
               <button
-                key={star}
+                key={id}
                 type="button"
-                onClick={() => setRating(star === rating ? null : star)}
-                className="transition-transform hover:scale-110 active:scale-95"
-                aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+                onClick={() => { setParkId(id); setSelectedAttraction(null); }}
+                className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-all ${
+                  parkId === id
+                    ? 'bg-primary-600 text-white shadow-sm'
+                    : 'bg-primary-50 text-primary-600 hover:bg-primary-100'
+                }`}
               >
-                <Star
-                  className={`h-7 w-7 ${
-                    rating && star <= rating
-                      ? 'fill-yellow-400 text-yellow-400'
-                      : 'text-gray-300'
-                  }`}
-                />
+                {trip.parkNames[id]}
               </button>
             ))}
           </div>
         </div>
+      )}
 
-        {/* Notes */}
-        <div>
-          <label htmlFor="ride-notes" className="mb-1 block text-sm font-medium text-primary-700">
-            Notes (optional)
-          </label>
-          <textarea
-            id="ride-notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="How was the ride?"
-            rows={3}
-            className="w-full rounded-xl border border-primary-200 px-4 py-3 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100 resize-none"
+      {/* Success toast */}
+      {successMessage && (
+        <div className="mb-4 animate-in fade-in slide-in-from-top-2 rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm font-medium text-green-700 shadow-sm">
+          {successMessage}
+        </div>
+      )}
+
+      {/* Search bar */}
+      {parkId && (
+        <div className="relative mb-3">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary-400" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search rides..."
+            className="w-full rounded-xl border border-primary-200 bg-white py-3 pl-10 pr-10 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-primary-400 hover:bg-primary-100 hover:text-primary-600"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
+      )}
 
-        {/* Actions */}
-        <div className="flex gap-3 pt-2">
-          <Link
-            href={`/trips/${tripId}`}
-            className="flex-1 rounded-xl border border-primary-200 px-4 py-3 text-center text-sm font-medium text-primary-600 hover:bg-primary-50"
-          >
-            Cancel
-          </Link>
-          <button
-            type="submit"
-            disabled={saving}
-            className="flex-1 rounded-xl bg-gradient-to-r from-primary-600 to-primary-700 px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg active:scale-[0.98] disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Log Ride 🎢'}
-          </button>
+      {/* Type filter chips */}
+      {parkId && (
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {TYPE_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => setTypeFilter(f.value)}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+                typeFilter === f.value
+                  ? 'bg-coral-500 text-white shadow-sm'
+                  : 'bg-primary-50 text-primary-600 hover:bg-primary-100'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
-      </form>
+      )}
+
+      {/* Attractions list */}
+      {parkId && !selectedAttraction && (
+        <div className="divide-y divide-primary-50 rounded-xl border border-primary-100 bg-white shadow-sm">
+          {filteredAttractions.length === 0 && (
+            <p className="py-8 text-center text-sm text-primary-400">
+              {attractions.length === 0 ? 'Loading attractions...' : 'No rides match your search.'}
+            </p>
+          )}
+          {filteredAttractions.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => handleSelectAttraction(a)}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-primary-50 active:bg-primary-100"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-coral-50 text-lg">
+                {a.attractionType === 'thrill' ? '🎢' :
+                 a.attractionType === 'family' ? '🎠' :
+                 a.attractionType === 'show' || a.entityType === 'SHOW' ? '🎭' :
+                 a.attractionType === 'character-meet' ? '🤝' :
+                 a.attractionType === 'experience' ? '✨' : '🎡'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-primary-800">
+                  {a.name}
+                </span>
+                {a.attractionType && (
+                  <span className="text-xs capitalize text-primary-400">
+                    {a.attractionType.replace('-', ' ')}
+                  </span>
+                )}
+              </div>
+              <div className="shrink-0 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-500">
+                Log
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* No park selected */}
+      {!parkId && (
+        <div className="mt-12 text-center">
+          <div className="text-4xl">🏰</div>
+          <p className="mt-3 text-sm text-primary-500">Select a park to browse rides</p>
+        </div>
+      )}
+
+      {/* Log Form Panel (slide-up style) */}
+      {selectedAttraction && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={handleClosePanel}
+          />
+
+          {/* Panel */}
+          <div className="relative w-full max-w-lg animate-in slide-in-from-bottom rounded-t-2xl bg-white px-5 pb-8 pt-4 shadow-xl sm:rounded-2xl sm:m-4">
+            {/* Handle bar (mobile) */}
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-primary-200 sm:hidden" />
+
+            {/* Header */}
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-primary-900">{selectedAttraction.name}</h2>
+                <p className="text-xs text-primary-500">{trip.parkNames[parkId]}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleClosePanel}
+                className="rounded-lg p-1.5 text-primary-400 hover:bg-primary-100 hover:text-primary-600"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {error && (
+              <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+            )}
+
+            {/* Mode toggle */}
+            <div className="mb-4 flex rounded-xl bg-primary-50 p-1">
+              <button
+                type="button"
+                onClick={() => { setLogMode('quick'); setTimerStart(null); }}
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+                  logMode === 'quick'
+                    ? 'bg-white text-primary-700 shadow-sm'
+                    : 'text-primary-500 hover:text-primary-700'
+                }`}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                Quick Log
+              </button>
+              <button
+                type="button"
+                onClick={() => setLogMode('timer')}
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+                  logMode === 'timer'
+                    ? 'bg-white text-primary-700 shadow-sm'
+                    : 'text-primary-500 hover:text-primary-700'
+                }`}
+              >
+                <Timer className="h-3.5 w-3.5" />
+                Timer
+              </button>
+            </div>
+
+            {/* Timer mode */}
+            {logMode === 'timer' && (
+              <div className="mb-4 rounded-xl border border-primary-100 bg-primary-50/50 p-4 text-center">
+                <div className="mb-3 font-mono text-3xl font-bold text-primary-800">
+                  {formatElapsed(timerElapsed)}
+                </div>
+                {timerStart === null ? (
+                  <button
+                    type="button"
+                    onClick={handleStartTimer}
+                    className="inline-flex items-center gap-2 rounded-xl bg-green-500 px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-green-600 active:scale-95"
+                  >
+                    <Timer className="h-4 w-4" />
+                    Start Timer
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleStopTimer}
+                    className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-red-600 active:scale-95 animate-pulse"
+                  >
+                    <Timer className="h-4 w-4" />
+                    Stop Timer
+                  </button>
+                )}
+                {timerStart !== null && (
+                  <p className="mt-2 text-xs text-primary-400">
+                    Timing your wait... tap Stop when you board!
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Wait time input (quick mode or after timer stops) */}
+            {(logMode === 'quick' || (logMode === 'timer' && timerStart === null && waitTime)) && (
+              <div className="mb-4">
+                <label htmlFor="log-wait" className="mb-1.5 block text-xs font-medium text-primary-600">
+                  Wait Time
+                </label>
+                <div className="relative">
+                  <input
+                    id="log-wait"
+                    type="number"
+                    min="0"
+                    max="300"
+                    value={waitTime}
+                    onChange={(e) => setWaitTime(e.target.value)}
+                    placeholder="0"
+                    className="w-full rounded-xl border border-primary-200 px-4 py-3 pr-14 text-lg font-medium focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-primary-400">
+                    min
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Rating */}
+            <div className="mb-4">
+              <label className="mb-1.5 block text-xs font-medium text-primary-600">
+                Rating
+              </label>
+              <div className="flex gap-1.5">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setRating(star === rating ? null : star)}
+                    className="transition-transform hover:scale-110 active:scale-90"
+                    aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+                  >
+                    <Star
+                      className={`h-8 w-8 ${
+                        rating && star <= rating
+                          ? 'fill-yellow-400 text-yellow-400'
+                          : 'text-gray-200'
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div className="mb-5">
+              <label htmlFor="log-notes" className="mb-1.5 block text-xs font-medium text-primary-600">
+                Notes <span className="text-primary-300">(optional)</span>
+              </label>
+              <textarea
+                id="log-notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Front row was amazing!"
+                rows={2}
+                className="w-full resize-none rounded-xl border border-primary-200 px-4 py-2.5 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+              />
+            </div>
+
+            {/* Submit */}
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={saving || (logMode === 'timer' && timerStart !== null)}
+              className="w-full rounded-xl bg-gradient-to-r from-coral-500 to-coral-600 px-4 py-3.5 text-sm font-bold text-white shadow-lg transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : timerStart !== null ? 'Stop timer first' : 'Log Ride 🎢'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

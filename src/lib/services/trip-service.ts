@@ -166,9 +166,19 @@ export async function updateTrip(
   }
 }
 
-/** Delete a trip and its share index entry. */
+/** Delete a trip, its associated ride logs, and its share index entry. */
 export async function deleteTrip(userId: string, tripId: string): Promise<void> {
   const trip = await getTrip(userId, tripId);
+
+  // Delete all ride logs associated with this trip
+  const rideLogs = await getCollection<RideLog>(rideLogsPath(userId), [
+    whereConstraint('tripId', '==', tripId),
+  ]);
+  await Promise.all(
+    rideLogs.map((log) => deleteDocument(rideLogsPath(userId), log.id)),
+  );
+
+  // Delete the trip document
   await deleteDocument(tripsPath(userId), tripId);
 
   // Clean up shared index

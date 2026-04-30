@@ -281,7 +281,7 @@ export default function TripDetailPage() {
           </div>
           <div className="rounded-lg border border-primary-100 bg-white p-3 text-center">
             <div className="text-xl font-bold text-primary-700">{trip.stats.totalWaitMinutes}</div>
-            <div className="text-xs text-primary-500">Min Waited</div>
+            <div className="text-xs text-primary-500">Min. Waited</div>
           </div>
           <div className="rounded-lg border border-primary-100 bg-white p-3 text-center">
             <div className="text-xl font-bold text-primary-700">{trip.stats.parksVisited}</div>

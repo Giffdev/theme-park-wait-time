@@ -21,11 +21,21 @@ interface WaitTimeEntry {
   fetchedAt?: string;
 }
 
+interface ParkHoursEntry {
+  parkId: string;
+  slug: string;
+  timezone: string;
+  isOpen: boolean;
+  todayHours: { openTime: string; closeTime: string } | null;
+  localTime: string;
+}
+
 export default function ParksPage() {
   const [parks, setParks] = useState<Park[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [shortestWaits, setShortestWaits] = useState<Record<string, number | null>>({});
+  const [parkHours, setParkHours] = useState<Record<string, ParkHoursEntry>>({});
   const [latestFetchedAt, setLatestFetchedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
 
@@ -52,6 +62,23 @@ export default function ParksPage() {
     }
     return { label, isStale };
   }, [latestFetchedAt, now]);
+
+  // Fetch park hours from API (non-blocking — park cards render without it)
+  const fetchParkHours = useCallback(async () => {
+    try {
+      const res = await fetch('/api/park-hours');
+      if (res.ok) {
+        const data: ParkHoursEntry[] = await res.json();
+        const map: Record<string, ParkHoursEntry> = {};
+        for (const entry of data) {
+          map[entry.parkId] = entry;
+        }
+        setParkHours(map);
+      }
+    } catch {
+      // Park hours are supplemental — don't break the page
+    }
+  }, []);
 
   const fetchParks = useCallback(async () => {
     try {
@@ -93,13 +120,14 @@ export default function ParksPage() {
 
   useEffect(() => {
     fetchParks();
-  }, [fetchParks]);
+    fetchParkHours();
+  }, [fetchParks, fetchParkHours]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
       await fetch('/api/wait-times');
-      await fetchParks();
+      await Promise.all([fetchParks(), fetchParkHours()]);
     } catch (error) {
       console.error('Refresh failed:', error);
     } finally {
@@ -160,15 +188,22 @@ export default function ParksPage() {
                 {destination}
               </h2>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {destParks.map((park) => (
-                  <ParkCard
-                    key={park.id}
-                    slug={park.slug}
-                    name={park.name}
-                    destinationName={park.destinationName}
-                    shortestWait={shortestWaits[park.id] ?? null}
-                  />
-                ))}
+                {destParks.map((park) => {
+                  const hours = parkHours[park.id];
+                  return (
+                    <ParkCard
+                      key={park.id}
+                      slug={park.slug}
+                      name={park.name}
+                      destinationName={park.destinationName}
+                      shortestWait={shortestWaits[park.id] ?? null}
+                      isOpen={hours?.isOpen}
+                      todayHours={hours?.todayHours}
+                      timezone={hours?.timezone}
+                      localTime={hours?.localTime}
+                    />
+                  );
+                })}
               </div>
             </section>
           ))}

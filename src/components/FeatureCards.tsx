@@ -13,8 +13,8 @@ export function FeatureCards() {
     description: !loading && !user
       ? 'Sign in to log rides, track wait times, and build your ultimate theme park history. 🎢'
       : 'Track wait times, rate attractions, and help the community with real-time insights.',
-    color: 'bg-coral-50 hover:bg-coral-100 border-coral-200',
-    textColor: 'text-coral-700',
+    color: 'bg-violet-50 hover:bg-violet-100 border-violet-200',
+    textColor: 'text-violet-700',
   };
 
   const features = [

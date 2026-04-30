@@ -1,10 +1,30 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/firebase/auth-context';
+import { getRideLogs } from '@/lib/services/ride-log-service';
+import { getTrips } from '@/lib/services/trip-service';
 
 export default function DashboardPage() {
   const { user, loading, signOut } = useAuth();
+  const [stats, setStats] = useState({ totalRides: 0, parksVisited: 0, tripsLogged: 0, totalWaitMinutes: 0 });
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    setStatsLoading(true);
+    Promise.all([getRideLogs(user.uid), getTrips(user.uid)])
+      .then(([logs, trips]) => {
+        setStats({
+          totalRides: logs.length,
+          parksVisited: new Set(logs.map((l) => l.parkId)).size,
+          tripsLogged: trips.length,
+          totalWaitMinutes: logs.reduce((sum, l) => sum + (l.waitTimeMinutes ?? 0), 0),
+        });
+      })
+      .finally(() => setStatsLoading(false));
+  }, [user]);
 
   if (loading) {
     return (
@@ -68,10 +88,10 @@ export default function DashboardPage() {
       {/* Stats */}
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Total Rides', value: '—', emoji: '🎢' },
-          { label: 'Parks Visited', value: '—', emoji: '🏰' },
-          { label: 'Trips Logged', value: '—', emoji: '📝' },
-          { label: 'Crowd Reports', value: '—', emoji: '📊' },
+          { label: 'Total Rides', value: statsLoading ? '…' : String(stats.totalRides), emoji: '🎢' },
+          { label: 'Parks Visited', value: statsLoading ? '…' : String(stats.parksVisited), emoji: '🏰' },
+          { label: 'Trips Logged', value: statsLoading ? '…' : String(stats.tripsLogged), emoji: '📝' },
+          { label: 'Min. Waited', value: statsLoading ? '…' : String(stats.totalWaitMinutes), emoji: '⏱️' },
         ].map((stat) => (
           <div
             key={stat.label}

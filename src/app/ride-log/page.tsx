@@ -133,7 +133,7 @@ export default function RideLogPage() {
       )}
 
       {/* Ride log list */}
-      <RideLogList logs={logs} onDelete={handleDelete} loading={loading} />
+      <RideLogList logs={logs} onDelete={handleDelete} loading={loading} groupBy={filter === 'park' ? 'park' : 'date'} />
 
       {/* Manual log form modal */}
       {showForm && (

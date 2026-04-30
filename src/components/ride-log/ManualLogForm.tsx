@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Star } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { createRideLog } from '@/lib/services/ride-log-service';
-import { getCollection } from '@/lib/firebase/firestore';
+import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
 
 interface ManualLogFormProps {
   onSuccess?: () => void;
@@ -49,8 +49,8 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
       setAttractions([]);
       return;
     }
-    getCollection<{ name: string }>(`parks/${parkId}/attractions`).then((docs) => {
-      setAttractions(docs.map((d) => ({ id: d.id, name: d.name })));
+    getCollection<{ name: string }>('attractions', [whereConstraint('parkId', '==', parkId)]).then((docs) => {
+      setAttractions(docs.map((d) => ({ id: d.id, name: d.name })).sort((a, b) => a.name.localeCompare(b.name)));
     });
   }, [parkId]);
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { RefreshCw } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getTrips } from '@/lib/services/trip-service';
 import TripCard from '@/components/trips/TripCard';
@@ -79,14 +80,8 @@ export default function TripsPage() {
           <p className="mt-1 text-primary-500">Your complete theme park experience history</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={fetchTrips}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-white px-3 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
-            Refresh
+          <button onClick={fetchTrips} disabled={loading} className="rounded-full p-2 text-primary-500 hover:bg-primary-50 disabled:opacity-50">
+            <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <Link
             href="/trips/new"

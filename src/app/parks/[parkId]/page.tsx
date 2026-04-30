@@ -12,6 +12,7 @@ import AttractionFilterChips, {
 } from '@/components/parks/AttractionFilterChips';
 import RideDetailPanel from '@/components/parks/RideDetailPanel';
 import ParkScheduleBar from '@/components/parks/ParkScheduleBar';
+import ParkOperatingStatus from '@/components/parks/ParkOperatingStatus';
 import type { AttractionType } from '@/types/attraction';
 import type { QueueData, ForecastEntry, OperatingHoursEntry, ScheduleSegment, ForecastMeta } from '@/types/queue';
 
@@ -281,7 +282,12 @@ export default function ParkDetailPage() {
       {/* Header */}
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-primary-900">{park?.name}</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-primary-900">{park?.name}</h1>
+            {schedule && (
+              <ParkOperatingStatus segments={schedule.segments} timezone={schedule.timezone} />
+            )}
+          </div>
           <p className="mt-1 text-sm text-primary-500">{park?.destinationName}</p>
         </div>
         <div className="flex flex-col items-end gap-1">
