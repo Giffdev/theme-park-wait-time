@@ -84,6 +84,7 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
 
   // Trip association
   const [activeTripId, setActiveTripId] = useState<string | null>(null);
+  const [activeTripName, setActiveTripName] = useState<string | null>(null);
 
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -130,7 +131,8 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
     }
     getActiveTrip(user.uid).then((t) => {
       setActiveTripId(t?.id ?? null);
-    }).catch(() => setActiveTripId(null));
+      setActiveTripName(t?.name ?? null);
+    }).catch(() => { setActiveTripId(null); setActiveTripName(null); });
   }, [open, user, initialTripId]);
 
   // Load attractions when park changes
@@ -244,6 +246,27 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
 
   if (!open) return null;
 
+  // Auth gate: show login prompt if not authenticated
+  if (!user) {
+    return (
+      <>
+        <div className="fixed inset-0 z-[60] bg-black/40" onClick={handleClose} />
+        <div className="fixed inset-x-0 bottom-0 z-[70] rounded-t-2xl bg-white shadow-2xl pb-[env(safe-area-inset-bottom)]">
+          <div className="px-4 pt-6 pb-8 text-center">
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-primary-200" />
+            <div className="text-4xl mb-3">🎢</div>
+            <h2 className="text-lg font-semibold text-primary-900 mb-2">Sign in to Log Rides</h2>
+            <p className="text-sm text-primary-500 mb-5 max-w-xs mx-auto">Create an account or sign in to start tracking your rides, wait times, and park adventures.</p>
+            <div className="flex gap-3 justify-center">
+              <a href="/auth/signin" className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">Sign In</a>
+              <button onClick={handleClose} className="rounded-lg border border-primary-200 px-5 py-2.5 text-sm font-medium text-primary-700 hover:bg-primary-50">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       {/* Backdrop */}
@@ -260,6 +283,14 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
               <X className="h-5 w-5" />
             </button>
           </div>
+
+          {/* Active trip indicator */}
+          {activeTripId && activeTripName && (
+            <div className="mt-2 flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-1.5">
+              <span className="text-xs">🗺️</span>
+              <span className="text-xs font-medium text-green-700">Adding to trip: <strong>{activeTripName}</strong></span>
+            </div>
+          )}
 
           {/* Temporal mode selector */}
           <div className="mt-3 flex gap-1 rounded-lg bg-primary-100 p-1">
@@ -447,6 +478,9 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
               </div>
               <p className="mt-4 text-lg font-semibold text-primary-900">Ride Logged!</p>
               <p className="text-sm text-primary-500 mt-1">{selectedAttraction?.name}</p>
+              {activeTripId && activeTripName && (
+                <p className="text-xs text-green-600 mt-2 font-medium">✓ Added to trip: {activeTripName}</p>
+              )}
 
               <div className="mt-6 flex gap-3 w-full">
                 <button

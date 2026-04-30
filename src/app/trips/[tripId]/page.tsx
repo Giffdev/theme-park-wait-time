@@ -3,8 +3,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Trash2, Pencil, X, PlusCircle } from 'lucide-react';
+import { Trash2, Pencil, X, PlusCircle, Clock, MapPin } from 'lucide-react';
 import WaitTimeInput, { WaitTimeMode } from '@/components/ride-log/WaitTimeInput';
+import { classifyAttraction } from '@/lib/utils/classify-attraction';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getTrip, completeTrip, generateShareId, updateTrip, deleteTrip } from '@/lib/services/trip-service';
 import { getTripRideLogs } from '@/lib/services/trip-service';
@@ -76,6 +77,46 @@ function groupByPark(logs: (RideLog & { id: string })[]): { parkId: string; park
   // Sort parks by earliest ride time
   groups.sort((a, b) => toSafeDate(a.rides[0].rodeAt).getTime() - toSafeDate(b.rides[0].rodeAt).getTime());
   return groups;
+}
+
+/** Category display config */
+const CATEGORY_CONFIG: Record<string, { emoji: string; label: string; color: string }> = {
+  thrill: { emoji: '🎢', label: 'Thrill', color: 'bg-red-50 text-red-700 border-red-200' },
+  family: { emoji: '👨‍👩‍👧', label: 'Family', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  show: { emoji: '🎭', label: 'Show', color: 'bg-purple-50 text-purple-700 border-purple-200' },
+  experience: { emoji: '🌟', label: 'Experience', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  'character-meet': { emoji: '🤝', label: 'Characters', color: 'bg-pink-50 text-pink-700 border-pink-200' },
+  'dining-experience': { emoji: '🍽️', label: 'Dining', color: 'bg-orange-50 text-orange-700 border-orange-200' },
+  parade: { emoji: '🎉', label: 'Parade', color: 'bg-green-50 text-green-700 border-green-200' },
+};
+
+function getCategoryBadge(attractionName: string) {
+  const category = classifyAttraction(attractionName);
+  const config = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.family;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${config.color}`}>
+      <span>{config.emoji}</span>
+      <span>{config.label}</span>
+    </span>
+  );
+}
+
+function getWaitBadge(log: RideLog) {
+  if (log.attractionClosed) {
+    return <span className="inline-flex items-center gap-1 rounded-full bg-red-50 border border-red-200 px-2 py-0.5 text-[10px] font-semibold text-red-600">Closed</span>;
+  }
+  if (log.waitTimeMinutes === 0) {
+    return <span className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-[10px] font-semibold text-green-700">Walk-on</span>;
+  }
+  if (log.waitTimeMinutes != null) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 border border-primary-200 px-2 py-0.5 text-[10px] font-semibold text-primary-700">
+        <Clock className="h-3 w-3" />
+        {log.waitTimeMinutes} min
+      </span>
+    );
+  }
+  return <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 border border-gray-200 px-2 py-0.5 text-[10px] text-gray-500">Unknown</span>;
 }
 
 export default function TripDetailPage() {
@@ -391,7 +432,7 @@ export default function TripDetailPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-primary-900 sm:text-3xl">{trip.name}</h1>
+            <h1 className="text-2xl font-bold text-primary-900 sm:text-3xl">{trip.name || 'Untitled Trip'}</h1>
             {statusBadge(trip.status)}
           </div>
           <p className="mt-1 text-primary-500">{dateRange}</p>
@@ -479,76 +520,106 @@ export default function TripDetailPage() {
 
       {/* Timeline */}
       <div className="mt-8">
-        <h2 className="text-lg font-semibold text-primary-900 mb-4">Trip Timeline</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-primary-900">{trip.name || 'Untitled Trip'} — Timeline</h2>
+        </div>
 
         {rideLogs.length === 0 ? (
-          <div className="rounded-xl border-2 border-dashed border-primary-200 py-12 text-center">
-            <div className="text-4xl mb-3">🎢</div>
-            <p className="text-primary-600 font-medium">No rides logged yet</p>
-            <p className="text-sm text-primary-400 mt-1">Start riding and log your experiences!</p>
+          <div className="rounded-2xl border-2 border-dashed border-primary-200 bg-gradient-to-b from-white to-primary-50/30 py-14 text-center">
+            <div className="text-5xl mb-4">🎢</div>
+            <p className="text-lg text-primary-700 font-semibold">Your adventure awaits!</p>
+            <p className="text-sm text-primary-400 mt-2 max-w-xs mx-auto">Log your first ride or experience and watch your trip timeline come alive.</p>
             <Link
               href={`/trips/${trip.id}/log`}
-              className="mt-4 inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white shadow-md hover:bg-indigo-700 transition-colors"
             >
+              <PlusCircle className="h-4 w-4" />
               Log a Ride or Experience
             </Link>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-8">
             {Object.entries(groupedLogs).map(([date, dayLogs]) => {
               const parkGroups = groupByPark(dayLogs);
               const totalRides = dayLogs.length;
               return (
-                <div key={date} className="rounded-xl border border-primary-100 bg-white overflow-hidden">
+                <div key={date}>
                   {/* Day header */}
-                  <div className="flex items-center gap-2 px-4 py-3 bg-primary-50 border-b border-primary-100">
-                    <span className="text-base">📅</span>
-                    <h3 className="text-sm font-semibold text-primary-800">{formatDate(date)}</h3>
-                    <span className="ml-auto text-xs text-primary-400">{totalRides} ride{totalRides !== 1 ? 's' : ''}</span>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex items-center gap-2 rounded-lg bg-primary-100/70 px-3 py-1.5">
+                      <span className="text-base">📅</span>
+                      <h3 className="text-sm font-bold text-primary-800">{formatDate(date)}</h3>
+                    </div>
+                    <div className="flex-1 h-px bg-primary-100" />
+                    <span className="text-xs font-medium text-primary-400 bg-primary-50 rounded-full px-2.5 py-0.5">{totalRides} experience{totalRides !== 1 ? 's' : ''}</span>
                   </div>
 
                   {/* Parks within this day */}
-                  <div className="divide-y divide-primary-50">
+                  <div className="space-y-5">
                     {parkGroups.map((park) => (
-                      <div key={park.parkId} className="px-4 py-3">
+                      <div key={park.parkId}>
                         {/* Park sub-header */}
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-sm">🏰</span>
-                          <span className="text-xs font-semibold text-primary-700">{park.parkName}</span>
-                          <span className="text-xs text-primary-400">({park.rides.length})</span>
+                        <div className="flex items-center gap-2 mb-3 ml-1">
+                          <MapPin className="h-3.5 w-3.5 text-primary-400" />
+                          <span className="text-xs font-bold text-primary-600 uppercase tracking-wide">{park.parkName}</span>
+                          <span className="text-[10px] text-primary-400 font-medium">({park.rides.length})</span>
                         </div>
 
-                        {/* Rides in this park */}
-                        <div className="space-y-1.5 ml-5">
+                        {/* Timeline entries */}
+                        <div className="relative ml-4 border-l-2 border-primary-100 pl-0">
                           {park.rides.map((log) => {
                             const time = toSafeDate(log.rodeAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
                             return (
-                              <div key={log.id} className="group flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-primary-50 transition-colors">
-                                <span className="text-xs text-primary-400 w-16 flex-shrink-0">{time}</span>
-                                <span className="text-sm font-medium text-primary-800 flex-1 min-w-0 truncate">{log.attractionName}</span>
-                                <div className="flex items-center gap-2 flex-shrink-0">
-                                  {log.waitTimeMinutes != null && (
-                                    <span className="text-xs text-primary-500">⏱️ {log.waitTimeMinutes}min</span>
+                              <div key={log.id} className="group relative pb-4 last:pb-0">
+                                {/* Timeline dot */}
+                                <div className="absolute -left-[7px] top-3 h-3 w-3 rounded-full border-2 border-primary-200 bg-white group-hover:border-indigo-400 transition-colors" />
+
+                                {/* Time label */}
+                                <div className="ml-5 mb-1">
+                                  <span className="text-[11px] font-medium text-primary-400">{time}</span>
+                                </div>
+
+                                {/* Card */}
+                                <div className="ml-5 rounded-xl border border-primary-100 bg-white p-3.5 shadow-sm hover:shadow-md hover:border-primary-200 transition-all">
+                                  {/* Top row: name + actions */}
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-semibold text-primary-900 leading-tight">{log.attractionName}</p>
+                                      <p className="text-[11px] text-primary-400 mt-0.5">{park.parkName}</p>
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                      <button
+                                        onClick={() => openEditRideLog(log)}
+                                        className="rounded-md p-1.5 text-primary-300 transition-all hover:bg-primary-50 hover:text-primary-600 sm:opacity-0 sm:group-hover:opacity-100"
+                                        aria-label={`Edit ${log.attractionName} ride log`}
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => setDeleteLogId(log.id)}
+                                        className="rounded-md p-1.5 text-primary-300 transition-all hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
+                                        aria-label={`Delete ${log.attractionName} ride log`}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Badges row */}
+                                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                    {getCategoryBadge(log.attractionName)}
+                                    {getWaitBadge(log)}
+                                    {log.rating && (
+                                      <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                                        {'★'.repeat(log.rating)}{'☆'.repeat(5 - log.rating)}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Notes */}
+                                  {log.notes && (
+                                    <p className="mt-2 text-xs text-primary-500 italic border-l-2 border-primary-100 pl-2">{log.notes}</p>
                                   )}
-                                  {log.rating && (
-                                    <span className="text-xs text-amber-500">
-                                      {'★'.repeat(log.rating)}{'☆'.repeat(5 - log.rating)}
-                                    </span>
-                                  )}
-                                  <button
-                                    onClick={() => openEditRideLog(log)}
-                                    className="rounded-md p-1 text-primary-400 transition-opacity hover:bg-primary-100 hover:text-primary-600 sm:opacity-0 sm:group-hover:opacity-100"
-                                    aria-label={`Edit ${log.attractionName} ride log`}
-                                  >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => setDeleteLogId(log.id)}
-                                    className="rounded-md p-1 text-red-400 transition-opacity hover:bg-red-50 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100"
-                                    aria-label={`Delete ${log.attractionName} ride log`}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
                                 </div>
                               </div>
                             );

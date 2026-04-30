@@ -141,6 +141,24 @@ export default function ReportWaitTimeModal({
     }
   }, [user, isClosed, manualMinutes, attractionId, attractionName, parkId, onClose, onSuccess]);
 
+  // Auth gate: show login prompt if not authenticated
+  if (!user) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-4" role="dialog" aria-modal="true">
+        <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+        <div className="relative w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-xl">
+          <Clock className="mx-auto h-12 w-12 text-primary-400" />
+          <h3 className="mt-4 text-lg font-semibold text-primary-800">Sign in to Report Wait Times</h3>
+          <p className="mt-2 text-sm text-primary-500">Help other guests by sharing real-time wait data. Sign in to contribute!</p>
+          <div className="mt-5 flex gap-3 justify-center">
+            <a href="/auth/signin" className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary-700">Sign In</a>
+            <button onClick={onClose} className="rounded-lg border border-primary-200 px-5 py-2.5 text-sm font-medium text-primary-700 hover:bg-primary-50">Cancel</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (success) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">

@@ -152,7 +152,7 @@ export default function RideLogPage() {
       {/* FAB */}
       <button
         onClick={() => setShowForm(true)}
-        className="fixed bottom-20 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-coral-500 to-coral-600 text-white shadow-lg shadow-coral-500/30 transition-all hover:shadow-xl hover:shadow-coral-500/40 active:scale-90 md:bottom-8 md:right-8"
+        className="fixed bottom-24 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-coral-500 to-coral-600 text-white shadow-lg shadow-coral-500/30 transition-all hover:shadow-xl hover:shadow-coral-500/40 active:scale-90 md:bottom-8 md:right-8"
         aria-label="Add ride manually"
       >
         <Plus className="h-6 w-6" />
