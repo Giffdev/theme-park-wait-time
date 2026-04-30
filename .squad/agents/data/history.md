@@ -10,6 +10,71 @@
 
 *Detailed history of early work (2026-04-28 through mid-2026-04-29) archived in history-archive.md.*
 
+## Scribe Batch Update (2026-04-29T22:06:00Z)
+
+**Orchestration:** ParkFlow Rename + Parks Page Redesign  
+**Status:** ✅ Complete. Deployed to production.
+
+### Your Contributions
+
+1. **Mobile Nav Item Priority**
+   - Restructured `AuthNavMobile` in `src/components/AuthNav.tsx` with conditional rendering
+   - Logged-in nav (5 items): Home, Parks, My Rides, Trips, Dashboard
+   - Non-logged-in nav (4 items): Home, Parks, Calendar, Sign In
+   - Calendar dropped from logged-in nav (accessible from home/parks, lower priority for at-park users)
+   - My Rides uses ticket icon SVG for visual distinction from Trips (calendar icon)
+
+2. **Park Schedule API Design**
+   - Implemented `/api/parks/[slug]/schedule` — single-park schedule resolution
+     - Slug→UUID lookup via Firestore, calls ThemeParks Wiki API
+     - Returns today's full schedule entries + computed OPEN/CLOSED status
+   - Implemented `/api/park-hours` — batch endpoint for all parks
+     - Returns minimal payload: slug, name, timezone, status, openingTime, closingTime
+     - Designed for Mouth's parks listing page
+     - Individual park failures don't break full response (graceful degradation)
+     - 5-minute caching on schedule calls
+   - Slug-based routing fully integrated
+
+3. **Seed Script Generalization**
+   - Refactored `scripts/seed-parks.ts` from Orlando-only to multi-destination configuration
+   - `SEED_DESTINATIONS` map with keywords, parkFilter (UUID allowlist), timezoneOverride
+   - Graceful error handling: 404s skip with warning instead of crash
+   - Worlds of Fun: seeded with 94 attractions, timezone `America/Chicago`
+   - Adding new parks now requires config entry only, no structural code changes
+
+4. **Separate Trip and Ride Log Fetches**
+   - Decoupled trip + ride logs fetch in `src/app/trips/[tripId]/page.tsx`
+   - Independent try/catch blocks prevent ride log errors from blocking trip display
+   - Ride logs are supplementary; trip is primary
+   - Added composite index to `firestore.indexes.json`: `tripId` ASC + `rodeAt` DESC
+
+### Decisions Processed
+
+- Decision: Park Schedule API Design
+- Decision: Seed Script Generalized to Multi-Destination
+- Decision: Separate Trip and Ride Log Fetches
+- Decision: Mobile Nav Item Priority (Logged-In Users)
+
+### Tests & QA
+
+✅ All tests passing  
+✅ No breaking changes to existing API contracts  
+✅ Deployed to production alongside Mouth team
+
+### Handoff Notes
+
+- **All agents:** To add new parks, edit `SEED_DESTINATIONS` in `scripts/seed-parks.ts` and run `npx tsx scripts/seed-parks.ts`
+- **Firestore:** Composite index on `rideLogs` required for trip detail page query to function
+- **Frontend:** `/api/park-hours` endpoint contract documented in ParkCard interface
+- **Caching:** 5-minute revalidate on park schedule API calls
+
+### Dependencies
+
+- Requires Firestore indexes: `parks.slug`, `attractions.slug`, composite index on rideLogs (tripId + rodeAt)
+- ThemeParks Wiki API for live schedule data
+
+---
+
 ## Recent Work (2026-04-29)
 
 ### Blended Forecast System — Phase 1
