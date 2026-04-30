@@ -63,7 +63,7 @@ export default function ParkCard({
   return (
     <Link
       href={`/parks/${slug}`}
-      className={`group flex flex-col justify-between rounded-xl border p-4 transition-all hover:shadow-lg sm:p-5 ${
+      className={`group flex flex-col justify-between rounded-xl border p-5 transition-all hover:shadow-lg sm:p-6 ${
         hasStatus && !isOpen
           ? 'border-primary-150 bg-primary-50/60 hover:border-primary-300 hover:shadow-primary-100/50'
           : 'border-primary-200 bg-white hover:border-primary-300 hover:shadow-primary-100/50'
@@ -72,7 +72,7 @@ export default function ParkCard({
       {/* Top section: name + status */}
       <div>
         <div className="flex items-start justify-between gap-2">
-          <h3 className={`text-sm font-semibold leading-tight group-hover:text-coral-600 sm:text-base ${hasStatus && !isOpen ? 'text-primary-600' : 'text-primary-800'}`}>
+          <h3 className={`text-base font-bold leading-tight group-hover:text-coral-600 sm:text-lg ${hasStatus && !isOpen ? 'text-primary-600' : 'text-primary-800'}`}>
             {name}
           </h3>
           {hasStatus && (
@@ -89,56 +89,63 @@ export default function ParkCard({
         </div>
 
         {/* Location + meta row */}
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
           {location && (
-            <span className="inline-flex items-center gap-1 text-[11px] text-primary-500">
-              <MapPin className="h-3 w-3 shrink-0" />
+            <span className="inline-flex items-center gap-1 text-xs text-primary-500">
+              <MapPin className="h-3.5 w-3.5 shrink-0" />
               {location}
             </span>
           )}
           {localTime && tz && (
-            <span className="inline-flex items-center gap-1 text-[11px] text-primary-400">
-              <Clock className="h-3 w-3 shrink-0" />
+            <span className="inline-flex items-center gap-1 text-xs text-primary-400">
+              <Clock className="h-3.5 w-3.5 shrink-0" />
               {localTime} {tz}
             </span>
           )}
         </div>
       </div>
 
-      {/* Bottom section: wait time / hours info */}
-      <div className="mt-3 flex items-end justify-between gap-2">
+      {/* Middle section: wait time / hours info */}
+      <div className="mt-4 flex items-end justify-between gap-2">
         {hasStatus && !isOpen ? (
           <div className="min-w-0">
             {todayHours ? (
-              <p className="text-xs font-medium text-primary-500">
+              <p className="text-sm font-medium text-primary-500">
                 Opens {formatTime(todayHours.openTime)}{tz ? ` ${tz}` : ''}
               </p>
             ) : (
-              <span className="text-xs text-primary-300">Hours unavailable</span>
+              <span className="text-sm text-primary-300">Hours unavailable</span>
             )}
           </div>
         ) : shortestWait !== null ? (
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-primary-400">Shortest wait</p>
+            <p className="text-[11px] uppercase tracking-wider text-primary-400">Shortest wait</p>
             <WaitTimeBadge waitMinutes={shortestWait} size="sm" />
           </div>
         ) : hasStatus && isOpen && todayHours ? (
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-primary-400">Live data unavailable</p>
-            <p className="text-xs font-medium text-primary-500">
+            <p className="text-[11px] uppercase tracking-wider text-primary-400">Live data unavailable</p>
+            <p className="text-sm font-medium text-primary-500">
               Open until {formatTime(todayHours.closeTime)}{tz ? ` ${tz}` : ''}
             </p>
           </div>
         ) : (
-          <span className="text-xs text-primary-400">Live data unavailable</span>
+          <span className="text-sm text-primary-400">Live data unavailable</span>
         )}
 
         {/* Right: attraction count if available */}
         <div className="shrink-0 text-right">
           {attractionCount !== undefined && attractionCount > 0 && (
-            <span className="text-[11px] text-primary-400">{attractionCount} rides</span>
+            <span className="text-xs text-primary-400">{attractionCount} rides</span>
           )}
         </div>
+      </div>
+
+      {/* Bottom: View Park action */}
+      <div className="mt-4 border-t border-primary-100 pt-3">
+        <span className="inline-flex items-center text-sm font-medium text-coral-600 group-hover:text-coral-700">
+          View Park <span className="ml-1 transition-transform group-hover:translate-x-0.5">→</span>
+        </span>
       </div>
     </Link>
   );

@@ -222,7 +222,7 @@ export default function ParksPage() {
   }, [filteredParks]);
 
   return (
-    <div className="mx-auto max-w-[1600px] px-4 py-10 pb-24 sm:px-6 md:pb-10 lg:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-10 pb-24 sm:px-6 md:pb-10 lg:px-8">
       <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-primary-900">Theme Parks</h1>
@@ -264,9 +264,9 @@ export default function ParksPage() {
           {[1, 2, 3].map((i) => (
             <section key={i}>
               <div className="mb-4 h-6 w-48 animate-pulse rounded bg-primary-100" />
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                {[1, 2, 3, 4, 5].map((j) => (
-                  <div key={j} className="h-32 animate-pulse rounded-xl border border-primary-100 bg-primary-50" />
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {[1, 2, 3].map((j) => (
+                  <div key={j} className="h-44 animate-pulse rounded-xl border border-primary-100 bg-primary-50" />
                 ))}
               </div>
             </section>
@@ -277,33 +277,72 @@ export default function ParksPage() {
           No parks match &ldquo;{searchQuery}&rdquo;
         </p>
       ) : (
-        <div className="space-y-10">
-          {grouped.map(([destination, destParks]) => (
-            <section key={destination}>
-              <h2 className="mb-4 text-xl font-semibold text-primary-800">
-                {destination}
-              </h2>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                {destParks.map((park) => {
-                  const hours = parkHours[park.id];
-                  return (
-                    <ParkCard
-                      key={park.id}
-                      slug={park.slug}
-                      name={park.name}
-                      destinationName={park.destinationName}
-                      shortestWait={shortestWaits[park.id] ?? null}
-                      isOpen={hours?.isOpen}
-                      todayHours={hours?.todayHours}
-                      timezone={hours?.timezone}
-                      localTime={hours?.localTime}
-                      location={PARK_LOCATIONS[park.id]}
-                    />
-                  );
-                })}
+        <div className="space-y-12">
+          {grouped.map(([destination, destParks]) => {
+            const destLocation = PARK_LOCATIONS[destParks[0]?.id];
+            return (
+              <section key={destination}>
+                <div className="mb-5 border-b border-primary-100 pb-3">
+                  <h2 className="text-xl font-semibold text-primary-800">
+                    {destination}
+                  </h2>
+                  {destLocation && (
+                    <p className="mt-0.5 text-sm text-primary-400">{destLocation}</p>
+                  )}
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {destParks.map((park) => {
+                    const hours = parkHours[park.id];
+                    return (
+                      <ParkCard
+                        key={park.id}
+                        slug={park.slug}
+                        name={park.name}
+                        destinationName={park.destinationName}
+                        shortestWait={shortestWaits[park.id] ?? null}
+                        isOpen={hours?.isOpen}
+                        todayHours={hours?.todayHours}
+                        timezone={hours?.timezone}
+                        localTime={hours?.localTime}
+                        location={PARK_LOCATIONS[park.id]}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+
+          {/* Coverage Summary */}
+          {grouped.length > 0 && (
+            <div className="rounded-xl border border-primary-100 bg-primary-50/50 p-6">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-primary-500">
+                Coverage Summary
+              </h3>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div>
+                  <p className="text-2xl font-bold text-primary-800">{grouped.length}</p>
+                  <p className="text-xs text-primary-500">Resort Groups</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-primary-800">{filteredParks.length}</p>
+                  <p className="text-xs text-primary-500">Total Parks</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-primary-800">
+                    {filteredParks.filter((p) => !p.name.toLowerCase().includes('water')).length}
+                  </p>
+                  <p className="text-xs text-primary-500">Theme Parks</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-primary-800">
+                    {filteredParks.filter((p) => p.name.toLowerCase().includes('water')).length}
+                  </p>
+                  <p className="text-xs text-primary-500">Water Parks</p>
+                </div>
               </div>
-            </section>
-          ))}
+            </div>
+          )}
         </div>
       )}
     </div>

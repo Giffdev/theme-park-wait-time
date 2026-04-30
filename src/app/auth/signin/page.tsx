@@ -87,7 +87,7 @@ export default function SignInPage() {
         <div className="text-center">
           <span className="text-4xl">🎢</span>
           <h1 className="mt-4 text-2xl font-bold text-primary-900">Welcome back</h1>
-          <p className="mt-1 text-sm text-primary-500">Sign in to your ParkPulse account</p>
+          <p className="mt-1 text-sm text-primary-500">Sign in to your ParkFlow account</p>
         </div>
 
         <div className="mt-8 space-y-4">

@@ -86,7 +86,7 @@ export default function SignUpPage() {
         <div className="text-center">
           <span className="text-4xl">🎢</span>
           <h1 className="mt-4 text-2xl font-bold text-primary-900">Create your account</h1>
-          <p className="mt-1 text-sm text-primary-500">Join the ParkPulse community</p>
+          <p className="mt-1 text-sm text-primary-500">Join the ParkFlow community</p>
         </div>
 
         <div className="mt-8 space-y-4">

@@ -189,7 +189,7 @@ export default function SharedTripPage() {
           href="/"
           className="inline-flex items-center gap-2 rounded-full bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-primary-700"
         >
-          🎢 Try ParkPulse
+          🎢 Try ParkFlow
         </Link>
       </div>
     </div>

@@ -73,7 +73,7 @@ describe('SignUp Page', () => {
       render(<SignUpPage />);
 
       expect(screen.getByText('Create your account')).toBeInTheDocument();
-      expect(screen.getByText('Join the ParkPulse community')).toBeInTheDocument();
+      expect(screen.getByText('Join the ParkFlow community')).toBeInTheDocument();
     });
 
     it('renders the Google sign-up button', async () => {

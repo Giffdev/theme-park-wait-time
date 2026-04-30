@@ -2,7 +2,7 @@
 
 import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
 
-export const APP_NAME = 'ParkPulse';
+export const APP_NAME = 'ParkFlow';
 
 export const CROWD_LEVELS = {
   1: { label: 'Very Low', color: 'sage' },

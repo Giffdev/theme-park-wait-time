@@ -442,3 +442,25 @@ Added open/closed state, hours, and local time to ParkCard and park detail page.
 - `src/lib/parks/park-locations.ts` — destination ID → {city, state, country, countryCode}
 - `src/components/ParkCard.tsx` — enriched card with location + time in meta row
 - `src/app/parks/page.tsx` — wider container, denser responsive grid, location-aware search
+
+## ParkFlow Rename + Parks Page Redesign (2026-04-29)
+
+### What was shipped:
+
+**Rename ParkPulse → ParkFlow:**
+- All UI surfaces updated: layout header/footer, metadata titles, about page, auth pages, shared trip page, constants
+- Tests updated to match new brand name
+
+**Parks page redesign (spacious, navigable cards):**
+- Grid reduced from 5-col max to 3-col max: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`
+- Container narrowed from `max-w-[1600px]` to `max-w-6xl` — appropriate for 3-col layout
+- Destination headers now include location subtitle + border separator
+- ParkCard enlarged: more padding (p-5/p-6), larger text (text-base/text-lg font-bold), "View Park →" action at bottom
+- Coverage Summary section at page bottom showing resort groups, total parks, theme/water park counts
+- Spacing between families increased (`space-y-12`)
+
+### Learnings:
+- APP_NAME constant in `src/lib/constants.ts` is the single source — but UI templates in layout.tsx also hardcode the name in metadata strings
+- When reducing grid density, container max-width must shrink proportionally or cards become too wide
+- "View Park →" CTA with group-hover translate makes cards feel more interactive without extra JS
+- Coverage summary uses simple heuristic (name contains "water") for park type — works for current data set

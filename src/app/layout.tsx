@@ -13,8 +13,8 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: 'ParkPulse — Live Wait Times, Crowd Calendars & Ride Logs',
-    template: '%s | ParkPulse',
+    default: 'ParkFlow — Live Wait Times, Crowd Calendars & Ride Logs',
+    template: '%s | ParkFlow',
   },
   description:
     'Track real-time ride wait times, plan your visit with crowd calendars, and log every ride. Built for theme park fans who refuse to waste time in line.',
@@ -48,7 +48,7 @@ export default function RootLayout({
             <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
               <Link href="/" className="flex items-center gap-2 font-bold text-primary-700">
                 <span className="text-2xl">🎢</span>
-                <span className="text-lg tracking-tight">ParkPulse</span>
+                <span className="text-lg tracking-tight">ParkFlow</span>
               </Link>
 
               <AuthNavDesktop />
@@ -66,10 +66,10 @@ export default function RootLayout({
               <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">🎢</span>
-                  <span className="font-semibold text-white">ParkPulse</span>
+                  <span className="font-semibold text-white">ParkFlow</span>
                 </div>
                 <p className="text-sm text-primary-400">
-                  © 2026 ParkPulse. Built with 🎡 by theme park fans, for theme park fans.
+                  © 2026 ParkFlow. Built with 🎡 by theme park fans, for theme park fans.
                 </p>
               </div>
             </div>

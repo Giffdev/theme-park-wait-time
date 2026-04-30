@@ -76,7 +76,7 @@ describe('SignIn Page', () => {
       render(<SignInPage />);
 
       expect(screen.getByText('Welcome back')).toBeInTheDocument();
-      expect(screen.getByText('Sign in to your ParkPulse account')).toBeInTheDocument();
+      expect(screen.getByText('Sign in to your ParkFlow account')).toBeInTheDocument();
     });
 
     it('renders the Google sign-in button', async () => {

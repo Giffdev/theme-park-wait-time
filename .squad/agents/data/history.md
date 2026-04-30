@@ -119,6 +119,26 @@ Wired up real operating hours from ThemeParks Wiki API:
 - OPERATING entry type determines open/closed; other types (EXTRA_HOURS, etc.) included in full schedule response.
 - Batch endpoint uses `Promise.all` — individual park failures don't break the batch.
 
+## Recent Work (2026-04-29T22:00:33-07:00)
+
+### P2 Audit — Mobile Nav + Feature Cards
+
+**AuthNav.tsx — Mobile nav restructure:**
+- Logged-in users: Home, Parks, My Rides (ticket icon), Trips, Dashboard (5 items)
+- Non-logged-in users: Home, Parks, Calendar, Sign In (4 items)
+- Calendar dropped from logged-in mobile nav (accessible from home/parks)
+- My Rides links to `/ride-log` with ticket SVG icon
+
+**FeatureCards.tsx — Added 4th card:**
+- "Track Your Rides" / "My Ride History" (auth-aware title) with 🎢 emoji
+- Links to `/ride-log` (logged in) or `/auth/signin` (guest)
+- coral color scheme: `bg-coral-50 hover:bg-coral-100 border-coral-200`
+- Grid updated from `lg:grid-cols-3` to `lg:grid-cols-4` for 2×2 / 4-across layout
+
+**ParkPulse check:** Neither file contains any ParkPulse references. Clean.
+
+All tests pass (vitest).
+
 ## Learnings
 
 - Park registration requires entries in TWO files:`src/lib/constants.ts` (PARK_FAMILIES) and `src/lib/crowd-calendar/park-families.ts` (PARK_FAMILY_REGISTRY). The first uses simple string IDs; the second uses ThemeParks Wiki UUIDs.

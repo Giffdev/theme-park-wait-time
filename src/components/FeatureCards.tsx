@@ -35,10 +35,18 @@ export function FeatureCards() {
       color: 'bg-sage-50 hover:bg-sage-100 border-sage-200',
       textColor: 'text-sage-700',
     },
+    {
+      href: !loading && !user ? '/auth/signin' : '/ride-log',
+      emoji: '🎢',
+      title: !loading && !user ? 'Track Your Rides' : 'My Ride History',
+      description: 'Log every ride, time your waits, and build your personal ride history across all parks.',
+      color: 'bg-coral-50 hover:bg-coral-100 border-coral-200',
+      textColor: 'text-coral-700',
+    },
   ];
 
   return (
-    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
       {features.map((feature) => (
         <Link
           key={feature.title}
