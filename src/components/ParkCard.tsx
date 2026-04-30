@@ -63,7 +63,7 @@ export default function ParkCard({
       className={`group flex flex-col justify-between rounded-xl border p-5 transition-all hover:shadow-lg ${
         hasStatus && !isOpen
           ? 'border-primary-150 bg-primary-50/60 hover:border-primary-300 hover:shadow-primary-100/50'
-          : 'border-primary-200 bg-white hover:border-coral-300 hover:shadow-coral-100/50'
+          : 'border-primary-200 bg-white hover:border-primary-300 hover:shadow-primary-100/50'
       }`}
     >
       <div>
@@ -76,7 +76,7 @@ export default function ParkCard({
               className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                 isOpen
                   ? 'bg-green-100 text-green-700'
-                  : 'bg-red-100 text-red-700'
+                  : 'bg-slate-100 text-slate-500'
               }`}
             >
               {isOpen ? 'Open' : 'Closed'}
@@ -105,12 +105,13 @@ export default function ParkCard({
           </div>
         ) : hasStatus && isOpen && todayHours ? (
           <div>
-            <p className="text-xs text-primary-500">
+            <p className="text-[10px] uppercase tracking-wider text-primary-400">Live data unavailable</p>
+            <p className="text-xs font-medium text-primary-500">
               Open until {formatTime(todayHours.closeTime)}{tz ? ` ${tz}` : ''}
             </p>
           </div>
         ) : (
-          <span className="text-xs text-primary-300">No live data</span>
+          <span className="text-xs text-primary-400">Live data unavailable</span>
         )}
 
         {/* Right: local time or attraction count */}

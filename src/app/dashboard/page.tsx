@@ -88,20 +88,31 @@ export default function DashboardPage() {
       {/* Stats */}
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Total Rides', value: statsLoading ? '…' : String(stats.totalRides), emoji: '🎢' },
-          { label: 'Parks Visited', value: statsLoading ? '…' : String(stats.parksVisited), emoji: '🏰' },
-          { label: 'Trips Logged', value: statsLoading ? '…' : String(stats.tripsLogged), emoji: '📝' },
-          { label: 'Min. Waited', value: statsLoading ? '…' : String(stats.totalWaitMinutes), emoji: '⏱️' },
+          { label: 'Total Rides', value: statsLoading ? '…' : String(stats.totalRides), emoji: '🎢', href: '/ride-log' },
+          { label: 'Parks Visited', value: statsLoading ? '…' : String(stats.parksVisited), emoji: '🏰', href: '/parks' },
+          { label: 'Trips Logged', value: statsLoading ? '…' : String(stats.tripsLogged), emoji: '📝', href: '/trips' },
+          { label: 'Min. Waited', value: statsLoading ? '…' : String(stats.totalWaitMinutes), emoji: '⏱️', href: '/ride-log' },
         ].map((stat) => (
-          <div
+          <Link
             key={stat.label}
-            className="rounded-xl border border-primary-100 bg-white p-5 text-center"
+            href={stat.href}
+            className="rounded-xl border border-primary-100 bg-white p-5 text-center transition-colors hover:border-primary-300 hover:shadow-sm"
           >
             <div className="text-2xl">{stat.emoji}</div>
             <div className="mt-2 text-2xl font-bold text-primary-700">{stat.value}</div>
             <div className="text-sm text-primary-400">{stat.label}</div>
-          </div>
+          </Link>
         ))}
+      </div>
+
+      {/* Quick actions */}
+      <div className="mt-6 flex flex-wrap gap-3">
+        <Link href="/calendar" className="inline-flex items-center gap-2 rounded-lg border border-primary-200 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50">
+          📅 Plan with Crowd Calendar
+        </Link>
+        <Link href="/trips/new" className="inline-flex items-center gap-2 rounded-lg border border-primary-200 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50">
+          ✈️ Log a New Trip
+        </Link>
       </div>
     </div>
   );

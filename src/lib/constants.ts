@@ -1,5 +1,7 @@
 /** App-wide constants */
 
+import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
+
 export const APP_NAME = 'ParkPulse';
 
 export const CROWD_LEVELS = {
@@ -15,65 +17,25 @@ export const CROWD_LEVELS = {
   10: { label: 'Very High', color: 'coral' },
 } as const;
 
-export const PARK_FAMILIES = [
-  {
-    id: 'walt-disney-world',
-    name: 'Walt Disney World',
-    parks: [
-      { id: 'magic-kingdom', name: 'Magic Kingdom' },
-      { id: 'epcot', name: 'EPCOT' },
-      { id: 'hollywood-studios', name: 'Hollywood Studios' },
-      { id: 'animal-kingdom', name: 'Animal Kingdom' },
-    ],
-  },
-  {
-    id: 'universal-orlando',
-    name: 'Universal Orlando Resort',
-    parks: [
-      { id: 'universal-studios', name: 'Universal Studios Florida' },
-      { id: 'islands-of-adventure', name: 'Islands of Adventure' },
-      { id: 'epic-universe', name: 'Epic Universe' },
-    ],
-  },
-  {
-    id: 'disneyland-resort',
-    name: 'Disneyland Resort',
-    parks: [
-      { id: 'disneyland', name: 'Disneyland' },
-      { id: 'california-adventure', name: 'Disney California Adventure' },
-    ],
-  },
-  {
-    id: 'universal-studios-hollywood',
-    name: 'Universal Studios Hollywood',
-    parks: [
-      { id: 'universal-hollywood', name: 'Universal Studios Hollywood' },
-    ],
-  },
-  {
-    id: 'seaworld-orlando',
-    name: 'SeaWorld Orlando',
-    parks: [
-      { id: 'seaworld-orlando', name: 'SeaWorld Orlando' },
-    ],
-  },
-  {
-    id: 'busch-gardens-tampa',
-    name: 'Busch Gardens Tampa Bay',
-    parks: [
-      { id: 'busch-gardens-tampa', name: 'Busch Gardens Tampa Bay' },
-    ],
-  },
-  {
-    id: 'worlds-of-fun',
-    name: 'Worlds of Fun',
-    parks: [
-      { id: 'worlds-of-fun', name: 'Worlds of Fun' },
-    ],
-  },
-] as const;
+/**
+ * Derive PARK_FAMILIES from the canonical park registry.
+ * Each destination becomes a "park family" for the crowd calendar.
+ * Family IDs strip the '-dest' suffix for backward compatibility with
+ * existing Firestore paths (e.g., crowdCalendar/seaworld-orlando/monthly/...).
+ */
+export const PARK_FAMILIES: ParkFamily[] = DESTINATION_FAMILIES.flatMap((group) =>
+  group.destinations.map((dest) => ({
+    id: dest.slug.replace(/-dest$/, ''),
+    name: dest.name,
+    parks: dest.parks.map((p) => ({ id: p.slug, name: p.name })),
+  }))
+);
 
-export type ParkFamily = (typeof PARK_FAMILIES)[number];
+export interface ParkFamily {
+  id: string;
+  name: string;
+  parks: { id: string; name: string }[];
+}
 
 /** Crowd level colors for the park-family calendar (4-tier scale) */
 export const CROWD_LEVEL_COLORS = {

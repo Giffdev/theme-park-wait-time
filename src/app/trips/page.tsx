@@ -123,7 +123,8 @@ export default function TripsPage() {
             <div className="text-5xl mb-4">🎟️</div>
             <h2 className="text-xl font-semibold text-primary-800">No Trips Logged Yet</h2>
             <p className="mt-2 text-primary-500 max-w-sm mx-auto">
-              Start logging theme park trips to build your experience history
+              Start logging theme park trips to build your experience history.
+              Use the <Link href="/calendar" className="text-primary-700 underline hover:text-primary-900">Crowd Calendar</Link> to pick the best days!
             </p>
             <Link
               href="/trips/new"

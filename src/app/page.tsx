@@ -60,8 +60,8 @@ export default function HomePage() {
       <section className="border-t border-primary-100 bg-primary-50/50 px-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-5xl grid-cols-2 gap-8 text-center lg:grid-cols-4">
           {[
-            { value: '10+', label: 'Theme Parks' },
-            { value: '500+', label: 'Attractions' },
+            { value: '130+', label: 'Theme Parks' },
+            { value: '7,900+', label: 'Attractions' },
             { value: 'Live', label: 'Wait Times' },
             { value: '365', label: 'Days of Crowd Data' },
           ].map((stat) => (

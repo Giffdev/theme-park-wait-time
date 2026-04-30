@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { RefreshCw, Search } from 'lucide-react';
 import { getCollection } from '@/lib/firebase/firestore';
 import ParkCard from '@/components/ParkCard';
 
@@ -30,6 +30,8 @@ interface ParkHoursEntry {
   localTime: string;
 }
 
+const BATCH_SIZE = 10;
+
 export default function ParksPage() {
   const [parks, setParks] = useState<Park[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +40,8 @@ export default function ParksPage() {
   const [parkHours, setParkHours] = useState<Record<string, ParkHoursEntry>>({});
   const [latestFetchedAt, setLatestFetchedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [searchQuery, setSearchQuery] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
 
   // Tick every 30s for freshness label
   useEffect(() => {
@@ -80,43 +84,73 @@ export default function ParksPage() {
     }
   }, []);
 
-  const fetchParks = useCallback(async () => {
-    try {
-      const data = await getCollection<Park>('parks');
-      setParks(data);
+  // Fetch wait times progressively in batches
+  const fetchWaitTimes = useCallback(async (parkList: Park[]) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-      // Fetch shortest wait for each park from waitTimes subcollection
-      const waits: Record<string, number | null> = {};
-      let maxTimestamp = 0;
-      for (const park of data) {
-        try {
+    let maxTimestamp = 0;
+
+    for (let i = 0; i < parkList.length; i += BATCH_SIZE) {
+      if (controller.signal.aborted) return;
+
+      const batch = parkList.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.allSettled(
+        batch.map(async (park) => {
           const waitData = await getCollection<WaitTimeEntry>(
             `waitTimes/${park.id}/current`
           );
           const operatingWaits = waitData
             .filter((w) => w.status === 'OPERATING' && w.waitMinutes !== null)
             .map((w) => w.waitMinutes as number);
-          waits[park.id] = operatingWaits.length > 0 ? Math.min(...operatingWaits) : null;
-          // Track most recent fetchedAt
+          const shortest = operatingWaits.length > 0 ? Math.min(...operatingWaits) : null;
+
           for (const w of waitData) {
             if (w.fetchedAt) {
               const t = new Date(w.fetchedAt).getTime();
               if (!isNaN(t) && t > maxTimestamp) maxTimestamp = t;
             }
           }
-        } catch {
-          waits[park.id] = null;
+
+          return { parkId: park.id, shortest };
+        })
+      );
+
+      if (controller.signal.aborted) return;
+
+      // Update state progressively after each batch
+      const batchWaits: Record<string, number | null> = {};
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          batchWaits[result.value.parkId] = result.value.shortest;
+        } else {
+          // Failed fetch — mark as null
+          const idx = batchResults.indexOf(result);
+          batchWaits[batch[idx].id] = null;
         }
       }
-      setShortestWaits(waits);
+
+      setShortestWaits((prev) => ({ ...prev, ...batchWaits }));
       if (maxTimestamp > 0) setLatestFetchedAt(maxTimestamp);
-      setNow(Date.now());
+    }
+
+    setNow(Date.now());
+  }, []);
+
+  const fetchParks = useCallback(async () => {
+    try {
+      const data = await getCollection<Park>('parks');
+      setParks(data);
+      setLoading(false);
+
+      // Fetch wait times progressively (non-blocking for initial render)
+      fetchWaitTimes(data);
     } catch (error) {
       console.error('Failed to fetch parks:', error);
-    } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchWaitTimes]);
 
   useEffect(() => {
     fetchParks();
@@ -127,6 +161,7 @@ export default function ParksPage() {
     setRefreshing(true);
     try {
       await fetch('/api/wait-times');
+      setShortestWaits({});
       await Promise.all([fetchParks(), fetchParkHours()]);
     } catch (error) {
       console.error('Refresh failed:', error);
@@ -135,13 +170,34 @@ export default function ParksPage() {
     }
   };
 
-  // Group parks by destination
-  const grouped = parks.reduce<Record<string, Park[]>>((acc, park) => {
-    const dest = park.destinationName || 'Other';
-    if (!acc[dest]) acc[dest] = [];
-    acc[dest].push(park);
-    return acc;
-  }, {});
+  // Filter parks by search query
+  const filteredParks = useMemo(() => {
+    if (!searchQuery.trim()) return parks;
+    const q = searchQuery.toLowerCase();
+    return parks.filter(
+      (park) =>
+        park.name.toLowerCase().includes(q) ||
+        park.destinationName.toLowerCase().includes(q)
+    );
+  }, [parks, searchQuery]);
+
+  // Group parks by destination, sorted alphabetically
+  const grouped = useMemo(() => {
+    const groups = filteredParks.reduce<Record<string, Park[]>>((acc, park) => {
+      const dest = park.destinationName || 'Other';
+      if (!acc[dest]) acc[dest] = [];
+      acc[dest].push(park);
+      return acc;
+    }, {});
+
+    // Sort parks within each group alphabetically
+    for (const dest of Object.keys(groups)) {
+      groups[dest].sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    // Return sorted destination entries
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [filteredParks]);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 pb-24 sm:px-6 md:pb-10 lg:px-8">
@@ -167,6 +223,20 @@ export default function ParksPage() {
         </p>
       )}
 
+      {/* Search input */}
+      {!loading && (
+        <div className="relative mb-8">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search parks or destinations..."
+            className="w-full rounded-lg border border-primary-200 bg-white py-2.5 pl-10 pr-4 text-sm text-primary-800 placeholder:text-primary-300 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-400"
+          />
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-10">
           {[1, 2, 3].map((i) => (
@@ -180,9 +250,13 @@ export default function ParksPage() {
             </section>
           ))}
         </div>
+      ) : grouped.length === 0 ? (
+        <p className="py-12 text-center text-primary-400">
+          No parks match &ldquo;{searchQuery}&rdquo;
+        </p>
       ) : (
         <div className="space-y-10">
-          {Object.entries(grouped).map(([destination, destParks]) => (
+          {grouped.map(([destination, destParks]) => (
             <section key={destination}>
               <h2 className="mb-4 text-xl font-semibold text-primary-800">
                 {destination}
