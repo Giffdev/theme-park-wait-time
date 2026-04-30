@@ -329,8 +329,6 @@ export default function UnifiedLogSheet({
               <X className="h-5 w-5" />
             </button>
           </div>
-
-
         </div>
 
         <div className="px-4 py-4">
