@@ -207,3 +207,26 @@ Successfully shipped forecast blending + crowd calendar historical fix. 11 decis
 
 **Status:** Batch orchestration complete. Decisions archived. All components integrated. Ready for Phase 2 refinement.
 
+### 2026-04-29 — Full Park Catalog Sync (ALL ThemeParks Wiki Parks)
+
+Queried the ThemeParks Wiki `/v1/destinations` endpoint and discovered 103 destinations containing 133 parks globally. Built a comprehensive sync pipeline and park registry.
+
+**Files Created:**
+- `src/lib/parks/park-registry.ts` — Static registry of 80+ parks organized into 9 destination families (Disney, Universal, Six Flags, Cedar Fair, SeaWorld/Busch Gardens, LEGOLAND, Independent US, European, Asian). Exports utility functions: `getAllParks()`, `getParkBySlug()`, `getParkById()`, `getDestinationsByFamily()`, `getAllFamilyIds()`.
+- `src/lib/parks/index.ts` — Barrel exports
+- `scripts/sync-all-parks.ts` — Full sync script that fetches all destinations from the API, iterates parks, writes to Firestore `parks` and `attractions` collections. Rate-limited (500ms delays), idempotent (merge writes), handles 429 retries. US parks sorted first.
+
+**Sync Results:**
+- 133 parks synced to Firestore
+- 7,943 attractions synced
+- 0 failures
+- Covers: Disney (6 resorts, 14 parks), Universal (5 resorts), Six Flags (15 destinations), Cedar Fair (11 parks), SeaWorld/Busch Gardens (5 parks), LEGOLAND (8 parks), plus Dollywood, Hersheypark, Silver Dollar City, Kennywood, Knoebels, Europa-Park, Efteling, Phantasialand, Alton Towers, Thorpe Park, PortAventura, Parc Asterix, Liseberg, Gardaland, Everland, Lotte World, Fuji-Q, and many more.
+
+**npm script:** `npm run sync:all-parks`
+
+**Key Design Decisions:**
+- Park registry is static TypeScript (no runtime API calls for park listing) — fast for frontend
+- Sync script is the source of truth for Firestore data; registry is for frontend routing/display
+- Slugs are URL-safe, hand-tuned for popular parks (e.g., "magic-kingdom" not "magic-kingdom-park")
+- Families group parks for UI navigation (dropdown menus, filters, comparison views)
+
