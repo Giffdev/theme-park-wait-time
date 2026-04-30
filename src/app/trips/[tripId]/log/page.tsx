@@ -13,16 +13,17 @@ import type { Trip } from '@/types/trip';
 import type { AttractionType } from '@/types/attraction';
 import type { MealType } from '@/types/dining-log';
 import { getAttractionIcon } from '@/lib/utils/attraction-icons';
+import { classifyAttraction } from '@/lib/utils/classify-attraction';
 
 interface AttractionOption {
   id: string;
   name: string;
   entityType?: string;
   attractionType?: AttractionType | null;
+  effectiveType: AttractionType;
 }
 
 type LogMode = 'quick' | 'timer';
-type PageTab = 'rides' | 'dining';
 
 const TYPE_FILTERS: { value: string; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -31,6 +32,7 @@ const TYPE_FILTERS: { value: string; label: string }[] = [
   { value: 'show', label: '🎭 Show' },
   { value: 'experience', label: '✨ Experience' },
   { value: 'character-meet', label: '🤝 Characters' },
+  { value: 'dining', label: '🍽️ Dining' },
 ];
 
 const LOGGABLE_ENTITY_TYPES = new Set(['ATTRACTION', 'RIDE', 'SHOW', 'MEET_AND_GREET']);
@@ -59,9 +61,6 @@ export default function TripLogRidePage() {
   const [loading, setLoading] = useState(true);
   const [attractions, setAttractions] = useState<AttractionOption[]>([]);
   const [parkId, setParkId] = useState('');
-
-  // Page tab
-  const [activeTab, setActiveTab] = useState<PageTab>('rides');
 
   // Search & filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -135,6 +134,7 @@ export default function TripLogRidePage() {
             name: d.name,
             entityType: d.entityType,
             attractionType: d.attractionType,
+            effectiveType: d.attractionType ?? classifyAttraction(d.name, d.entityType),
           }))
           .sort((a, b) => a.name.localeCompare(b.name))
       );
@@ -156,8 +156,18 @@ export default function TripLogRidePage() {
     };
   }, [timerStart]);
 
-  // Filter attractions for rides tab
+  // Filter attractions (includes restaurants when dining filter is active)
   const filteredAttractions = useMemo(() => {
+    if (typeFilter === 'dining') {
+      return attractions.filter((a) => {
+        if (!a.entityType || !RESTAURANT_ENTITY_TYPES.has(a.entityType)) return false;
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          if (!a.name.toLowerCase().includes(q)) return false;
+        }
+        return true;
+      });
+    }
     return attractions.filter((a) => {
       // Exclude non-loggable entity types (restaurants, merchandise, etc.)
       if (a.entityType && !LOGGABLE_ENTITY_TYPES.has(a.entityType)) return false;
@@ -168,30 +178,29 @@ export default function TripLogRidePage() {
       }
       if (typeFilter !== 'all') {
         if (typeFilter === 'show') {
-          if (a.entityType !== 'SHOW' && a.attractionType !== 'show') return false;
+          if (a.effectiveType !== 'show') return false;
+        } else if (typeFilter === 'character-meet') {
+          if (a.effectiveType !== 'character-meet') return false;
         } else {
-          // Only exclude if attractionType is set and doesn't match the filter
-          // (don't filter out un-enriched records with null/undefined attractionType)
-          if (a.attractionType && a.attractionType !== typeFilter) return false;
+          if (a.effectiveType !== typeFilter) return false;
         }
       }
       return true;
     });
   }, [attractions, searchQuery, typeFilter]);
 
-  // Filter restaurants for dining tab
-  const filteredRestaurants = useMemo(() => {
-    return attractions.filter((a) => {
-      if (!a.entityType || !RESTAURANT_ENTITY_TYPES.has(a.entityType)) return false;
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        if (!a.name.toLowerCase().includes(q)) return false;
-      }
-      return true;
-    });
-  }, [attractions, searchQuery]);
-
   const handleSelectAttraction = useCallback((attraction: AttractionOption) => {
+    if (attraction.entityType && RESTAURANT_ENTITY_TYPES.has(attraction.entityType)) {
+      setSelectedRestaurant(attraction);
+      setMealType('lunch');
+      setDiningRating(null);
+      setDiningNotes('');
+      setHadReservation(null);
+      setTableWait('');
+      setTableWaitUnknown(true);
+      setDiningError('');
+      return;
+    }
     setSelectedAttraction(attraction);
     setLogMode('quick');
     setWaitTime('');
@@ -200,17 +209,6 @@ export default function TripLogRidePage() {
     setNotes('');
     setError('');
     setTimerStart(null);
-  }, []);
-
-  const handleSelectRestaurant = useCallback((restaurant: AttractionOption) => {
-    setSelectedRestaurant(restaurant);
-    setMealType('lunch');
-    setDiningRating(null);
-    setDiningNotes('');
-    setHadReservation(null);
-    setTableWait('');
-    setTableWaitUnknown(true);
-    setDiningError('');
   }, []);
 
   const handleStartTimer = () => {
@@ -354,7 +352,7 @@ export default function TripLogRidePage() {
             </Link>
             <div>
               <h1 className="text-base font-bold">
-                {activeTab === 'rides' ? 'Log a Ride 🎢' : 'Log Dining 🍽️'}
+                {typeFilter === 'dining' ? 'Log Dining 🍽️' : 'Log a Ride 🎢'}
               </h1>
               <p className="text-xs text-white/80">{trip.name}</p>
             </div>
@@ -364,32 +362,6 @@ export default function TripLogRidePage() {
             <span>{trip.parkNames[parkId] || 'Select park'}</span>
           </div>
         </div>
-      </div>
-
-      {/* Tab Toggle: Rides & Shows / Dining */}
-      <div className="mb-4 flex rounded-xl bg-primary-50 p-1">
-        <button
-          type="button"
-          onClick={() => { setActiveTab('rides'); setSearchQuery(''); }}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-            activeTab === 'rides'
-              ? 'bg-white text-primary-700 shadow-sm'
-              : 'text-primary-500 hover:text-primary-700'
-          }`}
-        >
-          🎢 Rides & Shows
-        </button>
-        <button
-          type="button"
-          onClick={() => { setActiveTab('dining'); setSearchQuery(''); }}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
-            activeTab === 'dining'
-              ? 'bg-white text-primary-700 shadow-sm'
-              : 'text-primary-500 hover:text-primary-700'
-          }`}
-        >
-          🍽️ Dining
-        </button>
       </div>
 
       {/* Park selector (only if multiple parks) */}
@@ -421,165 +393,110 @@ export default function TripLogRidePage() {
         </div>
       )}
 
-      {/* ======================== RIDES TAB ======================== */}
-      {activeTab === 'rides' && (
-        <>
-          {/* Search bar */}
-          {parkId && (
-            <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary-400" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search rides & shows..."
-                className="w-full rounded-xl border border-primary-200 bg-white py-3 pl-10 pr-10 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-primary-400 hover:bg-primary-100 hover:text-primary-600"
-                  aria-label="Clear search"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          )}
+      {/* ======================== UNIFIED LIST ======================== */}
+      <>
+        {/* Search bar */}
+        {parkId && (
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary-400" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={typeFilter === 'dining' ? 'Search restaurants...' : 'Search rides & shows...'}
+              className="w-full rounded-xl border border-primary-200 bg-white py-3 pl-10 pr-10 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-primary-400 hover:bg-primary-100 hover:text-primary-600"
+                aria-label="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
 
-          {/* Type filter chips */}
-          {parkId && (
-            <div className="mb-4 flex flex-wrap gap-2">
-              {TYPE_FILTERS.map((f) => (
-                <button
-                  key={f.value}
-                  type="button"
-                  onClick={() => {
-                    if (f.value === 'dining') {
-                      setActiveTab('dining');
-                      setSearchQuery('');
-                    } else {
-                      setTypeFilter(f.value);
-                    }
-                  }}
-                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
-                    typeFilter === f.value
-                      ? 'bg-indigo-500 text-white shadow-sm'
-                      : 'bg-primary-50 text-primary-600 hover:bg-primary-100'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          )}
+        {/* Type filter chips */}
+        {parkId && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {TYPE_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setTypeFilter(f.value)}
+                className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+                  typeFilter === f.value
+                    ? 'bg-indigo-500 text-white shadow-sm'
+                    : 'bg-primary-50 text-primary-600 hover:bg-primary-100'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
 
-          {/* Attractions list */}
-          {parkId && !selectedAttraction && (
-            <div className="divide-y divide-primary-50 rounded-xl border border-primary-100 bg-white shadow-sm">
-              {filteredAttractions.length === 0 && (
-                <p className="py-8 text-center text-sm text-primary-400">
-                  {attractions.length === 0 ? 'Loading attractions...' : 'No rides match your search.'}
-                </p>
-              )}
-              {filteredAttractions.map((a) => (
+        {/* Attractions / Restaurants list */}
+        {parkId && !selectedAttraction && !selectedRestaurant && (
+          <div className="divide-y divide-primary-50 rounded-xl border border-primary-100 bg-white shadow-sm">
+            {filteredAttractions.length === 0 && (
+              <p className="py-8 text-center text-sm text-primary-400">
+                {attractions.length === 0
+                  ? (typeFilter === 'dining' ? 'Loading restaurants...' : 'Loading attractions...')
+                  : (typeFilter === 'dining' ? 'No restaurants match your search.' : 'No rides match your search.')}
+              </p>
+            )}
+            {filteredAttractions.map((a) => {
+              const isRestaurant = a.entityType && RESTAURANT_ENTITY_TYPES.has(a.entityType);
+              return (
                 <button
                   key={a.id}
                   type="button"
                   onClick={() => handleSelectAttraction(a)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-primary-50 active:bg-primary-100"
+                  className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${
+                    isRestaurant ? 'hover:bg-amber-50 active:bg-amber-100' : 'hover:bg-primary-50 active:bg-primary-100'
+                  }`}
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-coral-50 text-lg">
-                    {getAttractionIcon(a.entityType, a.attractionType)}
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                    isRestaurant ? 'bg-amber-50' : 'bg-coral-50'
+                  } text-lg`}>
+                    {isRestaurant
+                      ? <Utensils className="h-5 w-5 text-amber-600" />
+                      : getAttractionIcon(a.entityType, a.attractionType)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-primary-800">
                       {a.name}
                     </span>
-                    {a.attractionType && (
+                    {isRestaurant ? (
+                      <span className="text-xs text-primary-400">Restaurant</span>
+                    ) : a.attractionType ? (
                       <span className="text-xs capitalize text-primary-400">
                         {a.attractionType.replace('-', ' ')}
                       </span>
-                    )}
+                    ) : null}
                   </div>
-                  <div className="shrink-0 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-500">
+                  <div className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
+                    isRestaurant ? 'bg-amber-50 text-amber-600' : 'bg-primary-50 text-primary-500'
+                  }`}>
                     Log
                   </div>
                 </button>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ======================== DINING TAB ======================== */}
-      {activeTab === 'dining' && (
-        <>
-          {/* Search bar */}
-          {parkId && (
-            <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search restaurants..."
-                className="w-full rounded-xl border border-primary-200 bg-white py-3 pl-10 pr-10 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-primary-400 hover:bg-primary-100 hover:text-primary-600"
-                  aria-label="Clear search"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Restaurant list */}
-          {parkId && !selectedRestaurant && (
-            <div className="divide-y divide-primary-50 rounded-xl border border-primary-100 bg-white shadow-sm">
-              {filteredRestaurants.length === 0 && (
-                <p className="py-8 text-center text-sm text-primary-400">
-                  {attractions.length === 0 ? 'Loading restaurants...' : 'No restaurants match your search.'}
-                </p>
-              )}
-              {filteredRestaurants.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => handleSelectRestaurant(r)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-amber-50 active:bg-amber-100"
-                >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50">
-                    <Utensils className="h-5 w-5 text-amber-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-primary-800">
-                      {r.name}
-                    </span>
-                    <span className="text-xs text-primary-400">Restaurant</span>
-                  </div>
-                  <div className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-600">
-                    Log
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </>
 
       {/* No park selected */}
       {!parkId && (
         <div className="mt-12 text-center">
           <div className="text-4xl">🏰</div>
-          <p className="mt-3 text-sm text-primary-500">Select a park to browse {activeTab === 'rides' ? 'rides' : 'restaurants'}</p>
+          <p className="mt-3 text-sm text-primary-500">Select a park to browse attractions</p>
         </div>
       )}
 
