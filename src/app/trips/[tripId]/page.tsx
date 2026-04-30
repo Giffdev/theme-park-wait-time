@@ -654,7 +654,6 @@ export default function TripDetailPage() {
                         <div className="flex items-center gap-2 mb-3 ml-1">
                           <MapPin className="h-3.5 w-3.5 text-primary-400" />
                           <span className="text-xs font-bold text-primary-600 uppercase tracking-wide">{park.parkName}</span>
-                          <span className="text-[10px] text-primary-400 font-medium">({park.rides.length})</span>
                         </div>
 
                         {/* Timeline entries */}
