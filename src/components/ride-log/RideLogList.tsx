@@ -39,7 +39,9 @@ export default function RideLogList({ logs, onDelete, loading, groupBy = 'date' 
     } else {
       let currentLabel = '';
       for (const log of logs) {
-        const date = log.rodeAt instanceof Date ? log.rodeAt : new Date(log.rodeAt);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rodeAtRaw = log.rodeAt as any;
+        const date = rodeAtRaw instanceof Date ? rodeAtRaw : (rodeAtRaw && typeof rodeAtRaw.toDate === 'function') ? rodeAtRaw.toDate() : new Date(rodeAtRaw);
         const label = groupLabel(date);
         if (label !== currentLabel) {
           currentLabel = label;

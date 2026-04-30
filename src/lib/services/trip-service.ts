@@ -248,8 +248,12 @@ export async function getTripRideLogs(
       whereConstraint('tripId', '==', tripId),
     ]);
     return logs.sort((a, b) => {
-      const aTime = a.rodeAt instanceof Date ? a.rodeAt.getTime() : new Date(a.rodeAt).getTime();
-      const bTime = b.rodeAt instanceof Date ? b.rodeAt.getTime() : new Date(b.rodeAt).getTime();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const aRaw = a.rodeAt as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const bRaw = b.rodeAt as any;
+      const aTime = aRaw instanceof Date ? aRaw.getTime() : (aRaw && typeof aRaw.toDate === 'function') ? aRaw.toDate().getTime() : new Date(aRaw).getTime();
+      const bTime = bRaw instanceof Date ? bRaw.getTime() : (bRaw && typeof bRaw.toDate === 'function') ? bRaw.toDate().getTime() : new Date(bRaw).getTime();
       return bTime - aTime;
     });
   }

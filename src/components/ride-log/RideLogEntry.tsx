@@ -19,7 +19,9 @@ export default function RideLogEntry({ log, onDelete }: RideLogEntryProps) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const rodeAt = log.rodeAt instanceof Date ? log.rodeAt : new Date(log.rodeAt);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rodeAtRaw = log.rodeAt as any;
+  const rodeAt = rodeAtRaw instanceof Date ? rodeAtRaw : (rodeAtRaw && typeof rodeAtRaw.toDate === 'function') ? rodeAtRaw.toDate() : new Date(rodeAtRaw);
   const timeStr = rodeAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
   const waitColor =

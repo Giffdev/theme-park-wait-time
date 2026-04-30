@@ -33,12 +33,20 @@ function formatDate(dateStr: string): string {
   });
 }
 
+// Safely convert Firestore Timestamp, Date, string, or number to a JS Date
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toSafeDate(value: any): Date {
+  if (value instanceof Date) return value;
+  if (value && typeof value.toDate === 'function') return value.toDate();
+  if (typeof value === 'number') return new Date(value);
+  if (typeof value === 'string') return new Date(value);
+  return new Date();
+}
+
 function groupRidesByDay(logs: (RideLog & { id: string })[]): Record<string, (RideLog & { id: string })[]> {
   const groups: Record<string, (RideLog & { id: string })[]> = {};
   for (const log of logs) {
-    const date = log.rodeAt instanceof Date
-      ? log.rodeAt.toISOString().split('T')[0]
-      : new Date(log.rodeAt).toISOString().split('T')[0];
+    const date = toSafeDate(log.rodeAt).toISOString().split('T')[0];
     if (!groups[date]) groups[date] = [];
     groups[date].push(log);
   }
@@ -348,9 +356,7 @@ export default function TripDetailPage() {
                 </div>
                 <div className="ml-3 border-l-2 border-primary-100 pl-4 space-y-2">
                   {logs.map((log) => {
-                    const time = log.rodeAt instanceof Date
-                      ? log.rodeAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-                      : new Date(log.rodeAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                    const time = toSafeDate(log.rodeAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
                     return (
                       <div key={log.id} className="group rounded-lg border border-primary-100 bg-white p-3">
                         <div className="flex items-center justify-between">
@@ -414,9 +420,7 @@ export default function TripDetailPage() {
         ) : (
           <div className="space-y-2">
             {diningLogs.map((log) => {
-              const time = log.diningAt instanceof Date
-                ? log.diningAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-                : new Date(log.diningAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+              const time = toSafeDate(log.diningAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
               const mealIcons: Record<string, string> = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍿' };
               return (
                 <div key={log.id} className="group rounded-lg border border-amber-100 bg-white p-3">
