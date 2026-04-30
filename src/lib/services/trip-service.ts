@@ -76,8 +76,8 @@ export async function createTrip(
     name: data.name,
     startDate: data.startDate,
     endDate: data.endDate,
-    parkIds: data.parkIds,
-    parkNames: data.parkNames,
+    parkIds: data.parkIds ?? [],
+    parkNames: data.parkNames ?? {},
     status: data.status,
     shareId,
     stats: emptyStats(),
@@ -185,6 +185,42 @@ export async function deleteTrip(userId: string, tripId: string): Promise<void> 
   if (trip?.shareId) {
     await deleteDocument(SHARED_TRIPS_COLLECTION, trip.shareId);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Quick Trip Creation (for organic "log first" flow)
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a minimal trip with just a name and start date, status = 'active'.
+ * Used for the auto-trip creation flow when a user logs their first ride.
+ * Returns the new trip ID.
+ */
+export async function quickCreateTrip(
+  userId: string,
+  name: string,
+  startDate: string,
+): Promise<string> {
+  // Deactivate any currently active trip first
+  const current = await getActiveTrip(userId);
+  if (current) {
+    await updateDocument(tripsPath(userId), current.id, { status: 'completed' });
+  }
+
+  const tripData = {
+    name,
+    startDate,
+    endDate: startDate, // Same day to start; extends as days are added
+    parkIds: [],
+    parkNames: {},
+    status: 'active' as const,
+    shareId: null,
+    stats: emptyStats(),
+    notes: '',
+  };
+
+  const ref = await addDocument(tripsPath(userId), tripData);
+  return ref.id;
 }
 
 // ---------------------------------------------------------------------------

@@ -22,8 +22,10 @@ export interface Trip {
   name: string;
   startDate: string; // ISO date (YYYY-MM-DD)
   endDate: string; // ISO date (YYYY-MM-DD)
-  parkIds: string[];
-  parkNames: Record<string, string>; // parkId → display name
+  /** @deprecated Use TripDay subcollection instead. Kept for backward compat. */
+  parkIds?: string[];
+  /** @deprecated Use TripDay subcollection instead. Kept for backward compat. */
+  parkNames?: Record<string, string>; // parkId → display name
   status: TripStatus;
   shareId: string | null; // unique URL-safe ID for public sharing
   stats: TripStats;
@@ -33,8 +35,10 @@ export interface Trip {
 }
 
 /** Data required to create a new trip (id + timestamps + stats added automatically). */
-export type TripCreateData = Omit<Trip, 'id' | 'createdAt' | 'updatedAt' | 'stats' | 'shareId'> & {
+export type TripCreateData = Omit<Trip, 'id' | 'createdAt' | 'updatedAt' | 'stats' | 'shareId' | 'parkIds' | 'parkNames'> & {
   shareId?: string | null;
+  parkIds?: string[];
+  parkNames?: Record<string, string>;
 };
 
 /** Fields that can be updated on an existing trip. */

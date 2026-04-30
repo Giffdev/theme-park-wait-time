@@ -105,9 +105,9 @@ export default function SharedTripPage() {
           {formatDate(trip.startDate)}
           {trip.endDate && trip.endDate !== trip.startDate && ` — ${formatDate(trip.endDate)}`}
         </p>
-        {trip.parkNames.length > 0 && (
+        {Object.values(trip.parkNames ?? {}).length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2">
-            {trip.parkNames.map((name) => (
+            {Object.values(trip.parkNames ?? {}).map((name) => (
               <span
                 key={name}
                 className="inline-flex items-center rounded-full bg-primary-100 px-3 py-1 text-xs font-medium text-primary-700"

@@ -6,6 +6,8 @@ export interface SearchableSelectOption {
   id: string;
   label: string;
   sublabel?: string;
+  /** Additional keywords to match against when filtering (not displayed) */
+  keywords?: string[];
 }
 
 interface SearchableSelectProps {
@@ -41,7 +43,12 @@ export function SearchableSelect({
   const selectedOption = options.find((o) => o.id === value);
 
   const filtered = options
-    .filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
+    .filter((o) => {
+      const q = query.toLowerCase();
+      if (o.label.toLowerCase().includes(q)) return true;
+      if (o.keywords?.some((k) => k.toLowerCase().includes(q))) return true;
+      return false;
+    })
     .sort((a, b) => a.label.localeCompare(b.label));
 
   useEffect(() => {

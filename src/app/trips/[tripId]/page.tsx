@@ -3,31 +3,32 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Pencil, X, PlusCircle } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getTrip, completeTrip, generateShareId, updateTrip, deleteTrip } from '@/lib/services/trip-service';
 import { getTripRideLogs } from '@/lib/services/trip-service';
-import { deleteRideLog } from '@/lib/services/ride-log-service';
-import { getTripDiningLogs, deleteDiningLog } from '@/lib/services/dining-log-service';
+import { deleteRideLog, updateRideLog } from '@/lib/services/ride-log-service';
+import { getTripDiningLogs, deleteDiningLog, updateDiningLog } from '@/lib/services/dining-log-service';
+import { notifyActiveTripChanged } from '@/components/trips/ActiveTripBanner';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import type { Trip } from '@/types/trip';
-import type { RideLog } from '@/types/ride-log';
-import type { DiningLog } from '@/types/dining-log';
+import type { RideLog, RideLogUpdateData } from '@/types/ride-log';
+import type { DiningLog, DiningLogUpdateData } from '@/types/dining-log';
 
 function statusBadge(status: Trip['status']) {
   switch (status) {
     case 'active':
       return <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">Active</span>;
-    case 'planning':
-      return <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Upcoming</span>;
     case 'completed':
       return <span className="rounded-full bg-primary-100 px-3 py-1 text-xs font-semibold text-primary-700">Completed</span>;
+    default:
+      return null;
   }
 }
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
-    weekday: 'short',
+    weekday: 'long',
     month: 'short',
     day: 'numeric',
   });
@@ -50,10 +51,30 @@ function groupRidesByDay(logs: (RideLog & { id: string })[]): Record<string, (Ri
     if (!groups[date]) groups[date] = [];
     groups[date].push(log);
   }
-  // Sort days newest first
+  // Sort days chronologically (oldest first for timeline)
   return Object.fromEntries(
-    Object.entries(groups).sort(([a], [b]) => b.localeCompare(a))
+    Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
   );
+}
+
+/** Group a day's rides by park, ordered by earliest ride timestamp. */
+function groupByPark(logs: (RideLog & { id: string })[]): { parkId: string; parkName: string; rides: (RideLog & { id: string })[] }[] {
+  const parkMap: Record<string, { parkName: string; rides: (RideLog & { id: string })[] }> = {};
+  for (const log of logs) {
+    if (!parkMap[log.parkId]) {
+      parkMap[log.parkId] = { parkName: log.parkName, rides: [] };
+    }
+    parkMap[log.parkId].rides.push(log);
+  }
+  // Sort rides within each park chronologically
+  const groups = Object.entries(parkMap).map(([parkId, data]) => ({
+    parkId,
+    parkName: data.parkName,
+    rides: data.rides.sort((a, b) => toSafeDate(a.rodeAt).getTime() - toSafeDate(b.rodeAt).getTime()),
+  }));
+  // Sort parks by earliest ride time
+  groups.sort((a, b) => toSafeDate(a.rides[0].rodeAt).getTime() - toSafeDate(b.rides[0].rodeAt).getTime());
+  return groups;
 }
 
 export default function TripDetailPage() {
@@ -80,6 +101,16 @@ export default function TripDetailPage() {
   // Delete dining log state
   const [deleteDiningId, setDeleteDiningId] = useState<string | null>(null);
   const [deletingDining, setDeletingDining] = useState(false);
+
+  // Edit ride log state
+  const [editingRideLog, setEditingRideLog] = useState<(RideLog & { id: string }) | null>(null);
+  const [editRideData, setEditRideData] = useState<{ rodeAt: string; waitTimeMinutes: string; rating: string; notes: string }>({ rodeAt: '', waitTimeMinutes: '', rating: '', notes: '' });
+  const [savingRide, setSavingRide] = useState(false);
+
+  // Edit dining log state
+  const [editingDiningLog, setEditingDiningLog] = useState<(DiningLog & { id: string }) | null>(null);
+  const [editDiningData, setEditDiningData] = useState<{ diningAt: string; tableWaitMinutes: string; rating: string; notes: string; mealType: string; hadReservation: string }>({ diningAt: '', tableWaitMinutes: '', rating: '', notes: '', mealType: '', hadReservation: '' });
+  const [savingDining, setSavingDining] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user || !tripId) return;
@@ -148,6 +179,7 @@ export default function TripDetailPage() {
     setDeletingTrip(true);
     try {
       await deleteTrip(user.uid, tripId);
+      notifyActiveTripChanged();
       router.push('/trips');
     } catch (err) {
       console.error('Failed to delete trip:', err);
@@ -181,6 +213,76 @@ export default function TripDetailPage() {
     } finally {
       setDeletingDining(false);
       setDeleteDiningId(null);
+    }
+  };
+
+  const openEditRideLog = (log: RideLog & { id: string }) => {
+    const date = toSafeDate(log.rodeAt);
+    const localIso = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    setEditRideData({
+      rodeAt: localIso,
+      waitTimeMinutes: log.waitTimeMinutes != null ? String(log.waitTimeMinutes) : '',
+      rating: log.rating != null ? String(log.rating) : '',
+      notes: log.notes || '',
+    });
+    setEditingRideLog(log);
+  };
+
+  const handleSaveRideLog = async () => {
+    if (!user || !editingRideLog) return;
+    setSavingRide(true);
+    try {
+      const data: RideLogUpdateData = {};
+      if (editRideData.rodeAt) data.rodeAt = new Date(editRideData.rodeAt);
+      data.waitTimeMinutes = editRideData.waitTimeMinutes ? Number(editRideData.waitTimeMinutes) : null;
+      data.rating = editRideData.rating ? Number(editRideData.rating) : null;
+      data.notes = editRideData.notes;
+      await updateRideLog(user.uid, editingRideLog.id, data);
+      setRideLogs((prev) =>
+        prev.map((l) => l.id === editingRideLog.id ? { ...l, ...data } : l)
+      );
+      setEditingRideLog(null);
+    } catch (err) {
+      console.error('Failed to update ride log:', err);
+    } finally {
+      setSavingRide(false);
+    }
+  };
+
+  const openEditDiningLog = (log: DiningLog & { id: string }) => {
+    const date = toSafeDate(log.diningAt);
+    const localIso = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    setEditDiningData({
+      diningAt: localIso,
+      tableWaitMinutes: log.tableWaitMinutes != null ? String(log.tableWaitMinutes) : '',
+      rating: log.rating != null ? String(log.rating) : '',
+      notes: log.notes || '',
+      mealType: log.mealType || 'lunch',
+      hadReservation: log.hadReservation === true ? 'yes' : log.hadReservation === false ? 'no' : '',
+    });
+    setEditingDiningLog(log);
+  };
+
+  const handleSaveDiningLog = async () => {
+    if (!user || !editingDiningLog) return;
+    setSavingDining(true);
+    try {
+      const data: DiningLogUpdateData = {};
+      if (editDiningData.diningAt) data.diningAt = new Date(editDiningData.diningAt);
+      data.tableWaitMinutes = editDiningData.tableWaitMinutes ? Number(editDiningData.tableWaitMinutes) : null;
+      data.rating = editDiningData.rating ? Number(editDiningData.rating) : null;
+      data.notes = editDiningData.notes;
+      data.mealType = editDiningData.mealType as DiningLog['mealType'];
+      data.hadReservation = editDiningData.hadReservation === 'yes' ? true : editDiningData.hadReservation === 'no' ? false : null;
+      await updateDiningLog(user.uid, editingDiningLog.id, data);
+      setDiningLogs((prev) =>
+        prev.map((l) => l.id === editingDiningLog.id ? { ...l, ...data } : l)
+      );
+      setEditingDiningLog(null);
+    } catch (err) {
+      console.error('Failed to update dining log:', err);
+    } finally {
+      setSavingDining(false);
     }
   };
 
@@ -254,9 +356,9 @@ export default function TripDetailPage() {
             {statusBadge(trip.status)}
           </div>
           <p className="mt-1 text-primary-500">{dateRange}</p>
-          {Object.values(trip.parkNames).length > 0 && (
+          {Object.values(trip.parkNames ?? {}).length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {Object.values(trip.parkNames).map((name) => (
+              {Object.values(trip.parkNames ?? {}).map((name) => (
                 <span key={name} className="rounded-md bg-primary-50 px-2 py-0.5 text-xs text-primary-600">
                   {name}
                 </span>
@@ -265,7 +367,14 @@ export default function TripDetailPage() {
           )}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/trips/${trip.id}/log`}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 transition-colors"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Log a Ride or Experience
+          </Link>
           <button
             onClick={handleShare}
             disabled={sharing}
@@ -340,84 +449,86 @@ export default function TripDetailPage() {
             <p className="text-sm text-primary-400 mt-1">Start riding and log your experiences!</p>
             <Link
               href={`/trips/${trip.id}/log`}
-              className="mt-4 inline-flex items-center gap-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+              className="mt-4 inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
             >
-              Log a Ride
+              Log a Ride or Experience
             </Link>
           </div>
         ) : (
           <div className="space-y-6">
-            {Object.entries(groupedLogs).map(([date, logs]) => (
-              <div key={date}>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="h-2 w-2 rounded-full bg-primary-400" />
-                  <h3 className="text-sm font-semibold text-primary-700">{formatDate(date)}</h3>
-                  <span className="text-xs text-primary-400">{logs.length} ride{logs.length !== 1 ? 's' : ''}</span>
-                </div>
-                <div className="ml-3 border-l-2 border-primary-100 pl-4 space-y-2">
-                  {logs.map((log) => {
-                    const time = toSafeDate(log.rodeAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-                    return (
-                      <div key={log.id} className="group rounded-lg border border-primary-100 bg-white p-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-medium text-primary-800">{log.attractionName}</p>
-                            <p className="text-xs text-primary-500">{log.parkName} · {time}</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {log.waitTimeMinutes != null ? (
-                              <span className="rounded-md bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-600">
-                                {log.waitTimeMinutes} min
-                              </span>
-                            ) : (
-                              <span className="rounded-md bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-400">
-                                —
-                              </span>
-                            )}
-                            {log.rating && (
-                              <span className="text-xs text-amber-500">
-                                {'★'.repeat(log.rating)}{'☆'.repeat(5 - log.rating)}
-                              </span>
-                            )}
-                            <button
-                              onClick={() => setDeleteLogId(log.id)}
-                              className="ml-1 rounded-md p-1 text-red-400 transition-opacity hover:bg-red-50 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100"
-                              aria-label={`Delete ${log.attractionName} ride log`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
+            {Object.entries(groupedLogs).map(([date, dayLogs]) => {
+              const parkGroups = groupByPark(dayLogs);
+              const totalRides = dayLogs.length;
+              return (
+                <div key={date} className="rounded-xl border border-primary-100 bg-white overflow-hidden">
+                  {/* Day header */}
+                  <div className="flex items-center gap-2 px-4 py-3 bg-primary-50 border-b border-primary-100">
+                    <span className="text-base">📅</span>
+                    <h3 className="text-sm font-semibold text-primary-800">{formatDate(date)}</h3>
+                    <span className="ml-auto text-xs text-primary-400">{totalRides} ride{totalRides !== 1 ? 's' : ''}</span>
+                  </div>
+
+                  {/* Parks within this day */}
+                  <div className="divide-y divide-primary-50">
+                    {parkGroups.map((park) => (
+                      <div key={park.parkId} className="px-4 py-3">
+                        {/* Park sub-header */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm">🏰</span>
+                          <span className="text-xs font-semibold text-primary-700">{park.parkName}</span>
+                          <span className="text-xs text-primary-400">({park.rides.length})</span>
                         </div>
-                        {log.notes && (
-                          <p className="mt-1.5 text-xs text-primary-500 italic">{log.notes}</p>
-                        )}
+
+                        {/* Rides in this park */}
+                        <div className="space-y-1.5 ml-5">
+                          {park.rides.map((log) => {
+                            const time = toSafeDate(log.rodeAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                            return (
+                              <div key={log.id} className="group flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-primary-50 transition-colors">
+                                <span className="text-xs text-primary-400 w-16 flex-shrink-0">{time}</span>
+                                <span className="text-sm font-medium text-primary-800 flex-1 min-w-0 truncate">{log.attractionName}</span>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  {log.waitTimeMinutes != null && (
+                                    <span className="text-xs text-primary-500">⏱️ {log.waitTimeMinutes}min</span>
+                                  )}
+                                  {log.rating && (
+                                    <span className="text-xs text-amber-500">
+                                      {'★'.repeat(log.rating)}{'☆'.repeat(5 - log.rating)}
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={() => openEditRideLog(log)}
+                                    className="rounded-md p-1 text-primary-400 transition-opacity hover:bg-primary-100 hover:text-primary-600 sm:opacity-0 sm:group-hover:opacity-100"
+                                    aria-label={`Edit ${log.attractionName} ride log`}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteLogId(log.id)}
+                                    className="rounded-md p-1 text-red-400 transition-opacity hover:bg-red-50 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100"
+                                    aria-label={`Delete ${log.attractionName} ride log`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* Dining Timeline */}
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold text-primary-900 mb-4">🍽️ Dining</h2>
-
-        {diningLogs.length === 0 ? (
-          <div className="rounded-xl border-2 border-dashed border-amber-200 py-8 text-center">
-            <div className="text-3xl mb-2">🍽️</div>
-            <p className="text-primary-600 font-medium text-sm">No dining logged yet</p>
-            <p className="text-xs text-primary-400 mt-1">Log your meals and snacks along the way!</p>
-            <Link
-              href={`/trips/${trip.id}/log`}
-              className="mt-3 inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600"
-            >
-              Log Dining
-            </Link>
-          </div>
-        ) : (
+      {/* Dining Logs (only shown if user has existing dining logs) */}
+      {diningLogs.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold text-primary-900 mb-4">🍽️ Dining</h2>
           <div className="space-y-2">
             {diningLogs.map((log) => {
               const time = toSafeDate(log.diningAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -441,6 +552,13 @@ export default function TripDetailPage() {
                         </span>
                       )}
                       <button
+                        onClick={() => openEditDiningLog(log)}
+                        className="rounded-md p-1 text-primary-400 transition-opacity hover:bg-primary-50 hover:text-primary-600 sm:opacity-0 sm:group-hover:opacity-100"
+                        aria-label={`Edit ${log.restaurantName} dining log`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
                         onClick={() => setDeleteDiningId(log.id)}
                         className="ml-1 rounded-md p-1 text-red-400 transition-opacity hover:bg-red-50 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100"
                         aria-label={`Delete ${log.restaurantName} dining log`}
@@ -456,8 +574,8 @@ export default function TripDetailPage() {
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Delete Trip Confirmation */}
       <ConfirmDialog
@@ -491,6 +609,185 @@ export default function TripDetailPage() {
         onCancel={() => setDeleteDiningId(null)}
         loading={deletingDining}
       />
+
+      {/* Edit Ride Log Modal */}
+      {editingRideLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-primary-900">Edit Ride Log</h3>
+              <button onClick={() => setEditingRideLog(null)} className="rounded-md p-1 text-primary-400 hover:text-primary-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-sm text-primary-600 mb-4">{editingRideLog.attractionName} · {editingRideLog.parkName}</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-primary-700 mb-1">Date & Time</label>
+                <input
+                  type="datetime-local"
+                  value={editRideData.rodeAt}
+                  onChange={(e) => setEditRideData((d) => ({ ...d, rodeAt: e.target.value }))}
+                  className="w-full rounded-lg border border-primary-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary-700 mb-1">Wait Time (minutes)</label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Optional"
+                  value={editRideData.waitTimeMinutes}
+                  onChange={(e) => setEditRideData((d) => ({ ...d, waitTimeMinutes: e.target.value }))}
+                  className="w-full rounded-lg border border-primary-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary-700 mb-1">Rating</label>
+                <select
+                  value={editRideData.rating}
+                  onChange={(e) => setEditRideData((d) => ({ ...d, rating: e.target.value }))}
+                  className="w-full rounded-lg border border-primary-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="">No rating</option>
+                  <option value="1">★ (1)</option>
+                  <option value="2">★★ (2)</option>
+                  <option value="3">★★★ (3)</option>
+                  <option value="4">★★★★ (4)</option>
+                  <option value="5">★★★★★ (5)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary-700 mb-1">Notes</label>
+                <textarea
+                  value={editRideData.notes}
+                  onChange={(e) => setEditRideData((d) => ({ ...d, notes: e.target.value }))}
+                  rows={3}
+                  className="w-full rounded-lg border border-primary-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  placeholder="Any notes about this ride..."
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setEditingRideLog(null)}
+                className="rounded-lg border border-primary-200 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveRideLog}
+                disabled={savingRide}
+                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                {savingRide ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Dining Log Modal */}
+      {editingDiningLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-primary-900">Edit Dining Log</h3>
+              <button onClick={() => setEditingDiningLog(null)} className="rounded-md p-1 text-primary-400 hover:text-primary-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-sm text-primary-600 mb-4">{editingDiningLog.restaurantName} · {editingDiningLog.parkName}</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-primary-700 mb-1">Date & Time</label>
+                <input
+                  type="datetime-local"
+                  value={editDiningData.diningAt}
+                  onChange={(e) => setEditDiningData((d) => ({ ...d, diningAt: e.target.value }))}
+                  className="w-full rounded-lg border border-primary-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary-700 mb-1">Meal Type</label>
+                <select
+                  value={editDiningData.mealType}
+                  onChange={(e) => setEditDiningData((d) => ({ ...d, mealType: e.target.value }))}
+                  className="w-full rounded-lg border border-primary-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="breakfast">Breakfast</option>
+                  <option value="lunch">Lunch</option>
+                  <option value="dinner">Dinner</option>
+                  <option value="snack">Snack</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary-700 mb-1">Had Reservation?</label>
+                <select
+                  value={editDiningData.hadReservation}
+                  onChange={(e) => setEditDiningData((d) => ({ ...d, hadReservation: e.target.value }))}
+                  className="w-full rounded-lg border border-primary-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="">Not specified</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary-700 mb-1">Wait for Table (minutes)</label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Optional"
+                  value={editDiningData.tableWaitMinutes}
+                  onChange={(e) => setEditDiningData((d) => ({ ...d, tableWaitMinutes: e.target.value }))}
+                  className="w-full rounded-lg border border-primary-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary-700 mb-1">Rating</label>
+                <select
+                  value={editDiningData.rating}
+                  onChange={(e) => setEditDiningData((d) => ({ ...d, rating: e.target.value }))}
+                  className="w-full rounded-lg border border-primary-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="">No rating</option>
+                  <option value="1">★ (1)</option>
+                  <option value="2">★★ (2)</option>
+                  <option value="3">★★★ (3)</option>
+                  <option value="4">★★★★ (4)</option>
+                  <option value="5">★★★★★ (5)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary-700 mb-1">Notes</label>
+                <textarea
+                  value={editDiningData.notes}
+                  onChange={(e) => setEditDiningData((d) => ({ ...d, notes: e.target.value }))}
+                  rows={3}
+                  className="w-full rounded-lg border border-primary-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  placeholder="What did you have? Any notes..."
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setEditingDiningLog(null)}
+                className="rounded-lg border border-primary-200 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveDiningLog}
+                disabled={savingDining}
+                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                {savingDining ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

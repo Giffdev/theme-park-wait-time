@@ -77,6 +77,7 @@ export default function ParksPage() {
   const [parks, setParks] = useState<Park[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [waitMetrics, setWaitMetrics] = useState<Record<string, { average: number | null; activeRideCount: number }>>({});
   const [parkHours, setParkHours] = useState<Record<string, ParkHoursEntry>>({});
   const [latestFetchedAt, setLatestFetchedAt] = useState<number | null>(null);
@@ -248,12 +249,23 @@ export default function ParksPage() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    setRefreshError(null);
     try {
-      await fetch('/api/wait-times');
+      const res = await fetch('/api/wait-times', {
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
       setWaitMetrics({});
       await Promise.all([fetchParks(), fetchParkHours()]);
     } catch (error) {
       console.error('Refresh failed:', error);
+      const message =
+        error instanceof DOMException && error.name === 'TimeoutError'
+          ? 'Refresh timed out — try again later.'
+          : 'Refresh failed — please try again.';
+      setRefreshError(message);
     } finally {
       setRefreshing(false);
     }
@@ -359,6 +371,9 @@ export default function ParksPage() {
           {refreshing ? 'Refreshing...' : 'Refresh Data'}
         </button>
       </div>
+      {refreshError && (
+        <p className="mb-4 text-right text-sm text-red-600">{refreshError}</p>
+      )}
       {dataFreshness && (
         <p className={`-mt-6 mb-6 text-right text-xs ${dataFreshness.isStale ? 'text-amber-600' : 'text-primary-400'}`}>
           {dataFreshness.label}
@@ -576,7 +591,7 @@ export default function ParksPage() {
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div>
                   <p className="text-2xl font-bold text-primary-800">{grouped.length}</p>
-                  <p className="text-xs text-primary-500">Resort Groups</p>
+                  <p className="text-xs text-primary-500">Park Groups</p>
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-primary-800">{filteredParks.length}</p>

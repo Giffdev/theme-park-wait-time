@@ -86,3 +86,16 @@
 - **State shape change:** `shortestWaits: Record<string, number | null>` → `waitMetrics: Record<string, { average: number | null; activeRideCount: number }>`. Passes `activeRideCount` so card shows "12 rides" context.
 - **No-data handling:** Null average falls through to existing "Live data unavailable" branches — no zero-minute display.
 - **Key rule:** Always filter `waitMinutes > 0` (not just `!== null`) before computing park-level averages. Zero-wait attractions are valid Firestore entries but meaningless for crowd-level inference.
+
+### 2026-04-30 — Trip Logging UX Redesign Proposal
+- **Decision file:** `.squad/decisions/inbox/mikey-trip-logging-redesign.md`
+- **Core philosophy shift:** "Log First, Organize Later" — trips become containers you fill, not itineraries you execute. Inspired by Untappd check-in model.
+- **New entity:** `TripDay` subcollection (`users/{uid}/trips/{tripId}/days/{date}`) — explicit day entity replaces implicit grouping. Doc ID = date string.
+- **Trip model simplification:** Remove `parkIds[]`/`parkNames{}` from Trip (moved to TripDay). Remove `'planning'` status. Trips are either active or completed.
+- **Primary UX change:** Global FAB → QuickLogSheet (bottom sheet) replaces buried `/trips/[id]/log` route. One tap from anywhere to log a ride.
+- **Organic trip creation:** First log with no active trip prompts "add to trip?" — no upfront day/park planning required. Manual creation simplified to name-only.
+- **Park hopping:** Implicit via parkId on each ride log. TripDay.parkIds[] built from logs. No explicit "switch park" action.
+- **Temporal modes:** Single QuickLogSheet handles real-time, end-of-day recap, and historical logging via [Now | Earlier | Past Date] selector.
+- **Trip detail redesign:** Timeline grouped by day → by park within day → by ride chronologically.
+- **Key architectural decision:** RideLog schema unchanged. TripDay is additive. Migration needed for existing trips (derive TripDay docs from ride log dates).
+- **Open questions for Devin:** Auto-naming strategy, standalone log visibility, FAB placement, day-level notes value.

@@ -61,6 +61,8 @@ export default function TripLogRidePage() {
   const [loading, setLoading] = useState(true);
   const [attractions, setAttractions] = useState<AttractionOption[]>([]);
   const [parkId, setParkId] = useState('');
+  const [availableParks, setAvailableParks] = useState<{ id: string; name: string }[]>([]);
+  const [parkSearchQuery, setParkSearchQuery] = useState('');
 
   // Search & filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -109,13 +111,23 @@ export default function TripLogRidePage() {
     getTrip(user.uid, tripId)
       .then((t) => {
         setTrip(t);
-        if (t && t.parkIds.length > 0) {
-          setParkId(t.parkIds[0]);
+        if (t && (t.parkIds ?? []).length > 0) {
+          setParkId((t.parkIds ?? [])[0]);
         }
       })
       .catch(() => setTrip(null))
       .finally(() => setLoading(false));
   }, [user, tripId]);
+
+  // Load available parks from Firestore (for park picker when trip has no pre-assigned parks)
+  useEffect(() => {
+    if (!user) return;
+    getCollection<{ name: string }>('parks', []).then((docs) => {
+      setAvailableParks(
+        docs.map((d) => ({ id: d.id, name: d.name })).sort((a, b) => a.name.localeCompare(b.name))
+      );
+    });
+  }, [user]);
 
   // Load attractions when park changes
   useEffect(() => {
@@ -231,7 +243,7 @@ export default function TripLogRidePage() {
     setSaving(true);
     setError('');
 
-    const parkName = trip.parkNames[parkId] ?? '';
+    const parkName = (trip.parkNames ?? {})[parkId] ?? '';
 
     try {
       await createRideLog(
@@ -270,7 +282,7 @@ export default function TripLogRidePage() {
     setDiningSaving(true);
     setDiningError('');
 
-    const parkName = trip.parkNames[parkId] ?? '';
+    const parkName = (trip.parkNames ?? {})[parkId] ?? '';
 
     try {
       await addDiningLog(
@@ -359,16 +371,16 @@ export default function TripLogRidePage() {
           </div>
           <div className="flex items-center gap-1 text-xs text-white/70">
             <MapPin className="h-3 w-3" />
-            <span>{trip.parkNames[parkId] || 'Select park'}</span>
+            <span>{(trip.parkNames ?? {})[parkId] || availableParks.find((p) => p.id === parkId)?.name || 'Select park'}</span>
           </div>
         </div>
       </div>
 
-      {/* Park selector (only if multiple parks) */}
-      {trip.parkIds.length > 1 && (
+      {/* Park selector */}
+      {(trip.parkIds ?? []).length > 1 ? (
         <div className="mb-4">
           <div className="flex flex-wrap gap-2">
-            {trip.parkIds.map((id) => (
+            {(trip.parkIds ?? []).map((id) => (
               <button
                 key={id}
                 type="button"
@@ -379,10 +391,53 @@ export default function TripLogRidePage() {
                     : 'bg-primary-50 text-primary-600 hover:bg-primary-100'
                 }`}
               >
-                {trip.parkNames[id]}
+                {(trip.parkNames ?? {})[id]}
               </button>
             ))}
           </div>
+        </div>
+      ) : !parkId ? (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-primary-700 mb-2">Which park are you at?</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary-400" />
+            <input
+              type="text"
+              placeholder="Search parks..."
+              value={parkSearchQuery}
+              onChange={(e) => setParkSearchQuery(e.target.value)}
+              className="w-full rounded-xl border border-primary-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            />
+          </div>
+          <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-primary-100 bg-white shadow-sm divide-y divide-primary-50">
+            {availableParks
+              .filter((p) => !parkSearchQuery || p.name.toLowerCase().includes(parkSearchQuery.toLowerCase()))
+              .map((park) => (
+                <button
+                  key={park.id}
+                  type="button"
+                  onClick={() => { setParkId(park.id); setParkSearchQuery(''); setSelectedAttraction(null); setSelectedRestaurant(null); }}
+                  className="w-full px-4 py-3 text-left text-sm font-medium text-primary-700 hover:bg-primary-50 transition-colors"
+                >
+                  {park.name}
+                </button>
+              ))}
+            {availableParks.filter((p) => !parkSearchQuery || p.name.toLowerCase().includes(parkSearchQuery.toLowerCase())).length === 0 && (
+              <p className="py-4 text-center text-sm text-primary-400">No parks found</p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => { setParkId(''); setSelectedAttraction(null); setSelectedRestaurant(null); }}
+            className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-600 hover:bg-primary-100 transition-colors"
+          >
+            <MapPin className="h-3 w-3" />
+            {availableParks.find((p) => p.id === parkId)?.name || (trip.parkNames ?? {})[parkId] || 'Unknown park'}
+            <X className="h-3 w-3" />
+          </button>
         </div>
       )}
 
@@ -492,13 +547,7 @@ export default function TripLogRidePage() {
         )}
       </>
 
-      {/* No park selected */}
-      {!parkId && (
-        <div className="mt-12 text-center">
-          <div className="text-4xl">🏰</div>
-          <p className="mt-3 text-sm text-primary-500">Select a park to browse attractions</p>
-        </div>
-      )}
+      {/* No park selected — prompt is handled by inline park picker above */}
 
       {/* ======================== RIDE LOG PANEL ======================== */}
       {selectedAttraction && (
@@ -518,7 +567,7 @@ export default function TripLogRidePage() {
             <div className="mb-4 flex items-start justify-between">
               <div>
                 <h2 className="text-lg font-bold text-primary-900">{selectedAttraction.name}</h2>
-                <p className="text-xs text-primary-500">{trip.parkNames[parkId]}</p>
+                <p className="text-xs text-primary-500">{(trip.parkNames ?? {})[parkId]}</p>
               </div>
               <button
                 type="button"
@@ -715,7 +764,7 @@ export default function TripLogRidePage() {
                   </div>
                   <h2 className="text-lg font-bold text-primary-900">{selectedRestaurant.name}</h2>
                 </div>
-                <p className="ml-10 text-xs text-primary-500">{trip.parkNames[parkId]}</p>
+                <p className="ml-10 text-xs text-primary-500">{(trip.parkNames ?? {})[parkId]}</p>
               </div>
               <button
                 type="button"

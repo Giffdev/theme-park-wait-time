@@ -62,6 +62,7 @@ export default function ParkDetailPage() {
   const [waitTimes, setWaitTimes] = useState<WaitTimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [sortAsc, setSortAsc] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
     entityTypes: new Set<EntityType>(['ATTRACTION', 'SHOW']),
@@ -181,11 +182,22 @@ export default function ParkDetailPage() {
   const handleRefresh = async () => {
     if (!park) return;
     setRefreshing(true);
+    setRefreshError(null);
     try {
-      await fetch(`/api/wait-times?parkId=${park.id}`);
+      const res = await fetch(`/api/wait-times?parkId=${park.id}`, {
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
       await fetchData();
     } catch (error) {
       console.error('Refresh failed:', error);
+      const message =
+        error instanceof DOMException && error.name === 'TimeoutError'
+          ? 'Refresh timed out — try again later.'
+          : 'Refresh failed — please try again.';
+      setRefreshError(message);
     } finally {
       setRefreshing(false);
     }
@@ -324,6 +336,9 @@ export default function ParkDetailPage() {
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing...' : 'Refresh Wait Times'}
           </button>
+          {refreshError && (
+            <span className="text-xs text-red-600">{refreshError}</span>
+          )}
           {dataFreshness && (
             <span className={`text-xs ${dataFreshness.isStale ? 'text-amber-600' : 'text-primary-400'}`}>
               {dataFreshness.label}

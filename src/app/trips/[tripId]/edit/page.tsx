@@ -56,7 +56,7 @@ export default function EditTripPage() {
           const existingDays: TripDayEntry[] = [];
           const start = new Date(tripData.startDate + 'T00:00:00');
           const end = new Date(tripData.endDate + 'T00:00:00');
-          const allParks = Object.entries(tripData.parkNames).map(([id, name]) => ({ id, name }));
+          const allParks = Object.entries(tripData.parkNames ?? {}).map(([id, name]) => ({ id, name }));
           // Simple reconstruction: all parks on all days
           for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
             existingDays.push({
@@ -76,7 +76,7 @@ export default function EditTripPage() {
     fetchData();
   }, [user, tripId]);
 
-  const resortGroups = parks.reduce<Record<string, { name: string; parks: ParkData[] }>>((acc, p) => {
+  const parkGroups = parks.reduce<Record<string, { name: string; parks: ParkData[] }>>((acc, p) => {
     if (!acc[p.destinationId]) {
       acc[p.destinationId] = { name: p.destinationName, parks: [] };
     }
@@ -84,16 +84,17 @@ export default function EditTripPage() {
     return acc;
   }, {});
 
-  const resortGroupOptions = useMemo(
-    () => Object.entries(resortGroups).map(([id, group]) => ({
+  const parkGroupOptions = useMemo(
+    () => Object.entries(parkGroups).map(([id, group]) => ({
       id,
       label: group.name,
       sublabel: `${group.parks.length} parks`,
+      keywords: group.parks.map((p) => p.name),
     })),
-    [resortGroups],
+    [parkGroups],
   );
 
-  const groupParks = selectedGroup ? (resortGroups[selectedGroup]?.parks ?? []).sort((a, b) => a.name.localeCompare(b.name)) : [];
+  const groupParks = selectedGroup ? (parkGroups[selectedGroup]?.parks ?? []).sort((a, b) => a.name.localeCompare(b.name)) : [];
 
   const togglePark = (parkId: string) => {
     setSelectedParks((prev) => {
@@ -110,8 +111,8 @@ export default function EditTripPage() {
       .filter((p) => selectedParks.has(p.id))
       .map((p) => ({ id: p.id, name: p.name }));
     setDays((prev) => [...prev, { date: dayDate, parks: parksForDay }]);
+    // Keep park group selected for multi-day convenience
     setSelectedParks(new Set());
-    setSelectedGroup('');
   };
 
   const removeDay = (idx: number) => {
@@ -260,14 +261,14 @@ export default function EditTripPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-primary-700 mb-1">Resort Group</label>
+            <label className="block text-sm font-medium text-primary-700 mb-1">Park Group</label>
             <SearchableSelect
-              options={resortGroupOptions}
+              options={parkGroupOptions}
               value={selectedGroup}
               onChange={(val) => { setSelectedGroup(val); setSelectedParks(new Set()); }}
-              placeholder="Search resort groups…"
-              id="edit-resort-group"
-              label="Resort Group"
+              placeholder="Search park groups…"
+              id="edit-park-group"
+              label="Park Group"
             />
           </div>
 

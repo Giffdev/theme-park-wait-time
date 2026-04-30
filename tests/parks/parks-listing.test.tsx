@@ -182,7 +182,7 @@ describe('Parks Listing Page', () => {
 
       await user.click(screen.getByText('Refresh Data'));
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/wait-times');
+      expect(mockFetch).toHaveBeenCalledWith('/api/wait-times', { signal: expect.any(AbortSignal) });
     });
 
     it('shows "Refreshing..." text while refresh is in progress', async () => {

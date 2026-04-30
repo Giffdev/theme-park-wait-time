@@ -28,7 +28,7 @@ function formatDateRange(start: string, end: string): string {
 }
 
 export default function TripCard({ trip }: TripCardProps) {
-  const parkNamesList = Object.values(trip.parkNames);
+  const parkNamesList = Object.values(trip.parkNames ?? {});
 
   return (
     <Link

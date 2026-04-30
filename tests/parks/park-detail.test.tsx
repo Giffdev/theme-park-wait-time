@@ -227,7 +227,7 @@ describe('Park Detail Page', () => {
 
       await user.click(screen.getByText('Refresh Wait Times'));
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/wait-times?parkId=magic-kingdom');
+      expect(mockFetch).toHaveBeenCalledWith('/api/wait-times?parkId=magic-kingdom', { signal: expect.any(AbortSignal) });
     });
 
     it('shows "Refreshing..." during refresh', async () => {
