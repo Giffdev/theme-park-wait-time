@@ -30,9 +30,10 @@ const ATTRACTION_TYPE_CHIPS: { value: AttractionType; label: string; color: 'pur
 interface AttractionFilterChipsProps {
   filters: FilterState;
   onChange: (filters: FilterState) => void;
+  availableTypes?: Set<AttractionType>;
 }
 
-export default function AttractionFilterChips({ filters, onChange }: AttractionFilterChipsProps) {
+export default function AttractionFilterChips({ filters, onChange, availableTypes }: AttractionFilterChipsProps) {
   const isAllSelected = filters.entityTypes.size === 0;
   const showTier2 = filters.entityTypes.has('ATTRACTION') || isAllSelected;
 
@@ -91,7 +92,10 @@ export default function AttractionFilterChips({ filters, onChange }: AttractionF
           <span className="shrink-0 self-center text-[10px] font-medium uppercase tracking-wider text-primary-400">
             Type
           </span>
-          {ATTRACTION_TYPE_CHIPS.map((chip) => (
+          {(availableTypes
+            ? ATTRACTION_TYPE_CHIPS.filter(chip => availableTypes.has(chip.value))
+            : ATTRACTION_TYPE_CHIPS
+          ).map((chip) => (
             <AttractionFilterChip
               key={chip.value}
               label={chip.label}

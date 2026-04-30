@@ -17,6 +17,7 @@ import RideDetailPanel from '@/components/parks/RideDetailPanel';
 import ParkScheduleBar from '@/components/parks/ParkScheduleBar';
 import ParkOperatingStatus from '@/components/parks/ParkOperatingStatus';
 import type { AttractionType } from '@/types/attraction';
+import { classifyAttraction } from '@/lib/utils/classify-attraction';
 import type { QueueData, ForecastEntry, OperatingHoursEntry, ScheduleSegment, ForecastMeta } from '@/types/queue';
 
 interface Park {
@@ -205,21 +206,39 @@ export default function ParkDetailPage() {
     }
   };
 
-  // Merge wait times into attractions
-  const waitMap = new Map(waitTimes.map((w) => [w.attractionId, w]));
+  // Merge wait times into attractions (memoized to avoid re-running classifyAttraction on every render)
+  const waitMap = useMemo(
+    () => new Map(waitTimes.map((w) => [w.attractionId, w])),
+    [waitTimes]
+  );
 
-  const mergedAttractions = attractions.map((a) => {
-    const wt = waitMap.get(a.id);
-    return {
-      ...a,
-      status: wt?.status || 'CLOSED',
-      waitMinutes: wt?.waitMinutes ?? null,
-      queue: wt?.queue ?? null,
-      forecast: wt?.forecast ?? null,
-      forecastMeta: wt?.forecastMeta ?? null,
-      operatingHours: wt?.operatingHours ?? null,
-    };
-  });
+  const mergedAttractions = useMemo(() => {
+    return attractions.map((a) => {
+      const wt = waitMap.get(a.id);
+      // Use stored attractionType if available, otherwise classify client-side
+      const effectiveAttractionType = a.attractionType || classifyAttraction(a.name, a.entityType);
+      return {
+        ...a,
+        attractionType: effectiveAttractionType,
+        status: wt?.status || 'CLOSED',
+        waitMinutes: wt?.waitMinutes ?? null,
+        queue: wt?.queue ?? null,
+        forecast: wt?.forecast ?? null,
+        forecastMeta: wt?.forecastMeta ?? null,
+        operatingHours: wt?.operatingHours ?? null,
+      };
+    });
+  }, [attractions, waitMap]);
+
+  const availableAttractionTypes = useMemo(() => {
+    const types = new Set<AttractionType>();
+    mergedAttractions
+      .filter(a => a.entityType === 'ATTRACTION')
+      .forEach(a => {
+        if (a.attractionType) types.add(a.attractionType);
+      });
+    return types;
+  }, [mergedAttractions]);
 
   // Apply entity type + attraction type filters
   const filteredAttractions = mergedAttractions.filter((a) => {
@@ -231,9 +250,13 @@ export default function ParkDetailPage() {
       if (!filters.entityTypes.has(a.entityType as EntityType)) return false;
     }
 
-    // Tier 2: attraction sub-type filter (only applies to ATTRACTION entity type)
-    if (filters.attractionTypes.size > 0 && a.entityType === 'ATTRACTION') {
-      if (!a.attractionType || !filters.attractionTypes.has(a.attractionType)) return false;
+    // Tier 2: attraction sub-type filter
+    if (filters.attractionTypes.size > 0) {
+      // Shows always remain visible regardless of attraction sub-type filters
+      if (a.entityType !== 'SHOW') {
+        if (a.entityType !== 'ATTRACTION') return false;
+        if (!a.attractionType || !filters.attractionTypes.has(a.attractionType)) return false;
+      }
     }
 
     return true;
@@ -266,19 +289,36 @@ export default function ParkDetailPage() {
   if (loading) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-10 pb-24 sm:px-6 md:pb-10 lg:px-8">
+        {/* Breadcrumb skeleton */}
         <div className="mb-6 h-4 w-32 animate-pulse rounded bg-primary-100" />
+        {/* Header area */}
         <div className="mb-8">
           <div className="h-9 w-64 animate-pulse rounded bg-primary-100" />
           <div className="mt-3 h-5 w-48 animate-pulse rounded bg-primary-100" />
         </div>
+        {/* Stats cards */}
         <div className="mb-8 grid gap-4 sm:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-24 animate-pulse rounded-xl bg-primary-50" />
           ))}
         </div>
+        {/* Filter chips placeholder */}
+        <div className="mb-6 flex flex-wrap gap-2">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-8 animate-pulse rounded-full bg-primary-100" style={{ width: `${60 + i * 12}px` }} />
+          ))}
+        </div>
+        {/* Attraction list placeholders */}
         <div className="space-y-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="h-16 animate-pulse rounded-lg bg-primary-50" />
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            <div key={i} className="flex items-center gap-3 rounded-lg bg-primary-50 p-4 animate-pulse">
+              <div className="h-5 w-5 rounded bg-primary-100" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-3/5 rounded bg-primary-100" />
+                <div className="h-3 w-1/4 rounded bg-primary-100" />
+              </div>
+              <div className="h-6 w-14 rounded-full bg-primary-100" />
+            </div>
           ))}
         </div>
       </div>
@@ -413,7 +453,7 @@ export default function ParkDetailPage() {
       </div>
 
       {/* Filter Chips */}
-      <AttractionFilterChips filters={filters} onChange={setFilters} />
+      <AttractionFilterChips filters={filters} onChange={setFilters} availableTypes={availableAttractionTypes} />
 
       {/* If park is closed / after hours: show all attractions in one list */}
       {operating.length === 0 && filteredAttractions.length > 0 ? (

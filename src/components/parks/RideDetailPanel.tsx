@@ -108,6 +108,20 @@ export default function RideDetailPanel({ attractionId, parkId, name, entityType
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose]);
 
+  // When report modal is open, hide the panel and only show UnifiedLogSheet
+  if (showReportModal) {
+    return (
+      <UnifiedLogSheet
+        open={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        initialParkId={parkId}
+        initialAttractionId={attractionId}
+        initialAttractionName={name}
+        onWaitTimeReported={() => setReportRefreshKey((k) => k + 1)}
+      />
+    );
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end md:items-center md:justify-end"
@@ -188,18 +202,6 @@ export default function RideDetailPanel({ attractionId, parkId, name, entityType
           <RecentReports attractionId={attractionId} refreshKey={reportRefreshKey} />
         </div>
       </div>
-
-      {/* Report Modal */}
-      {showReportModal && (
-        <UnifiedLogSheet
-          open={showReportModal}
-          onClose={() => setShowReportModal(false)}
-          initialParkId={parkId}
-          initialAttractionId={attractionId}
-          initialAttractionName={name}
-          onWaitTimeReported={() => setReportRefreshKey((k) => k + 1)}
-        />
-      )}
     </div>
   );
 }

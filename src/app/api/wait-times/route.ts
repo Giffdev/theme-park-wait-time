@@ -5,6 +5,8 @@ import { updateForecastAggregates } from '@/lib/forecast/aggregation';
 import { resolveForecast } from '@/lib/forecast/blender';
 import type { ForecastAggregate, ForecastMeta } from '@/types/queue';
 
+export const maxDuration = 30; // seconds — Vercel serverless function timeout
+
 const API_BASE = 'https://api.themeparks.wiki/v1';
 
 // --- Interfaces reflecting the full ThemeParks Wiki API response ---
@@ -296,8 +298,10 @@ export async function GET(request: NextRequest) {
         await batch.commit();
       }
 
-      // Archive historical snapshot
-      await archiveHistoricalSnapshot(parkId, liveData, fetchedAt);
+      // Archive historical snapshot (fire-and-forget — don't block response)
+      archiveHistoricalSnapshot(parkId, liveData, fetchedAt).catch((err) =>
+        console.error('Historical archive error:', err)
+      );
 
       // Update forecast aggregates for today's day-of-week (fire-and-forget)
       const todayStr = fetchedAt.toDate().toISOString().slice(0, 10);
@@ -314,8 +318,10 @@ export async function GET(request: NextRequest) {
           const { liveData, stale } = await fetchLiveDataForPark(park.id);
           if (stale) isStale = true;
           results[park.id] = await blendForecasts(park.id, liveData, fetchedAt);
-          // Archive historical snapshot for each park
-          await archiveHistoricalSnapshot(park.id, liveData, fetchedAt);
+          // Archive historical snapshot for each park (fire-and-forget)
+          archiveHistoricalSnapshot(park.id, liveData, fetchedAt).catch((err) =>
+            console.error('Historical archive error:', err)
+          );
 
           // Update forecast aggregates (fire-and-forget)
           const todayStr = fetchedAt.toDate().toISOString().slice(0, 10);
