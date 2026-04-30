@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { RefreshCw, Search, ChevronDown, X, Star } from 'lucide-react';
+import { RefreshCw, Search, X, Star } from 'lucide-react';
 import { getCollection } from '@/lib/firebase/firestore';
 import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
 import { getLocationByDestinationId, formatLocation } from '@/lib/parks/park-locations';
@@ -83,11 +83,11 @@ export default function ParksPage() {
   const [now, setNow] = useState(Date.now());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFamily, setSelectedFamily] = useState('');
-  const [familyDropdownOpen, setFamilyDropdownOpen] = useState(false);
-  const [familySearchQuery, setFamilySearchQuery] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Initialize favorites from localStorage
   useEffect(() => {
@@ -255,18 +255,31 @@ export default function ParksPage() {
     return names.sort((a, b) => a.localeCompare(b));
   }, [parks]);
 
-  // Filtered family options for the searchable dropdown
-  const filteredFamilyOptions = useMemo(() => {
-    if (!familySearchQuery.trim()) return allFamilies;
-    const q = familySearchQuery.toLowerCase();
+  // Matching families for unified dropdown
+  const matchingFamilies = useMemo(() => {
+    if (!searchQuery.trim()) return allFamilies;
+    const q = searchQuery.toLowerCase();
     return allFamilies.filter((f) => f.toLowerCase().includes(q));
-  }, [allFamilies, familySearchQuery]);
+  }, [allFamilies, searchQuery]);
+
+  // Matching individual parks for unified dropdown (show when typing)
+  const matchingParksForDropdown = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase();
+    return parks
+      .filter(
+        (park) =>
+          park.name.toLowerCase().includes(q) ||
+          (resolveLocation(park) || '').toLowerCase().includes(q)
+      )
+      .slice(0, 8); // Limit dropdown suggestions
+  }, [parks, searchQuery]);
 
   // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setFamilyDropdownOpen(false);
+        setDropdownOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -342,89 +355,135 @@ export default function ParksPage() {
         </p>
       )}
 
-      {/* Search & Filter row */}
+      {/* Unified Search & Filter */}
       {!loading && (
-        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-          {/* Text search */}
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search parks, destinations, or locations..."
-              className="w-full rounded-lg border border-primary-200 bg-white py-2.5 pl-10 pr-4 text-sm text-primary-800 placeholder:text-primary-300 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-400"
-            />
-          </div>
-
-          {/* Searchable family dropdown */}
-          <div className="relative w-full sm:w-64" ref={dropdownRef}>
-            <div
-              className="flex cursor-pointer items-center rounded-lg border border-primary-200 bg-white py-2.5 pl-3 pr-2 text-sm transition-colors focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-400"
-              onClick={() => setFamilyDropdownOpen(true)}
-            >
-              <input
-                type="text"
-                value={familyDropdownOpen ? familySearchQuery : (selectedFamily || '')}
-                onChange={(e) => {
-                  setFamilySearchQuery(e.target.value);
-                  setFamilyDropdownOpen(true);
-                }}
-                onFocus={() => {
-                  setFamilyDropdownOpen(true);
-                  setFamilySearchQuery('');
-                }}
-                placeholder="All Parks"
-                className="flex-1 bg-transparent text-primary-800 placeholder:text-primary-400 focus:outline-none"
-              />
-              {selectedFamily ? (
+        <div className="relative mb-8" ref={dropdownRef}>
+          {/* Input with optional family chip */}
+          <div className="flex items-center gap-2 rounded-lg border border-primary-200 bg-white px-3 py-2.5 transition-colors focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-400">
+            <Search className="h-4 w-4 shrink-0 text-primary-400" />
+            {selectedFamily && (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">
+                {selectedFamily}
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedFamily('');
-                    setFamilySearchQuery('');
-                    setFamilyDropdownOpen(false);
-                  }}
-                  className="mr-1 rounded p-0.5 text-primary-400 hover:text-primary-600"
-                  aria-label="Clear filter"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-              <ChevronDown className={`h-4 w-4 text-primary-400 transition-transform ${familyDropdownOpen ? 'rotate-180' : ''}`} />
-            </div>
-
-            {familyDropdownOpen && (
-              <ul className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-primary-200 bg-white py-1 shadow-lg">
-                <li
                   onClick={() => {
                     setSelectedFamily('');
-                    setFamilySearchQuery('');
-                    setFamilyDropdownOpen(false);
+                    inputRef.current?.focus();
                   }}
-                  className={`cursor-pointer px-3 py-2 text-sm transition-colors hover:bg-primary-50 ${!selectedFamily ? 'font-medium text-coral-600' : 'text-primary-700'}`}
+                  className="rounded-sm text-primary-400 hover:text-primary-600"
+                  aria-label={`Remove ${selectedFamily} filter`}
                 >
-                  All Parks
-                </li>
-                {filteredFamilyOptions.map((family) => (
-                  <li
-                    key={family}
-                    onClick={() => {
-                      setSelectedFamily(family);
-                      setFamilySearchQuery('');
-                      setFamilyDropdownOpen(false);
-                    }}
-                    className={`cursor-pointer px-3 py-2 text-sm transition-colors hover:bg-primary-50 ${selectedFamily === family ? 'font-medium text-coral-600' : 'text-primary-700'}`}
-                  >
-                    {family}
-                  </li>
-                ))}
-                {filteredFamilyOptions.length === 0 && (
-                  <li className="px-3 py-2 text-sm text-primary-400">No matches</li>
-                )}
-              </ul>
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            <input
+              ref={inputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setDropdownOpen(true);
+              }}
+              onFocus={() => setDropdownOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setDropdownOpen(false);
+                  inputRef.current?.blur();
+                }
+                if (e.key === 'Backspace' && !searchQuery && selectedFamily) {
+                  setSelectedFamily('');
+                }
+              }}
+              placeholder={selectedFamily ? 'Filter parks...' : 'Search parks, families, or locations...'}
+              className="min-w-0 flex-1 bg-transparent text-sm text-primary-800 placeholder:text-primary-300 focus:outline-none"
+            />
+            {(searchQuery || selectedFamily) && (
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedFamily('');
+                  setDropdownOpen(false);
+                }}
+                className="shrink-0 rounded p-0.5 text-primary-400 hover:text-primary-600"
+                aria-label="Clear all filters"
+              >
+                <X className="h-4 w-4" />
+              </button>
             )}
           </div>
+
+          {/* Unified dropdown */}
+          {dropdownOpen && (matchingFamilies.length > 0 || matchingParksForDropdown.length > 0) && (
+            <div className="absolute z-20 mt-1 max-h-80 w-full overflow-auto rounded-lg border border-primary-200 bg-white py-1 shadow-lg">
+              {/* Park Families section */}
+              {matchingFamilies.length > 0 && !selectedFamily && (
+                <div>
+                  <div className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-400">
+                    Park Families
+                  </div>
+                  {/* Sort: favorites first */}
+                  {[...matchingFamilies]
+                    .sort((a, b) => {
+                      const aFav = isFavorited(a);
+                      const bFav = isFavorited(b);
+                      if (aFav && !bFav) return -1;
+                      if (!aFav && bFav) return 1;
+                      return 0;
+                    })
+                    .map((family) => (
+                      <div
+                        key={family}
+                        onClick={() => {
+                          setSelectedFamily(family);
+                          setSearchQuery('');
+                          setDropdownOpen(false);
+                          inputRef.current?.focus();
+                        }}
+                        className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-primary-700 transition-colors hover:bg-primary-50"
+                      >
+                        <Star
+                          className={`h-3.5 w-3.5 shrink-0 ${
+                            isFavorited(family)
+                              ? 'fill-amber-400 text-amber-400'
+                              : 'text-primary-200'
+                          }`}
+                        />
+                        <span className="flex-1">{family}</span>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* Individual Parks section */}
+              {matchingParksForDropdown.length > 0 && (
+                <div>
+                  {!selectedFamily && matchingFamilies.length > 0 && (
+                    <div className="mx-3 my-1 border-t border-primary-100" />
+                  )}
+                  <div className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-400">
+                    Parks
+                  </div>
+                  {matchingParksForDropdown.map((park) => (
+                    <div
+                      key={park.id}
+                      onClick={() => {
+                        setSearchQuery(park.name);
+                        setDropdownOpen(false);
+                      }}
+                      className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm text-primary-700 transition-colors hover:bg-primary-50"
+                    >
+                      <span>{park.name}</span>
+                      <span className="text-xs text-primary-400">{park.destinationName}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {matchingFamilies.length === 0 && matchingParksForDropdown.length === 0 && (
+                <div className="px-3 py-2 text-sm text-primary-400">No matches</div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

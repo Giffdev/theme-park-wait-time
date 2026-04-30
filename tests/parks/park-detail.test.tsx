@@ -51,6 +51,20 @@ vi.mock('lucide-react', () => ({
   TrendingUp: () => <span>↗</span>,
   Clock: () => <span>🕐</span>,
   AlertCircle: () => <span>⚠</span>,
+  MapPin: () => <span>📍</span>,
+}));
+
+// Mock park registry and locations
+vi.mock('@/lib/parks/park-registry', () => ({
+  DESTINATION_FAMILIES: [{
+    familyName: 'Disney Parks',
+    destinations: [{ destinationId: 'wdw', parks: [{ id: 'magic-kingdom', name: 'Magic Kingdom' }] }],
+  }],
+}));
+
+vi.mock('@/lib/parks/park-locations', () => ({
+  getLocationByDestinationId: () => ({ city: 'Orlando', state: 'FL', country: 'United States' }),
+  formatLocation: () => 'Orlando, FL',
 }));
 
 // Mock fetch
@@ -121,7 +135,7 @@ describe('Park Detail Page', () => {
       render(<ParkDetailPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('Walt Disney World')).toBeInTheDocument();
+        expect(screen.getByText(/Walt Disney World/)).toBeInTheDocument();
       });
     });
 
