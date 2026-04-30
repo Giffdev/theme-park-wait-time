@@ -371,60 +371,105 @@ export default function ParkDetailPage() {
       {/* Filter Chips */}
       <AttractionFilterChips filters={filters} onChange={setFilters} />
 
-      {/* Operating Attractions */}
-      <section className="mb-10">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-primary-800">
-            Operating ({operating.length})
-          </h2>
-          <button
-            onClick={() => setSortAsc(!sortAsc)}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary-500 transition-colors hover:bg-primary-50 hover:text-primary-700"
-          >
-            <ArrowUpDown className="h-3 w-3" />
-            {sortAsc ? '↓ Longest first' : '↑ Shortest first'}
-          </button>
-        </div>
-        <div className="divide-y divide-primary-50 rounded-xl border border-primary-100 bg-white">
-          {operating.map((a) => (
-            <AttractionRow
-              key={a.id}
-              name={a.name}
-              entityType={a.entityType}
-              status={a.status}
-              waitMinutes={a.waitMinutes}
-              queue={a.queue}
-              onClick={() => setSelectedRide({ attractionId: a.id, name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, forecastMeta: a.forecastMeta, operatingHours: a.operatingHours })}
-            />
-          ))}
-          {operating.length === 0 && (
-            <p className="text-center text-sm text-primary-400 py-8">
-              No attractions currently operating.
+      {/* If park is closed / after hours: show all attractions in one list */}
+      {operating.length === 0 && filteredAttractions.length > 0 ? (
+        <section className="mb-10">
+          {/* Closed banner */}
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-sm font-medium text-amber-800">
+              🌙 This park is currently closed — wait times are not available.
             </p>
-          )}
-        </div>
-      </section>
+            <p className="mt-0.5 text-xs text-amber-600">
+              Browse all {filteredAttractions.length} attractions below. Wait times update when the park opens.
+            </p>
+          </div>
 
-      {/* Closed / Not Operating */}
-      {notOperating.length > 0 && (
-        <section>
-          <h2 className="mb-3 text-lg font-semibold text-primary-800">
-            Closed / Not Operating ({notOperating.length})
-          </h2>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-primary-800">
+              All Attractions ({filteredAttractions.length})
+            </h2>
+            <button
+              onClick={() => setSortAsc(!sortAsc)}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary-500 transition-colors hover:bg-primary-50 hover:text-primary-700"
+            >
+              <ArrowUpDown className="h-3 w-3" />
+              {sortAsc ? 'Z→A' : 'A→Z'}
+            </button>
+          </div>
           <div className="divide-y divide-primary-50 rounded-xl border border-primary-100 bg-white">
-            {notOperating.map((a) => (
+            {[...filteredAttractions]
+              .sort((a, b) => sortAsc ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name))
+              .map((a) => (
               <AttractionRow
                 key={a.id}
                 name={a.name}
                 entityType={a.entityType}
                 status={a.status}
-                waitMinutes={a.waitMinutes}
+                waitMinutes={null}
                 queue={a.queue}
                 onClick={() => setSelectedRide({ attractionId: a.id, name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, forecastMeta: a.forecastMeta, operatingHours: a.operatingHours })}
               />
             ))}
           </div>
         </section>
+      ) : (
+        <>
+          {/* Operating Attractions */}
+          <section className="mb-10">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-primary-800">
+                Operating ({operating.length})
+              </h2>
+              <button
+                onClick={() => setSortAsc(!sortAsc)}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary-500 transition-colors hover:bg-primary-50 hover:text-primary-700"
+              >
+                <ArrowUpDown className="h-3 w-3" />
+                {sortAsc ? '↓ Longest first' : '↑ Shortest first'}
+              </button>
+            </div>
+            <div className="divide-y divide-primary-50 rounded-xl border border-primary-100 bg-white">
+              {operating.map((a) => (
+                <AttractionRow
+                  key={a.id}
+                  name={a.name}
+                  entityType={a.entityType}
+                  status={a.status}
+                  waitMinutes={a.waitMinutes}
+                  queue={a.queue}
+                  onClick={() => setSelectedRide({ attractionId: a.id, name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, forecastMeta: a.forecastMeta, operatingHours: a.operatingHours })}
+                />
+              ))}
+              {operating.length === 0 && (
+                <p className="text-center text-sm text-primary-400 py-8">
+                  No attractions currently operating.
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* Closed / Not Operating */}
+          {notOperating.length > 0 && (
+            <section>
+              <h2 className="mb-3 text-lg font-semibold text-primary-800">
+                Closed / Not Operating ({notOperating.length})
+              </h2>
+              <div className="divide-y divide-primary-50 rounded-xl border border-primary-100 bg-white">
+                {notOperating.map((a) => (
+                  <AttractionRow
+                    key={a.id}
+                    name={a.name}
+                    entityType={a.entityType}
+                    status={a.status}
+                    waitMinutes={a.waitMinutes}
+                    queue={a.queue}
+                    onClick={() => setSelectedRide({ attractionId: a.id, name: a.name, entityType: a.entityType, status: a.status, waitMinutes: a.waitMinutes, queue: a.queue, forecast: a.forecast, forecastMeta: a.forecastMeta, operatingHours: a.operatingHours })}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+        </>
       )}
 
       {/* Ride Detail Panel */}
