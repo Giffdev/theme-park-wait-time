@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Star } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { createRideLog } from '@/lib/services/ride-log-service';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 
 interface ManualLogFormProps {
   onSuccess?: () => void;
@@ -57,6 +58,16 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
   const selectedParkName = parks.find((p) => p.id === parkId)?.name ?? '';
   const selectedAttractionName = attractions.find((a) => a.id === attractionId)?.name ?? '';
 
+  const parkOptions = useMemo(
+    () => parks.map((p) => ({ id: p.id, label: p.name })).sort((a, b) => a.label.localeCompare(b.label)),
+    [parks],
+  );
+
+  const attractionOptions = useMemo(
+    () => attractions.map((a) => ({ id: a.id, label: a.name })),
+    [attractions],
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -97,39 +108,33 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
 
       {/* Park */}
       <div>
-        <label htmlFor="park-select" className="mb-1 block text-sm font-medium text-primary-700">
+        <label className="mb-1 block text-sm font-medium text-primary-700">
           Park
         </label>
-        <select
-          id="park-select"
+        <SearchableSelect
+          options={parkOptions}
           value={parkId}
-          onChange={(e) => { setParkId(e.target.value); setAttractionId(''); }}
-          className="w-full rounded-xl border border-primary-200 px-4 py-3 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-        >
-          <option value="">Select a park...</option>
-          {parks.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
+          onChange={(val) => { setParkId(val); setAttractionId(''); }}
+          placeholder="Search parks…"
+          id="park-select"
+          label="Park"
+        />
       </div>
 
       {/* Attraction */}
       <div>
-        <label htmlFor="attraction-select" className="mb-1 block text-sm font-medium text-primary-700">
+        <label className="mb-1 block text-sm font-medium text-primary-700">
           Attraction
         </label>
-        <select
-          id="attraction-select"
+        <SearchableSelect
+          options={attractionOptions}
           value={attractionId}
-          onChange={(e) => setAttractionId(e.target.value)}
+          onChange={(val) => setAttractionId(val)}
+          placeholder="Search attractions…"
           disabled={!parkId}
-          className="w-full rounded-xl border border-primary-200 px-4 py-3 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:bg-gray-50 disabled:text-gray-400"
-        >
-          <option value="">Select an attraction...</option>
-          {attractions.map((a) => (
-            <option key={a.id} value={a.id}>{a.name}</option>
-          ))}
-        </select>
+          id="attraction-select"
+          label="Attraction"
+        />
       </div>
 
       {/* Date/Time */}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Thermometer } from 'lucide-react';
 import { PARK_FAMILIES, CROWD_LEVEL_COLORS } from '@/lib/constants';
@@ -65,8 +66,14 @@ function getMonthStr(year: number, month: number): string {
 }
 
 export default function CalendarPage() {
+  const searchParams = useSearchParams();
+  const familyParam = searchParams.get('family');
+  const initialFamilyId = (familyParam && PARK_FAMILIES.some((f) => f.id === familyParam))
+    ? familyParam
+    : PARK_FAMILIES[0].id;
+
   const now = new Date();
-  const [selectedFamilyId, setSelectedFamilyId] = useState<string>(PARK_FAMILIES[0].id);
+  const [selectedFamilyId, setSelectedFamilyId] = useState<string>(initialFamilyId);
   const [monthOffset, setMonthOffset] = useState(0);
   const [enabledParks, setEnabledParks] = useState<Set<string>>(new Set());
   const [data, setData] = useState<FamilyCrowdMonth | null>(null);

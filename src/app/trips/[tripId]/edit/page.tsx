@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getTrip, updateTrip } from '@/lib/services/trip-service';
 import { getCollection } from '@/lib/firebase/firestore';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import TripDayCard from '@/components/trips/TripDayCard';
 import type { Trip, TripUpdateData } from '@/types/trip';
 
@@ -83,7 +84,16 @@ export default function EditTripPage() {
     return acc;
   }, {});
 
-  const groupParks = selectedGroup ? resortGroups[selectedGroup]?.parks ?? [] : [];
+  const resortGroupOptions = useMemo(
+    () => Object.entries(resortGroups).map(([id, group]) => ({
+      id,
+      label: group.name,
+      sublabel: `${group.parks.length} parks`,
+    })),
+    [resortGroups],
+  );
+
+  const groupParks = selectedGroup ? (resortGroups[selectedGroup]?.parks ?? []).sort((a, b) => a.name.localeCompare(b.name)) : [];
 
   const togglePark = (parkId: string) => {
     setSelectedParks((prev) => {
@@ -250,18 +260,14 @@ export default function EditTripPage() {
 
           <div>
             <label className="block text-sm font-medium text-primary-700 mb-1">Resort Group</label>
-            <select
+            <SearchableSelect
+              options={resortGroupOptions}
               value={selectedGroup}
-              onChange={(e) => { setSelectedGroup(e.target.value); setSelectedParks(new Set()); }}
-              className="w-full rounded-lg border border-primary-200 px-3 py-2.5 text-sm text-primary-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-            >
-              <option value="">Select a resort group...</option>
-              {Object.entries(resortGroups).map(([id, group]) => (
-                <option key={id} value={id}>
-                  {group.name} ({group.parks.length} parks)
-                </option>
-              ))}
-            </select>
+              onChange={(val) => { setSelectedGroup(val); setSelectedParks(new Set()); }}
+              placeholder="Search resort groups…"
+              id="edit-resort-group"
+              label="Resort Group"
+            />
           </div>
 
           {selectedGroup && groupParks.length > 0 && (
