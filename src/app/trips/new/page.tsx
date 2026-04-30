@@ -101,7 +101,7 @@ export default function CreateTripPage() {
     setDays((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const canSubmit = tripName.trim() && days.length > 0;
+  const canSubmit = days.length > 0;
 
   const handleSubmit = useCallback(async () => {
     if (!user || !canSubmit) return;
@@ -115,8 +115,10 @@ export default function CreateTripPage() {
       const startDate = sortedDays[0].date;
       const endDate = sortedDays[sortedDays.length - 1].date;
 
+      const name = tripName.trim() || `Trip – ${new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
       const data: TripCreateData = {
-        name: tripName.trim(),
+        name,
         startDate,
         endDate,
         parkIds: allParkIds,
@@ -250,7 +252,8 @@ export default function CreateTripPage() {
               type="date"
               value={dayDate}
               onChange={(e) => setDayDate(e.target.value)}
-              className="w-full rounded-lg border border-primary-200 px-3 py-2.5 text-sm text-primary-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+              onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker()}
+              className="w-full rounded-lg border border-primary-200 px-3 py-2.5 text-sm text-primary-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 cursor-pointer"
             />
             <p className="mt-1 text-xs text-primary-400">
               You can plan future trips, but can only log rides for today and past dates
