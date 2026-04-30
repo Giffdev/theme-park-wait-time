@@ -14,6 +14,7 @@ import type { AttractionType } from '@/types/attraction';
 import type { MealType } from '@/types/dining-log';
 import { getAttractionIcon } from '@/lib/utils/attraction-icons';
 import { classifyAttraction } from '@/lib/utils/classify-attraction';
+import WaitTimeInput from '@/components/ride-log/WaitTimeInput';
 
 interface AttractionOption {
   id: string;
@@ -72,7 +73,7 @@ export default function TripLogRidePage() {
   const [selectedAttraction, setSelectedAttraction] = useState<AttractionOption | null>(null);
   const [logMode, setLogMode] = useState<LogMode>('quick');
   const [waitTime, setWaitTime] = useState('');
-  const [waitTimeUnknown, setWaitTimeUnknown] = useState(false);
+  const [waitTimeMode, setWaitTimeMode] = useState<import('@/components/ride-log/WaitTimeInput').WaitTimeMode>('unknown');
   const [rating, setRating] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
@@ -216,7 +217,7 @@ export default function TripLogRidePage() {
     setSelectedAttraction(attraction);
     setLogMode('quick');
     setWaitTime('');
-    setWaitTimeUnknown(false);
+    setWaitTimeMode('unknown');
     setRating(null);
     setNotes('');
     setError('');
@@ -254,7 +255,8 @@ export default function TripLogRidePage() {
           parkName,
           attractionName: selectedAttraction.name,
           rodeAt: new Date(),
-          waitTimeMinutes: waitTimeUnknown ? null : (waitTime ? parseInt(waitTime, 10) : null),
+          waitTimeMinutes: waitTimeMode === 'closed' ? null : (waitTime ? parseInt(waitTime, 10) : null),
+          attractionClosed: waitTimeMode === 'closed',
           source: logMode === 'timer' ? 'timer' : 'manual',
           rating,
           notes,
@@ -264,7 +266,7 @@ export default function TripLogRidePage() {
       setSuccessMessage(`${selectedAttraction.name} logged! 🎉`);
       setSelectedAttraction(null);
       setWaitTime('');
-      setWaitTimeUnknown(false);
+      setWaitTimeMode('unknown');
       setRating(null);
       setNotes('');
       setTimerStart(null);
@@ -647,43 +649,12 @@ export default function TripLogRidePage() {
             {/* Wait time input (quick mode or after timer stops) */}
             {(logMode === 'quick' || (logMode === 'timer' && timerStart === null && waitTime)) && (
               <div className="mb-4">
-                <label htmlFor="log-wait" className="mb-1.5 block text-xs font-medium text-primary-600">
-                  Wait Time
-                </label>
-                {!waitTimeUnknown && (
-                  <div className="relative">
-                    <input
-                      id="log-wait"
-                      type="number"
-                      min="0"
-                      max="300"
-                      value={waitTime}
-                      onChange={(e) => setWaitTime(e.target.value)}
-                      placeholder="0"
-                      className="w-full rounded-xl border border-primary-200 px-4 py-3 pr-14 text-lg font-medium focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-                    />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-primary-400">
-                      min
-                    </span>
-                  </div>
-                )}
-                {waitTimeUnknown && (
-                  <div className="flex items-center justify-center rounded-xl border border-primary-100 bg-primary-50/50 px-4 py-3">
-                    <span className="text-sm font-medium text-primary-400">Unknown</span>
-                  </div>
-                )}
-                <label className="mt-2 flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={waitTimeUnknown}
-                    onChange={(e) => {
-                      setWaitTimeUnknown(e.target.checked);
-                      if (e.target.checked) setWaitTime('');
-                    }}
-                    className="h-4 w-4 rounded border-primary-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  <span className="text-xs text-primary-500">I don&apos;t remember</span>
-                </label>
+                <WaitTimeInput
+                  value={waitTime}
+                  onChange={setWaitTime}
+                  mode={waitTimeMode}
+                  onModeChange={setWaitTimeMode}
+                />
               </div>
             )}
 

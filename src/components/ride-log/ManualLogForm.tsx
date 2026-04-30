@@ -6,6 +6,8 @@ import { useAuth } from '@/lib/firebase/auth-context';
 import { createRideLog } from '@/lib/services/ride-log-service';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import WaitTimeInput from '@/components/ride-log/WaitTimeInput';
+import type { WaitTimeMode } from '@/components/ride-log/WaitTimeInput';
 
 interface ManualLogFormProps {
   onSuccess?: () => void;
@@ -37,7 +39,7 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
   const [attractionId, setAttractionId] = useState('');
   const [dateTime, setDateTime] = useState(new Date().toISOString().slice(0, 16));
   const [waitTime, setWaitTime] = useState('');
-  const [waitTimeUnknown, setWaitTimeUnknown] = useState(false);
+  const [waitTimeMode, setWaitTimeMode] = useState<WaitTimeMode>('unknown');
   const [rating, setRating] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -97,7 +99,8 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
         parkName: selectedParkName,
         attractionName: selectedAttractionName,
         rodeAt: new Date(dateTime),
-        waitTimeMinutes: waitTimeUnknown ? null : (waitTime ? parseInt(waitTime, 10) : null),
+        waitTimeMinutes: waitTimeMode === 'closed' ? null : (waitTime ? parseInt(waitTime, 10) : null),
+        attractionClosed: waitTimeMode === 'closed',
         source: 'manual',
         rating,
         notes: '',
@@ -163,43 +166,12 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
       </div>
 
       {/* Wait time */}
-      <div>
-        <label htmlFor="wait-time" className="mb-1 block text-sm font-medium text-primary-700">
-          Wait Time (optional)
-        </label>
-        {!waitTimeUnknown && (
-          <div className="relative">
-            <input
-              id="wait-time"
-              type="number"
-              min="0"
-              max="300"
-              value={waitTime}
-              onChange={(e) => setWaitTime(e.target.value)}
-              placeholder="Minutes"
-              className="w-full rounded-xl border border-primary-200 px-4 py-3 pr-12 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-primary-400">min</span>
-          </div>
-        )}
-        {waitTimeUnknown && (
-          <div className="flex items-center justify-center rounded-xl border border-primary-100 bg-primary-50/50 px-4 py-3">
-            <span className="text-sm font-medium text-primary-400">Unknown</span>
-          </div>
-        )}
-        <label className="mt-2 flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={waitTimeUnknown}
-            onChange={(e) => {
-              setWaitTimeUnknown(e.target.checked);
-              if (e.target.checked) setWaitTime('');
-            }}
-            className="h-4 w-4 rounded border-primary-300 text-primary-600 focus:ring-primary-500"
-          />
-          <span className="text-xs text-primary-500">I don&apos;t remember</span>
-        </label>
-      </div>
+      <WaitTimeInput
+        value={waitTime}
+        onChange={setWaitTime}
+        mode={waitTimeMode}
+        onModeChange={setWaitTimeMode}
+      />
 
       {/* Rating */}
       <div>

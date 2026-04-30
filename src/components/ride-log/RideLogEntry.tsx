@@ -25,13 +25,17 @@ export default function RideLogEntry({ log, onDelete }: RideLogEntryProps) {
   const timeStr = rodeAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
   const waitColor =
-    log.waitTimeMinutes === null
-      ? 'bg-gray-100 text-gray-600'
-      : log.waitTimeMinutes < 20
-        ? 'bg-green-100 text-green-800'
-        : log.waitTimeMinutes <= 45
-          ? 'bg-yellow-100 text-yellow-800'
-          : 'bg-red-100 text-red-800';
+    (log as RideLog & { attractionClosed?: boolean }).attractionClosed
+      ? 'bg-red-100 text-red-700'
+      : log.waitTimeMinutes === null
+        ? 'bg-gray-100 text-gray-600'
+        : log.waitTimeMinutes === 0
+          ? 'bg-green-100 text-green-800'
+          : log.waitTimeMinutes < 20
+            ? 'bg-green-100 text-green-800'
+            : log.waitTimeMinutes <= 45
+              ? 'bg-yellow-100 text-yellow-800'
+              : 'bg-red-100 text-red-800';
 
   return (
     <div className="group rounded-2xl border border-primary-100 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
@@ -43,10 +47,13 @@ export default function RideLogEntry({ log, onDelete }: RideLogEntryProps) {
         </div>
 
         {/* Wait time badge */}
-        {log.waitTimeMinutes !== null ? (
+        {(log as RideLog & { attractionClosed?: boolean }).attractionClosed ? (
+          <span className={`inline-flex items-baseline rounded-full px-2.5 py-1 text-xs font-bold ${waitColor}`}>
+            Closed
+          </span>
+        ) : log.waitTimeMinutes !== null ? (
           <span className={`inline-flex items-baseline gap-0.5 rounded-full px-2.5 py-1 text-sm font-bold ${waitColor}`}>
-            {log.waitTimeMinutes}
-            <span className="text-[0.6em] font-medium opacity-70">min</span>
+            {log.waitTimeMinutes === 0 ? 'Walk-on' : <>{log.waitTimeMinutes}<span className="text-[0.6em] font-medium opacity-70">min</span></>}
           </span>
         ) : (
           <span className="inline-flex items-baseline rounded-full bg-gray-100 px-2.5 py-1 text-sm font-medium text-gray-400">

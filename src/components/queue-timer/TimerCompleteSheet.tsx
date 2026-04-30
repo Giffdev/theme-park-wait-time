@@ -42,6 +42,7 @@ export default function TimerCompleteSheet({
         attractionName,
         rodeAt: new Date(),
         waitTimeMinutes: elapsedMinutes,
+        attractionClosed: false,
         source: 'timer',
         rating: skipExtras ? null : rating,
         notes: skipExtras ? '' : notes,

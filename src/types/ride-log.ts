@@ -16,7 +16,8 @@ export interface RideLog {
   parkName: string;
   attractionName: string;
   rodeAt: Date;
-  waitTimeMinutes: number | null;
+  waitTimeMinutes: number | null; // null = unknown, 0 = no wait (walk-on)
+  attractionClosed: boolean; // true if attraction was closed when user visited
   source: 'timer' | 'manual';
   rating: number | null;
   notes: string;
@@ -32,7 +33,7 @@ export type RideLogCreateData = Omit<RideLog, 'id' | 'createdAt' | 'updatedAt' |
 
 /** Fields that can be updated on an existing ride log. */
 export type RideLogUpdateData = Partial<
-  Pick<RideLog, 'rating' | 'notes' | 'waitTimeMinutes' | 'rodeAt'>
+  Pick<RideLog, 'rating' | 'notes' | 'waitTimeMinutes' | 'attractionClosed' | 'rodeAt'>
 >;
 
 // ---------------------------------------------------------------------------

@@ -7,6 +7,8 @@ import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
 import { addRideLog } from '@/lib/services/ride-log-service';
 import { getActiveTrip } from '@/lib/services/trip-service';
 import { classifyAttraction } from '@/lib/utils/classify-attraction';
+import WaitTimeInput from '@/components/ride-log/WaitTimeInput';
+import type { WaitTimeMode } from '@/components/ride-log/WaitTimeInput';
 import type { AttractionType } from '@/types/attraction';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +77,7 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
 
   // Form fields
   const [waitTime, setWaitTime] = useState('');
+  const [waitTimeMode, setWaitTimeMode] = useState<WaitTimeMode>('unknown');
   const [rating, setRating] = useState<number>(0);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
@@ -199,7 +202,8 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
         parkName,
         attractionName: selectedAttraction.name,
         rodeAt: getRodeAt(),
-        waitTimeMinutes: waitTime ? Number(waitTime) : null,
+        waitTimeMinutes: waitTimeMode === 'closed' ? null : (waitTime ? Number(waitTime) : null),
+        attractionClosed: waitTimeMode === 'closed',
         source: 'manual',
         rating: rating || null,
         notes,
@@ -217,6 +221,7 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
   const handleLogAnother = () => {
     setSelectedAttraction(null);
     setWaitTime('');
+    setWaitTimeMode('unknown');
     setRating(0);
     setNotes('');
     setSearchQuery('');
@@ -228,6 +233,7 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
     setSheetState('select');
     setSelectedAttraction(null);
     setWaitTime('');
+    setWaitTimeMode('unknown');
     setRating(0);
     setNotes('');
     setSearchQuery('');
@@ -377,17 +383,12 @@ export default function QuickLogSheet({ open, onClose, initialParkId, initialTri
               </div>
 
               {/* Wait time */}
-              <div>
-                <label className="block text-sm font-medium text-primary-700 mb-1">Wait Time (min)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={waitTime}
-                  onChange={(e) => setWaitTime(e.target.value)}
-                  placeholder="Optional"
-                  className="w-full rounded-lg border border-primary-200 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
+              <WaitTimeInput
+                value={waitTime}
+                onChange={setWaitTime}
+                mode={waitTimeMode}
+                onModeChange={setWaitTimeMode}
+              />
 
               {/* Rating */}
               <div>
