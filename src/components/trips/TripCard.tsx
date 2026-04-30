@@ -45,7 +45,7 @@ export default function TripCard({ trip }: TripCardProps) {
         {statusBadge(trip.status)}
       </div>
 
-      {parkNamesList.length > 0 && (
+      {parkNamesList.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {parkNamesList.slice(0, 4).map((name) => (
             <span key={name} className="rounded-md bg-primary-50 px-2 py-0.5 text-xs text-primary-600">
@@ -57,6 +57,12 @@ export default function TripCard({ trip }: TripCardProps) {
               +{parkNamesList.length - 4} more
             </span>
           )}
+        </div>
+      ) : trip.stats.parksVisited > 0 && (
+        <div className="mt-3">
+          <span className="rounded-md bg-primary-50 px-2 py-0.5 text-xs text-primary-500">
+            🏰 {trip.stats.parksVisited} park{trip.stats.parksVisited !== 1 ? 's' : ''} visited
+          </span>
         </div>
       )}
 

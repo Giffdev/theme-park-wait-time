@@ -157,9 +157,10 @@ export default function TripDetailPage() {
   const [editDiningData, setEditDiningData] = useState<{ diningAt: string; tableWaitMinutes: string; rating: string; notes: string; mealType: string; hadReservation: string }>({ diningAt: '', tableWaitMinutes: '', rating: '', notes: '', mealType: '', hadReservation: '' });
   const [savingDining, setSavingDining] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (background = false) => {
     if (!user || !tripId) return;
-    setLoading(true);
+    // Only show loading spinner on initial load, not background refreshes
+    if (!background) setLoading(true);
     try {
       const tripData = await getTrip(user.uid, tripId);
       setTrip(tripData);
@@ -188,7 +189,7 @@ export default function TripDetailPage() {
   // Re-fetch trip data when page regains focus (e.g. after editing trip name)
   useEffect(() => {
     const handleRefresh = () => {
-      if (user) fetchData();
+      if (user) fetchData(true);
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') handleRefresh();
