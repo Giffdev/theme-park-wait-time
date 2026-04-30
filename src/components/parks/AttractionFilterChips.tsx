@@ -67,7 +67,7 @@ export default function AttractionFilterChips({ filters, onChange }: AttractionF
   return (
     <div className="mb-6 space-y-2">
       {/* Tier 1: Entity type chips */}
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+      <div className="flex flex-wrap gap-2">
         <AttractionFilterChip
           label="All"
           active={isAllSelected}
@@ -87,7 +87,7 @@ export default function AttractionFilterChips({ filters, onChange }: AttractionF
 
       {/* Tier 2: Attraction sub-type chips (shown when rides are visible) */}
       {showTier2 && (
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        <div className="flex flex-wrap gap-2">
           <span className="shrink-0 self-center text-[10px] font-medium uppercase tracking-wider text-primary-400">
             Type
           </span>
