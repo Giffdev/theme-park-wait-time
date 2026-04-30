@@ -15,22 +15,11 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
 
+  /* Chromium-only for speed — add back firefox/webkit/mobile when CI budget allows */
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-    {
-      name: 'mobile-chrome',
-      use: { ...devices['Pixel 5'] },
     },
   ],
 

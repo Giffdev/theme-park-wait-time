@@ -134,3 +134,11 @@
 - [Trips Wait-Time UX](../decisions.md) — Wait time defaults
 - [Unified Trips Layout](../decisions.md) — Layout pattern
 
+---
+
+## Learnings
+
+- **Progressive loading pattern (2026-04-30):** Split monolithic `fetchData` into `fetchCore` (park + attractions → instant render) and `fetchWaitTimes` (wait times + schedule → overlay). Phase 1 sets `loading=false` as soon as attractions exist. Phase 2 uses separate `waitTimesLoading` state for shimmer on stats cards. Phase 3 forecast refresh is fire-and-forget (no await, no second full reload). Key insight: the existing `mergedAttractions` useMemo auto-reacts to `waitTimes` state changes — no extra wiring needed for Phase 2 to flow into the UI.
+- **Dependency isolation in useCallback:** `fetchWaitTimes` accepts an optional `parkDoc` param so the `useEffect` can pass the park reference from Phase 1 without waiting for state to propagate. This avoids a stale closure on `park` state during initial load.
+- **Background refresh anti-pattern:** The old code did `await fetch(...)` then `await fetchData()` — a serial double-load that blocked UI for 30+ seconds. The fix: `.then()` chain with no await, re-fetching only wait times on success.
+

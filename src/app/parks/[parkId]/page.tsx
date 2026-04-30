@@ -63,6 +63,7 @@ export default function ParkDetailPage() {
   const [attractions, setAttractions] = useState<Attraction[]>([]);
   const [waitTimes, setWaitTimes] = useState<WaitTimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [waitTimesLoading, setWaitTimesLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [sortAsc, setSortAsc] = useState(false);
@@ -117,10 +118,10 @@ export default function ParkDetailPage() {
     return { label, isStale };
   }, [waitTimes, now]);
 
-  const fetchData = useCallback(async () => {
-    if (!parkId) return;
+  // Phase 1: Load park info + attraction list (instant render)
+  const fetchCore = useCallback(async () => {
+    if (!parkId) return null;
     try {
-      // Look up park by slug field
       const parkDocs = await getCollection<Park>('parks', [whereConstraint('slug', '==', parkId)]);
       const parkDoc = parkDocs.length > 0 ? parkDocs[0] : null;
       setPark(parkDoc);
@@ -130,57 +131,67 @@ export default function ParkDetailPage() {
         return null;
       }
 
-      // Use the park's UUID for attraction and wait time queries
       const parkUuid = parkDoc.id;
-      const [attractionDocs, waitDocs] = await Promise.all([
-        getCollection<Attraction>('attractions', [whereConstraint('parkId', '==', parkUuid)]),
-        getCollection<WaitTimeEntry>(`waitTimes/${parkUuid}/current`),
-      ]);
+      const attractionDocs = await getCollection<Attraction>('attractions', [whereConstraint('parkId', '==', parkUuid)]);
       setAttractions(attractionDocs);
+      setLoading(false);
+      return parkDoc;
+    } catch (error) {
+      console.error('Failed to fetch park core data:', error);
+      setLoading(false);
+      return null;
+    }
+  }, [parkId]);
+
+  // Phase 2: Load wait times + schedule (overlay onto already-visible UI)
+  const fetchWaitTimes = useCallback(async (parkDoc?: Park | null) => {
+    const targetPark = parkDoc || park;
+    if (!targetPark) return null;
+    setWaitTimesLoading(true);
+    try {
+      const parkUuid = targetPark.id;
+      const [waitDocs, scheduleRes] = await Promise.all([
+        getCollection<WaitTimeEntry>(`waitTimes/${parkUuid}/current`),
+        fetch(`/api/park-schedule?parkId=${parkUuid}`).catch(() => null),
+      ]);
       setWaitTimes(waitDocs);
 
-      // Fetch park schedule
-      try {
-        const scheduleRes = await fetch(`/api/park-schedule?parkId=${parkUuid}`);
-        if (scheduleRes.ok) {
-          const scheduleData = await scheduleRes.json();
-          setSchedule(scheduleData);
-        }
-      } catch {
-        // Schedule fetch is non-critical
+      if (scheduleRes && scheduleRes.ok) {
+        const scheduleData = await scheduleRes.json();
+        setSchedule(scheduleData);
       }
 
       return waitDocs;
     } catch (error) {
-      console.error('Failed to fetch park data:', error);
+      console.error('Failed to fetch wait times:', error);
       return null;
     } finally {
-      setLoading(false);
+      setWaitTimesLoading(false);
     }
-  }, [parkId]);
+  }, [park]);
 
   useEffect(() => {
     async function initLoad() {
-      const waitDocs = await fetchData();
-      // If Firestore data is missing forecast (stale from old script), trigger a background refresh
+      // Phase 1: show park + attractions immediately
+      const parkDoc = await fetchCore();
+      if (!parkDoc) return;
+
+      // Phase 2: load wait times (non-blocking — UI already visible)
+      const waitDocs = await fetchWaitTimes(parkDoc);
+
+      // Phase 3: background forecast refresh (fire-and-forget, never blocks UI)
       if (waitDocs && waitDocs.length > 0) {
         const hasForecast = waitDocs.some((w) => w.forecast && w.forecast.length > 0);
         if (!hasForecast) {
-          // Look up park UUID for API call
-          try {
-            const parkDocs = await getCollection<Park>('parks', [whereConstraint('slug', '==', parkId)]);
-            if (parkDocs && parkDocs.length > 0) {
-              await fetch(`/api/wait-times?parkId=${parkDocs[0].id}`);
-              await fetchData();
-            }
-          } catch {
-            // Non-critical: user can still manually refresh
-          }
+          fetch(`/api/wait-times?parkId=${parkDoc.id}`)
+            .then(() => fetchWaitTimes(parkDoc))
+            .catch(() => { /* Non-critical */ });
         }
       }
     }
     initLoad();
-  }, [fetchData, parkId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parkId]);
 
   const handleRefresh = async () => {
     if (!park) return;
@@ -193,7 +204,7 @@ export default function ParkDetailPage() {
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`);
       }
-      await fetchData();
+      await fetchWaitTimes(park);
     } catch (error) {
       console.error('Refresh failed:', error);
       const message =
@@ -385,6 +396,9 @@ export default function ParkDetailPage() {
               {dataFreshness.label}
             </span>
           )}
+          {waitTimesLoading && !refreshing && (
+            <span className="text-xs text-primary-400 animate-pulse">Loading wait times…</span>
+          )}
         </div>
       </div>
 
@@ -427,28 +441,40 @@ export default function ParkDetailPage() {
             <TrendingUp className="h-4 w-4" />
             <span>Operating</span>
           </div>
-          <p className="mt-1 text-2xl font-bold text-primary-800">
-            {operatingCount}
-            <span className="ml-1 text-sm font-normal text-primary-400">/ {mergedAttractions.length}</span>
-          </p>
+          {waitTimesLoading ? (
+            <div className="mt-2 h-7 w-20 animate-pulse rounded bg-primary-100" />
+          ) : (
+            <p className="mt-1 text-2xl font-bold text-primary-800">
+              {operatingCount}
+              <span className="ml-1 text-sm font-normal text-primary-400">/ {mergedAttractions.length}</span>
+            </p>
+          )}
         </div>
         <div className="rounded-xl border border-primary-100 bg-white p-4">
           <div className="flex items-center gap-2 text-sm text-primary-500">
             <Clock className="h-4 w-4" />
             <span>Avg Wait</span>
           </div>
-          <p className="mt-1 text-2xl font-bold text-primary-800">
-            {operatingWithWaits.length > 0 ? avgWait : '—'}<span className="ml-1 text-sm font-normal text-primary-400">{operatingWithWaits.length > 0 ? 'min' : ''}</span>
-          </p>
+          {waitTimesLoading ? (
+            <div className="mt-2 h-7 w-16 animate-pulse rounded bg-primary-100" />
+          ) : (
+            <p className="mt-1 text-2xl font-bold text-primary-800">
+              {operatingWithWaits.length > 0 ? avgWait : '—'}<span className="ml-1 text-sm font-normal text-primary-400">{operatingWithWaits.length > 0 ? 'min' : ''}</span>
+            </p>
+          )}
         </div>
         <div className="rounded-xl border border-primary-100 bg-white p-4">
           <div className="flex items-center gap-2 text-sm text-primary-500">
             <AlertCircle className="h-4 w-4" />
             <span>Longest Wait</span>
           </div>
-          <p className="mt-1 text-2xl font-bold text-amber-600">
-            {operatingWithWaits.length > 0 ? longestWait : '—'}<span className="ml-1 text-sm font-normal text-primary-400">{operatingWithWaits.length > 0 ? 'min' : ''}</span>
-          </p>
+          {waitTimesLoading ? (
+            <div className="mt-2 h-7 w-16 animate-pulse rounded bg-primary-100" />
+          ) : (
+            <p className="mt-1 text-2xl font-bold text-amber-600">
+              {operatingWithWaits.length > 0 ? longestWait : '—'}<span className="ml-1 text-sm font-normal text-primary-400">{operatingWithWaits.length > 0 ? 'min' : ''}</span>
+            </p>
+          )}
         </div>
       </div>
 

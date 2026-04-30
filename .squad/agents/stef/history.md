@@ -157,3 +157,20 @@
   - `tests/api/crowd-level-computation.test.ts` — 17 tests: threshold unit tests, null handling, closed parks, all-same-level edge case, greedy assignment
   - `tests/components/crowd-calendar.test.tsx` — 24 tests: FamilySelector, CalendarDayCell (bars + colors + toggle filtering), BestPlanBanner, MiniMonth, full page integration (family switch fetches, park toggle hides, mini month navigates)
 - **2026-04-29:** These are contract tests with inline stubs. When Chunk/Mouth land the real components, swap the stubs for real imports — same `data-testid` attributes, same props, same behavior.
+
+## Playwright E2E — Critical UI Flow Tests (2026-04-30)
+
+- **2026-04-30:** Set up Playwright E2E testing infrastructure targeting the exact production bugs that keep shipping. 13 new E2E tests across 3 spec files, all syntactically valid.
+- **2026-04-30:** Slimmed Playwright config to chromium-only (was 4 browsers). Rationale: speed during development; add back when CI budget allows.
+- **2026-04-30:** Added `test:e2e:ui` npm script for interactive debugging (`playwright test --ui`).
+- **2026-04-30:** Test strategy uses `page.route()` to intercept all network calls (Firestore REST, Firebase Auth, /api/*). Tests run against the real Next.js dev server but with fully mocked backends — deterministic, no Firebase emulator required for these UI flow tests.
+- **2026-04-30:** Fixture data in `e2e/fixtures/park-data.ts` — Islands of Adventure with 6 attractions (2 thrill, 2 family, 2 shows). Covers the entity/attraction type matrix needed for filter tests.
+- **2026-04-30:** Key regression test: "No active trip" / "Start Trip" prompt must appear EXACTLY ONCE. This was the #1 duplicate-element bug in production. Test uses `getByText().count()` assertion.
+- **2026-04-30:** FAB overlap test verifies z-index layering (FAB z-40 vs modal z-70) by checking bounding box intersection.
+- **2026-04-30:** Filter pills tests verify the tier-2 design: shows always remain visible when attraction sub-type filters are active.
+- **2026-04-30:** Files created:
+  - `e2e/report-wait-time.spec.ts` — 5 tests: modal open, expand, no-duplicate-trip-prompt, FAB-not-overlapping, submit-visible
+  - `e2e/filter-pills.spec.ts` — 4 tests: correct pills render, thrill filter, shows persist, deselect restores
+  - `e2e/park-page-loading.spec.ts` — 4 tests: skeleton visible, attractions render in time, no timeout errors, graceful API failure
+  - `e2e/fixtures/park-data.ts` — mock park/attractions/wait-times/schedule data
+  - `e2e/fixtures/api-handlers.ts` — reusable route interception helpers
