@@ -231,7 +231,7 @@ export default function ParkDetailPage() {
       return {
         ...a,
         attractionType: effectiveAttractionType,
-        status: wt?.status || 'CLOSED',
+        status: wt?.status || (waitTimesLoading ? 'UNKNOWN' : 'CLOSED'),
         waitMinutes: wt?.waitMinutes ?? null,
         queue: wt?.queue ?? null,
         forecast: wt?.forecast ?? null,
@@ -239,7 +239,7 @@ export default function ParkDetailPage() {
         operatingHours: wt?.operatingHours ?? null,
       };
     });
-  }, [attractions, waitMap]);
+  }, [attractions, waitMap, waitTimesLoading]);
 
   const availableAttractionTypes = useMemo(() => {
     const types = new Set<AttractionType>();
@@ -350,9 +350,11 @@ export default function ParkDetailPage() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold text-primary-900">{park?.name}</h1>
-            {schedule && (
+            {schedule ? (
               <ParkOperatingStatus segments={schedule.segments} timezone={schedule.timezone} />
-            )}
+            ) : waitTimesLoading ? (
+              <span className="inline-block h-6 w-16 animate-pulse rounded-full bg-primary-100" />
+            ) : null}
           </div>
           {park && (
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-primary-500">
@@ -428,11 +430,15 @@ export default function ParkDetailPage() {
       </div>
 
       {/* Park Schedule Bar */}
-      {schedule && schedule.segments.length > 0 && (
+      {schedule && schedule.segments.length > 0 ? (
         <div className="mb-8">
           <ParkScheduleBar segments={schedule.segments} timezone={schedule.timezone} />
         </div>
-      )}
+      ) : waitTimesLoading && !schedule ? (
+        <div className="mb-8">
+          <div className="h-10 w-full animate-pulse rounded-lg bg-primary-100" />
+        </div>
+      ) : null}
 
       {/* Stats */}
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
@@ -482,7 +488,7 @@ export default function ParkDetailPage() {
       <AttractionFilterChips filters={filters} onChange={setFilters} availableTypes={availableAttractionTypes} />
 
       {/* If park is closed / after hours: show all attractions in one list */}
-      {operating.length === 0 && filteredAttractions.length > 0 ? (
+      {!waitTimesLoading && operating.length === 0 && filteredAttractions.length > 0 ? (
         <section className="mb-10">
           {/* Closed banner */}
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
