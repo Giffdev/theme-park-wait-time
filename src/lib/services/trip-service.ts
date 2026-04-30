@@ -9,6 +9,7 @@ import {
   whereConstraint,
   limitConstraint,
 } from '@/lib/firebase/firestore';
+import { getParkById } from '@/lib/parks';
 import type { Trip, TripCreateData, TripUpdateData, TripStats } from '@/types/trip';
 import type { RideLog } from '@/types/ride-log';
 import type { QueryConstraint } from 'firebase/firestore';
@@ -150,8 +151,9 @@ export async function getTrips(
         const logs = await getTripRideLogs(userId, trip.id);
         const names: Record<string, string> = {};
         for (const log of logs) {
-          if (log.parkName && !names[log.parkId]) {
-            names[log.parkId] = log.parkName;
+          if (!names[log.parkId]) {
+            const name = log.parkName || getParkById(log.parkId)?.name;
+            if (name) names[log.parkId] = name;
           }
         }
         trip.parkNames = names;
@@ -345,8 +347,9 @@ export async function updateTripStats(userId: string, tripId: string): Promise<v
 
   for (const log of logs) {
     parks.add(log.parkId);
-    if (log.parkName && !parkNames[log.parkId]) {
-      parkNames[log.parkId] = log.parkName;
+    if (!parkNames[log.parkId]) {
+      const name = log.parkName || getParkById(log.parkId)?.name;
+      if (name) parkNames[log.parkId] = name;
     }
     attractions.add(log.attractionId);
     attractionCounts[log.attractionName] = (attractionCounts[log.attractionName] || 0) + 1;

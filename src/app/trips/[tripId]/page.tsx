@@ -60,11 +60,11 @@ function groupRidesByDay(logs: (RideLog & { id: string })[]): Record<string, (Ri
 }
 
 /** Group a day's rides by park, ordered by earliest ride timestamp. */
-function groupByPark(logs: (RideLog & { id: string })[]): { parkId: string; parkName: string; rides: (RideLog & { id: string })[] }[] {
+function groupByPark(logs: (RideLog & { id: string })[], tripParkNames?: Record<string, string>): { parkId: string; parkName: string; rides: (RideLog & { id: string })[] }[] {
   const parkMap: Record<string, { parkName: string; rides: (RideLog & { id: string })[] }> = {};
   for (const log of logs) {
     if (!parkMap[log.parkId]) {
-      parkMap[log.parkId] = { parkName: log.parkName, rides: [] };
+      parkMap[log.parkId] = { parkName: log.parkName || (tripParkNames ?? {})[log.parkId] || 'Unknown Park', rides: [] };
     }
     parkMap[log.parkId].rides.push(log);
   }
@@ -632,7 +632,7 @@ export default function TripDetailPage() {
         ) : (
           <div className="space-y-8">
             {Object.entries(groupedLogs).map(([date, dayLogs]) => {
-              const parkGroups = groupByPark(dayLogs);
+              const parkGroups = groupByPark(dayLogs, trip.parkNames);
               const totalRides = dayLogs.length;
               return (
                 <div key={date}>

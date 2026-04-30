@@ -269,7 +269,7 @@ export default function TripLogRidePage() {
     setSaving(true);
     setError('');
 
-    const parkName = (trip.parkNames ?? {})[parkId] ?? '';
+    const parkName = (trip.parkNames ?? {})[parkId] || availableParks.find((p) => p.id === parkId)?.name || '';
 
     try {
       await createRideLog(
@@ -309,7 +309,7 @@ export default function TripLogRidePage() {
     setDiningSaving(true);
     setDiningError('');
 
-    const parkName = (trip.parkNames ?? {})[parkId] ?? '';
+    const parkName = (trip.parkNames ?? {})[parkId] || availableParks.find((p) => p.id === parkId)?.name || '';
 
     try {
       await addDiningLog(
