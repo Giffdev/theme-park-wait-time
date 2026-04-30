@@ -310,12 +310,16 @@ export async function updateTripStats(userId: string, tripId: string): Promise<v
   }
 
   const parks = new Set<string>();
+  const parkNames: Record<string, string> = {};
   const attractions = new Set<string>();
   const attractionCounts: Record<string, number> = {};
   let totalWaitMinutes = 0;
 
   for (const log of logs) {
     parks.add(log.parkId);
+    if (log.parkName && !parkNames[log.parkId]) {
+      parkNames[log.parkId] = log.parkName;
+    }
     attractions.add(log.attractionId);
     attractionCounts[log.attractionName] = (attractionCounts[log.attractionName] || 0) + 1;
     if (log.waitTimeMinutes != null) {
@@ -341,7 +345,7 @@ export async function updateTripStats(userId: string, tripId: string): Promise<v
     favoriteAttraction,
   };
 
-  await updateDocument(tripsPath(userId), tripId, { stats });
+  await updateDocument(tripsPath(userId), tripId, { stats, parkNames });
 }
 
 // ---------------------------------------------------------------------------
