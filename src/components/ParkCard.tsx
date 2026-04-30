@@ -72,7 +72,7 @@ export default function ParkCard({
       {/* Top section: name + status */}
       <div>
         <div className="flex items-start justify-between gap-2">
-          <h3 className={`text-base font-bold leading-tight group-hover:text-coral-600 sm:text-lg ${hasStatus && !isOpen ? 'text-primary-600' : 'text-primary-800'}`}>
+          <h3 className={`text-base font-bold leading-tight group-hover:text-indigo-600 sm:text-lg ${hasStatus && !isOpen ? 'text-primary-600' : 'text-primary-800'}`}>
             {name}
           </h3>
           {hasStatus && (
@@ -143,7 +143,7 @@ export default function ParkCard({
 
       {/* Bottom: View Park action */}
       <div className="mt-4 border-t border-primary-100 pt-3">
-        <span className="inline-flex items-center text-sm font-medium text-coral-600 group-hover:text-coral-700">
+        <span className="inline-flex items-center text-sm font-medium text-indigo-600 group-hover:text-indigo-700">
           View Park <span className="ml-1 transition-transform group-hover:translate-x-0.5">→</span>
         </span>
       </div>
