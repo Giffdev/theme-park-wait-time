@@ -10,6 +10,7 @@ import { createRideLog } from '@/lib/services/ride-log-service';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
 import type { Trip } from '@/types/trip';
 import type { AttractionType } from '@/types/attraction';
+import { getAttractionIcon } from '@/lib/utils/attraction-icons';
 
 interface AttractionOption {
   id: string;
@@ -263,13 +264,13 @@ export default function TripLogRidePage() {
       {/* Park selector (only if multiple parks) */}
       {trip.parkIds.length > 1 && (
         <div className="mb-4">
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          <div className="flex flex-wrap gap-2">
             {trip.parkIds.map((id) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => { setParkId(id); setSelectedAttraction(null); }}
-                className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-all ${
+                className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all ${
                   parkId === id
                     ? 'bg-primary-600 text-white shadow-sm'
                     : 'bg-primary-50 text-primary-600 hover:bg-primary-100'
@@ -316,13 +317,13 @@ export default function TripLogRidePage() {
 
       {/* Type filter chips */}
       {parkId && (
-        <div className="mb-4 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        <div className="mb-4 flex flex-wrap gap-2">
           {TYPE_FILTERS.map((f) => (
             <button
               key={f.value}
               type="button"
               onClick={() => setTypeFilter(f.value)}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+              className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
                 typeFilter === f.value
                   ? 'bg-coral-500 text-white shadow-sm'
                   : 'bg-primary-50 text-primary-600 hover:bg-primary-100'
@@ -350,11 +351,7 @@ export default function TripLogRidePage() {
               className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-primary-50 active:bg-primary-100"
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-coral-50 text-lg">
-                {a.attractionType === 'thrill' ? '🎢' :
-                 a.attractionType === 'family' ? '🎠' :
-                 a.attractionType === 'show' || a.entityType === 'SHOW' ? '🎭' :
-                 a.attractionType === 'character-meet' ? '🤝' :
-                 a.attractionType === 'experience' ? '✨' : '🎡'}
+                {getAttractionIcon(a.entityType, a.attractionType)}
               </div>
               <div className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium text-primary-800">
