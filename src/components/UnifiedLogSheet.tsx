@@ -330,13 +330,7 @@ export default function UnifiedLogSheet({
             </button>
           </div>
 
-          {/* Active trip indicator (only in expanded mode) */}
-          {expanded && activeTripId && activeTripName && (
-            <div className="mt-2 flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-1.5">
-              <span className="text-xs">🗺️</span>
-              <span className="text-xs font-medium text-green-700">Adding to trip: <strong>{activeTripName}</strong></span>
-            </div>
-          )}
+
         </div>
 
         <div className="px-4 py-4">
@@ -473,6 +467,20 @@ export default function UnifiedLogSheet({
                           Standalone
                         </button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Standalone mode indicator — allows user to switch back */}
+                  {tripCheckDone && !activeTripId && standaloneMode && (
+                    <div className="flex items-center justify-between rounded-lg bg-primary-50 border border-primary-100 px-3 py-2">
+                      <span className="text-xs text-primary-600">📍 Logging as standalone ride</span>
+                      <button
+                        type="button"
+                        onClick={() => setStandaloneMode(false)}
+                        className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                      >
+                        Change
+                      </button>
                     </div>
                   )}
 
