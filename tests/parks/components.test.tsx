@@ -174,9 +174,9 @@ describe('ParkCard', () => {
     expect(screen.getByText('Shortest wait')).toBeInTheDocument();
   });
 
-  it('shows "No live data" when shortestWait is null', () => {
+  it('shows "Live data unavailable" when shortestWait is null', () => {
     render(<ParkCard {...defaultProps} shortestWait={null} />);
-    expect(screen.getByText('No live data')).toBeInTheDocument();
+    expect(screen.getAllByText('Live data unavailable').length).toBeGreaterThan(0);
   });
 
   it('shows attraction count when provided', () => {

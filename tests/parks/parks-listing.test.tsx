@@ -38,6 +38,7 @@ vi.mock('@/lib/firebase/firestore', () => ({
 // Mock lucide-react icons
 vi.mock('lucide-react', () => ({
   RefreshCw: ({ className }: { className?: string }) => <span data-testid="refresh-icon" className={className}>↻</span>,
+  Search: () => <span data-testid="search-icon">🔍</span>,
 }));
 
 // Mock fetch for API calls
