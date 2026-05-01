@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Thermometer } from 'lucide-react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { PARK_FAMILIES, CROWD_LEVEL_COLORS } from '@/lib/constants';
 import { FamilySelector } from '@/components/crowd-calendar/FamilySelector';
 import { CalendarDayCell } from '@/components/crowd-calendar/CalendarDayCell';
@@ -143,6 +144,16 @@ export default function CalendarPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Auto-refresh crowd calendar when user returns to tab after 1 hour
+  useAutoRefresh({
+    key: `crowd-calendar-${selectedFamilyId}-${monthStr}`,
+    staleness: 60 * 60 * 1000, // 1 hour
+    onRefresh: async () => {
+      await fetchData();
+    },
+    enabled: !!data,
+  });
 
   // Toggle a park on/off
   const togglePark = (parkId: string) => {

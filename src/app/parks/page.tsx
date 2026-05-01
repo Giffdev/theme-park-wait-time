@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { RefreshCw, Search, X, Star } from 'lucide-react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { getCollection } from '@/lib/firebase/firestore';
 import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
 import { getLocationByDestinationId, formatLocation } from '@/lib/parks/park-locations';
@@ -271,6 +272,16 @@ export default function ParksPage() {
     }
   };
 
+  // Auto-refresh park list + hours when user returns to tab after 10+ minutes
+  const { isBackgroundRefreshing } = useAutoRefresh({
+    key: 'park-list-index',
+    staleness: 10 * 60 * 1000, // 10 minutes
+    onRefresh: async () => {
+      await Promise.all([fetchParks(), fetchParkHours()]);
+    },
+    enabled: !loading && !refreshing,
+  });
+
   // All unique destination family names sorted alphabetically
   const allFamilies = useMemo(() => {
     const names = [...new Set(parks.map((p) => p.destinationName || 'Other'))];
@@ -365,10 +376,16 @@ export default function ParksPage() {
         <button
           onClick={handleRefresh}
           disabled={refreshing}
-          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+          className="relative inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
           {refreshing ? 'Refreshing...' : 'Refresh Data'}
+          {isBackgroundRefreshing && (
+            <span className="absolute -right-1 -top-1 flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-green-500" />
+            </span>
+          )}
         </button>
       </div>
       {refreshError && (

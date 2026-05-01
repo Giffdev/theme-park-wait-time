@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { RefreshCw } from 'lucide-react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getTrips } from '@/lib/services/trip-service';
 import TripCard from '@/components/trips/TripCard';
@@ -43,6 +44,16 @@ export default function TripsPage() {
   useEffect(() => {
     if (user) fetchTrips();
   }, [user, fetchTrips]);
+
+  // Auto-refresh trips when user returns to tab after 5+ minutes
+  const { isBackgroundRefreshing } = useAutoRefresh({
+    key: 'trip-list',
+    staleness: 5 * 60 * 1000, // 5 minutes
+    onRefresh: async () => {
+      await fetchTrips();
+    },
+    enabled: !!user && !loading,
+  });
 
   const grouped = useMemo(() => {
     const map: Record<string, (Trip & { id: string })[]> = {};
@@ -89,8 +100,14 @@ export default function TripsPage() {
           <p className="mt-1 text-primary-500">Your complete theme park experience history</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={fetchTrips} disabled={loading} className="rounded-full p-2 text-primary-500 hover:bg-primary-50 disabled:opacity-50" aria-label="Refresh trips">
+          <button onClick={fetchTrips} disabled={loading} className="relative rounded-full p-2 text-primary-500 hover:bg-primary-50 disabled:opacity-50" aria-label="Refresh trips">
             <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+            {isBackgroundRefreshing && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
+              </span>
+            )}
           </button>
           <Link
             href="/trips/new"

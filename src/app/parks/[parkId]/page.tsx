@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RefreshCw, ArrowUpDown, TrendingUp, Clock, AlertCircle, MapPin } from 'lucide-react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import UnifiedLogSheet from '@/components/UnifiedLogSheet';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
 import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
@@ -86,6 +87,33 @@ export default function ParkDetailPage() {
   const [now, setNow] = useState(() => Date.now());
   const [quickLogOpen, setQuickLogOpen] = useState(false);
 
+  // Auto-refresh wait times when user returns to tab after 2+ minutes
+  const { isBackgroundRefreshing } = useAutoRefresh({
+    key: `park-wait-times-${parkId}`,
+    staleness: 2 * 60 * 1000, // 2 minutes
+    onRefresh: async () => {
+      await fetchWaitTimes(park);
+    },
+    enabled: !!park && !refreshing,
+  });
+
+  // Auto-refresh schedule when user returns after 30+ minutes
+  useAutoRefresh({
+    key: `park-schedule-${parkId}`,
+    staleness: 30 * 60 * 1000, // 30 minutes
+    onRefresh: async () => {
+      if (!park) return;
+      try {
+        const res = await fetch(`/api/park-schedule?parkId=${park.id}`);
+        if (res.ok) {
+          const scheduleData = await res.json();
+          setSchedule(scheduleData);
+        }
+      } catch { /* background refresh — silent fail */ }
+    },
+    enabled: !!park && !refreshing,
+  });
+
   // Tick every 30s so relative time stays fresh
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 30_000);
@@ -152,7 +180,7 @@ export default function ParkDetailPage() {
       const parkUuid = targetPark.id;
       const [waitDocs, scheduleRes] = await Promise.all([
         getCollection<WaitTimeEntry>(`waitTimes/${parkUuid}/current`),
-        fetch(`/api/park-schedule?parkId=${parkUuid}`).catch(() => null),
+        fetch(`/api/park-schedule?parkId=${parkUuid}`, { cache: 'no-store' }).catch(() => null),
       ]);
       setWaitTimes(waitDocs);
 
@@ -199,6 +227,7 @@ export default function ParkDetailPage() {
     setRefreshError(null);
     try {
       const res = await fetch(`/api/wait-times?parkId=${park.id}`, {
+        cache: 'no-store',
         signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) {
@@ -386,10 +415,16 @@ export default function ParkDetailPage() {
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="inline-flex items-center gap-2 rounded-lg bg-coral-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-coral-600 disabled:opacity-50"
+            className="relative inline-flex items-center gap-2 rounded-lg bg-coral-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-coral-600 disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing...' : 'Refresh Wait Times'}
+            {isBackgroundRefreshing && (
+              <span className="absolute -right-1 -top-1 flex h-3 w-3">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex h-3 w-3 rounded-full bg-green-500" />
+              </span>
+            )}
           </button>
           {refreshError && (
             <span className="text-xs text-red-600">{refreshError}</span>
