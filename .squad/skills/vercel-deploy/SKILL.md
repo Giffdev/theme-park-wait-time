@@ -71,18 +71,35 @@ git remote add origin https://github.com/Giffdev/theme-park-wait-time.git
 git push origin master
 ```
 
-### `npx vercel --prod` hangs
-**Symptom:** CLI deploy takes too long or freezes
+### ⛔ `npx vercel --prod` hangs — DO NOT USE
+**Symptom:** CLI deploy freezes after "Uploading..." and never completes (waited 4+ minutes multiple times).
 
-**Fix:** Don't use `npx vercel --prod`. Use `git push` instead — Vercel auto-deploys. The CLI can be slow and is unnecessary.
+**Root cause:** Unknown — possibly auth token, network, or Vercel CLI bug in this environment.
+
+**Rule:** NEVER use `npx vercel --prod` or `npx vercel` for deploys. ALWAYS use `git push origin master` to trigger Vercel's GitHub webhook. This is the only reliable deploy method for this project.
+
+### Deploy not triggered after push
+**Symptom:** `git push` succeeded but `npx vercel ls` shows no new deploy, or live site still shows old code.
+
+**Fix — empty commit to re-trigger the webhook:**
+```bash
+git commit --allow-empty -m "chore: trigger Vercel deploy"
+git push origin master
+```
+Wait ~60 seconds, then verify:
+```bash
+npx vercel ls --prod 2>&1 | Select-Object -First 10
+```
 
 ### Deploy shows old code
 **Symptom:** Live site hasn't updated despite pushing
 
 **Check:**
-1. Verify commits are in git history: `git log --oneline` (should show your commit)
-2. Check Vercel dashboard for build status: https://vercel.com/giffdevs-projects/theme-park-wait-times
-3. Ensure you pushed to `master` branch: `git branch -vv`
+1. Verify commits reached remote: `git log --oneline origin/master -3`
+2. Check if Vercel picked up the push: `npx vercel ls --prod` (look for a deploy within the last few minutes)
+3. If no recent deploy, use the empty-commit trick above
+4. Check Vercel dashboard: https://vercel.com/giffdevs-projects/theme-park-wait-times
+5. Ensure you pushed to `master` branch: `git branch -vv`
 
 ### API returns 500 or stale data
 **Symptom:** `fetchedAt` timestamp in API response is old, or `/api/wait-times` errors

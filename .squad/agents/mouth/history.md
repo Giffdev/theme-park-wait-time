@@ -64,6 +64,12 @@
 
 *Full history: see history-archive-2026-05-01T18-28-49Z.md*
 
+## Learnings
+
+- **2026-05-01:** Closed-day calendar UI: When adding optional fields to existing types, always make them `?` optional for backward compat with existing API consumers and mock data. The `status?: ParkDayStatus` pattern lets old data (no status field) gracefully default to 'OPEN' via `park.status ?? 'OPEN'`.
+- **2026-05-01:** Mobile-first calendar badges: Red ✕ dots at 8px (2 w-2) are visible but tight; the expanded bottom sheet is where users actually read park status. Keep cell indicators minimal, detail in the overlay.
+- **2026-05-01:** Mixed-state aggregate: When some parks are closed and some open, aggregate crowd level must only factor open parks. Show "X of Y parks closed" note so users understand the context.
+
 ---
 ## 2026-05-01 Team Spawn
 
