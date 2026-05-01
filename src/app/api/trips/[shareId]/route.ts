@@ -90,7 +90,10 @@ export async function GET(
         parkIds: tripData.parkIds,
         parkNames: tripData.parkNames,
         status: tripData.status,
-        stats: tripData.stats,
+        stats: {
+          ...tripData.stats,
+          favoriteAttraction: tripData.stats?.favoriteAttraction || null,
+        },
         notes: tripData.notes,
       },
       rideLogs,
