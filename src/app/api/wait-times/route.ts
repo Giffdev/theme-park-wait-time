@@ -3,6 +3,7 @@ import { adminDb } from '@/lib/firebase/admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { updateForecastAggregates } from '@/lib/forecast/aggregation';
 import { resolveForecast } from '@/lib/forecast/blender';
+import { getParkBySlug, getParkById } from '@/lib/parks/park-registry';
 import type { ForecastAggregate, ForecastMeta } from '@/types/queue';
 
 export const maxDuration = 30; // seconds — Vercel serverless function timeout
@@ -276,11 +277,25 @@ export async function GET(request: NextRequest) {
     let isStale = false;
 
     if (parkId) {
-      const { liveData, stale } = await fetchLiveDataForPark(parkId);
+      // Resolve parkId: accept either a UUID or a slug
+      let entityId = parkId;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parkId);
+      if (!isUuid) {
+        const resolved = getParkBySlug(parkId);
+        if (!resolved) {
+          return NextResponse.json(
+            { error: `Unknown park: "${parkId}". Use a valid park slug or entity UUID.` },
+            { status: 400 }
+          );
+        }
+        entityId = resolved.id;
+      }
+
+      const { liveData, stale } = await fetchLiveDataForPark(entityId);
       isStale = stale;
 
       // Resolve forecast for each attraction (blend live + historical)
-      const formatted = await blendForecasts(parkId, liveData, fetchedAt);
+      const formatted = await blendForecasts(entityId, liveData, fetchedAt);
       results[parkId] = formatted;
 
       // Cache in Firestore
@@ -291,7 +306,7 @@ export async function GET(request: NextRequest) {
         for (const entry of chunk) {
           const ref = adminDb
             .collection('waitTimes')
-            .doc(parkId)
+            .doc(entityId)
             .collection('current')
             .doc(entry.attractionId as string);
           batch.set(ref, entry, { merge: true });
@@ -300,13 +315,13 @@ export async function GET(request: NextRequest) {
       }
 
       // Archive historical snapshot (fire-and-forget — don't block response)
-      archiveHistoricalSnapshot(parkId, liveData, fetchedAt).catch((err) =>
+      archiveHistoricalSnapshot(entityId, liveData, fetchedAt).catch((err) =>
         console.error('Historical archive error:', err)
       );
 
       // Update forecast aggregates for today's day-of-week (fire-and-forget)
       const todayStr = fetchedAt.toDate().toISOString().slice(0, 10);
-      updateForecastAggregates(parkId, todayStr).catch((err) =>
+      updateForecastAggregates(entityId, todayStr).catch((err) =>
         console.error('Forecast aggregation error:', err)
       );
     } else {
