@@ -183,9 +183,54 @@ Result: user clicks refresh → browser/edge serves cached response → API neve
 - **Seed script generalization:** Multi-destination config with parkFilter allowlists (excludes water parks not in API)
 - **Park registration:** DESTINATION_FAMILIES maps destinations to park groups; park-registry.ts handles slug↔UUID resolution
 
+## Recent Work (2026-05-01T11:28:49-07:00)
+
+### Career Stats Aggregation (Sprint A, Item #1)
+
+Built `src/lib/stats/career-stats.ts` — client-side stats computation for the /personal-stats page.
+
+**Functions:**
+- `computeCareerStats(rideLogs, dateRange?)` — all-in-one aggregation returning CareerStats
+- `filterByDateRange(rideLogs, range)` — inclusive date filtering
+- `computeRideDistributionByPark(rideLogs)` — parkName → count map
+- `computeAttractionCounts(rideLogs)` — ranked attraction list
+
+**Returns:** totalRides, totalParksVisited, averageWaitMinutes, mostVisitedPark, favoriteAttraction, topAttractions (top 5), rideDistributionByPark
+
+**Design:** Pure functions accepting RideLog[] arrays. No Firestore calls. Mouth imports `computeCareerStats()` and passes pre-fetched ride logs.
+
+**Commit:** ea46bab
+
+### Investigation: Crowd Calendar vs Live Wait Times
+
+**Finding:** The crowd calendar and live wait times use COMPLETELY DIFFERENT data sources:
+
+| | Live Wait Times | Crowd Calendar |
+|---|---|---|
+| **Source** | ThemeParks Wiki API (real-time) | Firestore `forecastAggregates/{parkId}/byDayOfWeek/{dow}/attractions/` |
+| **Endpoint** | `/api/wait-times` | `/api/crowd-calendar` |
+| **Data** | Current queue lengths from park systems | Historical averages aggregated over time |
+| **Fallback** | Stale in-memory cache → error | Firestore cache → deterministic placeholder |
+| **Availability** | Only when park is open AND API has data | Always (uses day-of-week patterns + mock fallback) |
+
+**Why a park has crowd calendar data but no live wait times:**
+1. The crowd calendar uses historical forecast aggregates (past observations grouped by day-of-week). Even if a park has NEVER had live data today, the aggregates from previous API polls exist in Firestore.
+2. When even aggregates are missing, BOTH the `/api/crowd-calendar` route AND the calendar page generate **deterministic placeholder data** — synthetic busy levels computed from a math formula (day × park index × month). This is NOT real data.
+3. Live wait times require the ThemeParks Wiki API to actively return queue data for that park at that moment. Many parks simply aren't in the Wiki API, or their systems don't expose queue data.
+
+**TL;DR:** The crowd calendar always shows "something" because it falls back to synthetic/placeholder data. Live wait times only show real data or nothing.
+
+## Learnings
+
+- Crowd calendar has a triple fallback: Firestore cache (6h TTL) → fresh computation from forecastAggregates → deterministic placeholder generation. It never shows "no data."
+- The `generatePlaceholderData()` and `generateMockData()` functions produce crowd levels from a deterministic formula, NOT from any real park data. Users may mistake this for real predictions.
+- `forecastAggregates` collection requires ≥15 samples to be considered valid for crowd calendar computation.
+- Career stats module uses parkName (string) as the grouping key, not parkId — this matches what the UI displays and avoids UUID-to-name lookups at render time.
+
 ## Current Status
 
 ✅ All tests passing (15+ test suites)  
 ✅ Production deployed  
 ✅ Seed script supports multi-destination parks  
-✅ Slug resolution working for all endpoints
+✅ Slug resolution working for all endpoints  
+✅ Career stats aggregation ready for Mouth (Sprint A)
