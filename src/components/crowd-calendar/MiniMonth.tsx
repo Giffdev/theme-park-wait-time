@@ -11,23 +11,33 @@ interface MiniMonthProps {
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
+type DayState = { type: 'open'; level: 1 | 2 | 3 | 4 } | { type: 'closed' } | { type: 'no_data' };
+
 export function MiniMonth({ month, days, onClick }: MiniMonthProps) {
   const [year, monthNum] = month.split('-').map(Number);
   const firstDay = new Date(year, monthNum - 1, 1).getDay();
   const daysInMonth = new Date(year, monthNum, 0).getDate();
   const monthLabel = new Date(year, monthNum - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
 
-  // Build a lookup map date -> aggregateCrowdLevel
-  const dayMap = new Map<number, 1 | 2 | 3 | 4>();
+  const dayMap = new Map<number, DayState>();
   for (const d of days) {
     const dayNum = parseInt(d.date.split('-')[2], 10);
-    dayMap.set(dayNum, d.aggregateCrowdLevel);
+    const openParks = d.parks.filter((p) => (p.status ?? 'OPEN') === 'OPEN');
+    const allClosed = d.parks.length > 0 && openParks.length === 0 &&
+      d.parks.every((p) => (p.status ?? 'OPEN') === 'CLOSED');
+
+    if (allClosed) {
+      dayMap.set(dayNum, { type: 'closed' });
+    } else if (openParks.length === 0) {
+      dayMap.set(dayNum, { type: 'no_data' });
+    } else {
+      dayMap.set(dayNum, { type: 'open', level: d.aggregateCrowdLevel });
+    }
   }
 
   const cells: (number | null)[] = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  // Pad to 42
   while (cells.length < 42) cells.push(null);
 
   return (
@@ -41,14 +51,26 @@ export function MiniMonth({ month, days, onClick }: MiniMonthProps) {
           <div key={i} className="text-center text-[8px] font-medium text-primary-400">{w}</div>
         ))}
         {cells.map((day, i) => {
-          const level = day ? dayMap.get(day) : undefined;
+          const state = day ? dayMap.get(day) : undefined;
+          let bgStyle: React.CSSProperties | undefined;
+          let extraClass = '';
+
+          if (state?.type === 'open') {
+            bgStyle = { backgroundColor: CROWD_LEVEL_COLORS[state.level].hex + '40' };
+          } else if (state?.type === 'closed') {
+            bgStyle = { backgroundColor: '#fecaca' }; // red-200
+            extraClass = '';
+          } else if (state?.type === 'no_data') {
+            extraClass = 'border border-dashed border-gray-300';
+          }
+
           return (
             <div
               key={i}
-              className="flex aspect-square items-center justify-center rounded-[3px] text-[8px]"
-              style={level ? { backgroundColor: CROWD_LEVEL_COLORS[level].hex + '40' } : undefined}
+              className={`flex aspect-square items-center justify-center rounded-[3px] text-[8px] ${extraClass}`}
+              style={bgStyle}
             >
-              {day && <span className="text-primary-600">{day}</span>}
+              {day && <span className={state?.type === 'closed' ? 'text-red-700' : 'text-primary-600'}>{day}</span>}
             </div>
           );
         })}
