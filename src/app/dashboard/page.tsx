@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getRideLogs } from '@/lib/services/ride-log-service';
 import { getTrips } from '@/lib/services/trip-service';
 
 export default function DashboardPage() {
   const { user, loading, signOut } = useAuth();
+  const router = useRouter();
   const [stats, setStats] = useState({ totalRides: 0, parksVisited: 0, tripsLogged: 0, totalWaitMinutes: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
 
@@ -62,7 +64,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <button
-          onClick={signOut}
+          onClick={async () => { await signOut(); router.push('/'); }}
           className="rounded-full border border-primary-200 px-4 py-2 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50"
         >
           Sign Out
