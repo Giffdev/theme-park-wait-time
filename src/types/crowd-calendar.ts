@@ -1,5 +1,7 @@
 /** Park-family crowd calendar data types */
 
+export type ParkDayStatus = 'OPEN' | 'CLOSED' | 'NO_DATA';
+
 export interface FamilyCrowdMonth {
   familyId: string;
   familyName: string;
@@ -18,8 +20,12 @@ export interface CrowdDay {
 export interface CrowdDayPark {
   parkId: string;
   parkName: string;
-  crowdLevel: 1 | 2 | 3 | 4;
-  avgWaitMinutes: number;
+  /** Park operational status for this day. Defaults to 'OPEN' if not provided (backward compat). */
+  status?: ParkDayStatus;
+  /** Crowd level (present when park is open or status not provided) */
+  crowdLevel?: 1 | 2 | 3 | 4;
+  /** Average wait in minutes (present when park is open or status not provided) */
+  avgWaitMinutes?: number;
 }
 
 export interface BestPlan {

@@ -8,9 +8,10 @@ import {
   type ForecastEntry,
 } from '@/lib/crowd-calendar';
 import { PARK_FAMILIES } from '@/lib/constants';
-import type { FamilyCrowdMonth, CrowdDay, CrowdDayPark } from '@/types/crowd-calendar';
-import type { FamilyCrowdDay } from '@/types/parkFamily';
+import type { FamilyCrowdMonth, CrowdDay, CrowdDayPark, ParkDayStatus } from '@/types/crowd-calendar';
+import { CrowdLevel, type FamilyCrowdDay, type ParkCrowdDay } from '@/types/parkFamily';
 import type { ForecastAggregate } from '@/types/queue';
+import { batchGetParkOperatingStatus } from '@/lib/parks/park-schedule-check';
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
@@ -64,7 +65,7 @@ export async function GET(request: NextRequest) {
         const generatedTime = new Date(cachedData.generatedAt ?? 0).getTime();
         // Validate cache quality: at least 50% of days should have non-zero waits
         const cachedDaysWithData = cachedData.days?.filter(
-          (d) => d.parks?.some((p) => p.avgWaitMinutes > 0)
+          (d) => d.parks?.some((p) => (p.avgWaitMinutes ?? 0) > 0)
         ) ?? [];
         const cacheHasQuality = cachedDaysWithData.length >= Math.ceil((cachedData.days?.length ?? 1) * 0.5);
         if (Date.now() - generatedTime < CACHE_TTL_MS && cacheHasQuality) {
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
       if (cached.exists) {
         const staleData = cached.data() as FamilyCrowdMonth;
         const staleDaysWithData = staleData.days?.filter(
-          (d) => d.parks?.some((p) => p.avgWaitMinutes > 0)
+          (d) => d.parks?.some((p) => (p.avgWaitMinutes ?? 0) > 0)
         ) ?? [];
         if (staleDaysWithData.length >= Math.ceil((staleData.days?.length ?? 1) * 0.5)) {
           return NextResponse.json({ ...staleData, stale: true });
@@ -113,8 +114,8 @@ export async function GET(request: NextRequest) {
       console.warn('Firestore unavailable, using placeholder data:', (error as Error).message);
     }
 
-    // Fallback: generate deterministic placeholder data
-    const response = generatePlaceholderData(familyId, month);
+    // Fallback: generate placeholder data with schedule-awareness
+    const response = await generatePlaceholderData(familyId, month);
     return NextResponse.json(response);
   } catch (error) {
     console.error('Crowd calendar API error:', error);
@@ -127,57 +128,109 @@ export async function GET(request: NextRequest) {
 
 /** Transform FamilyCrowdDay (aggregation type) to CrowdDay (UI type). */
 function toCrowdDay(fcd: FamilyCrowdDay): CrowdDay {
-  const parks: CrowdDayPark[] = fcd.parks.map((p) => ({
-    parkId: p.parkId,
-    parkName: p.parkName,
-    crowdLevel: p.crowdLevel as 1 | 2 | 3 | 4,
-    avgWaitMinutes: p.avgWaitMinutes,
-  }));
-  const avg = parks.length > 0
-    ? parks.reduce((sum, p) => sum + p.crowdLevel, 0) / parks.length
+  const parks: CrowdDayPark[] = fcd.parks.map((p) => {
+    // Check if park has a status override (closed/no_data)
+    const parkAny = p as ParkCrowdDay & { status?: ParkDayStatus };
+    if (parkAny.status === 'CLOSED') {
+      return { parkId: p.parkId, parkName: p.parkName, status: 'CLOSED' as const };
+    }
+    if (parkAny.status === 'NO_DATA') {
+      return { parkId: p.parkId, parkName: p.parkName, status: 'NO_DATA' as const };
+    }
+    return {
+      parkId: p.parkId,
+      parkName: p.parkName,
+      status: 'OPEN' as const,
+      crowdLevel: p.crowdLevel as 1 | 2 | 3 | 4,
+      avgWaitMinutes: p.avgWaitMinutes,
+    };
+  });
+  const openParks = parks.filter((p) => p.status === 'OPEN' && p.crowdLevel);
+  const avg = openParks.length > 0
+    ? openParks.reduce((sum, p) => sum + (p.crowdLevel ?? 1), 0) / openParks.length
     : 1;
   const aggregateCrowdLevel = Math.max(1, Math.min(4, Math.round(avg))) as 1 | 2 | 3 | 4;
   return { date: fcd.date, parks, aggregateCrowdLevel };
 }
 
-/** Generate deterministic placeholder data for development. */
-function generatePlaceholderData(familyId: string, monthStr: string): FamilyCrowdMonth {
+/** Generate placeholder data that respects park schedules (no fake data for closed days). */
+async function generatePlaceholderData(familyId: string, monthStr: string): Promise<FamilyCrowdMonth> {
   const family = PARK_FAMILIES.find((f) => f.id === familyId) ?? PARK_FAMILIES[0];
   const [year, month] = monthStr.split('-').map(Number);
   const daysInMonth = new Date(year, month, 0).getDate();
 
+  const dates: string[] = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    dates.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+  }
+
+  // Fetch park schedules to determine open/closed status
+  const parkIds = family.parks.map((p) => p.id);
+  let scheduleMap: Map<string, Map<string, { isOpen: boolean; hasData: boolean }>> | null = null;
+
+  try {
+    scheduleMap = await batchGetParkOperatingStatus(parkIds, dates);
+  } catch (err) {
+    console.warn('Schedule fetch failed during placeholder generation:', (err as Error).message);
+  }
+
   const days: CrowdDay[] = [];
   for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dateStr = dates[d - 1];
     const dayOfWeek = new Date(year, month - 1, d).getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
     const parks: CrowdDayPark[] = family.parks.map((park, pi) => {
-      const base = ((d * 7 + pi * 13 + month * 3) % 4) + 1;
-      const weekendBoost = isWeekend ? 1 : 0;
-      const crowdLevel = Math.min(4, Math.max(1, base + weekendBoost - (d % 3 === 0 ? 1 : 0))) as 1 | 2 | 3 | 4;
-      const avgWaitMinutes = crowdLevel * 15 + ((d * pi) % 10);
-      return { parkId: park.id, parkName: park.name, crowdLevel, avgWaitMinutes };
+      // Check schedule status
+      const parkSchedule = scheduleMap?.get(park.id)?.get(dateStr);
+
+      if (parkSchedule) {
+        if (!parkSchedule.isOpen) {
+          return { parkId: park.id, parkName: park.name, status: 'CLOSED' as const };
+        }
+        // Park is open — generate synthetic crowd level
+        const base = ((d * 7 + pi * 13 + month * 3) % 4) + 1;
+        const weekendBoost = isWeekend ? 1 : 0;
+        const crowdLevel = Math.min(4, Math.max(1, base + weekendBoost - (d % 3 === 0 ? 1 : 0))) as 1 | 2 | 3 | 4;
+        const avgWaitMinutes = crowdLevel * 15 + ((d * pi) % 10);
+        return { parkId: park.id, parkName: park.name, status: 'OPEN' as const, crowdLevel, avgWaitMinutes };
+      }
+
+      // No schedule entry for this park/date — treat as no data
+      if (scheduleMap) {
+        return { parkId: park.id, parkName: park.name, status: 'NO_DATA' as const };
+      }
+
+      // No schedule map at all (fetch failed entirely) — mark as NO_DATA
+      return { parkId: park.id, parkName: park.name, status: 'NO_DATA' as const };
     });
 
-    const aggregateCrowdLevel = Math.round(
-      parks.reduce((sum, p) => sum + p.crowdLevel, 0) / parks.length
-    ) as 1 | 2 | 3 | 4;
+    const openParks = parks.filter((p) => p.status === 'OPEN' && p.crowdLevel);
+    const aggregateCrowdLevel = openParks.length > 0
+      ? (Math.round(openParks.reduce((sum, p) => sum + (p.crowdLevel ?? 1), 0) / openParks.length) as 1 | 2 | 3 | 4)
+      : (1 as 1 | 2 | 3 | 4);
     days.push({ date: dateStr, parks, aggregateCrowdLevel });
   }
 
-  // Best 3-day plan
-  const sortedDays = [...days].sort((a, b) => a.aggregateCrowdLevel - b.aggregateCrowdLevel);
+  // Best 3-day plan (only considers open parks)
+  const openDays = days.filter((day) => day.parks.some((p) => p.status === 'OPEN'));
+  const sortedDays = [...openDays].sort((a, b) => a.aggregateCrowdLevel - b.aggregateCrowdLevel);
   const bestDays = sortedDays.slice(0, 3);
   const usedParks = new Set<string>();
   const bestPlan = {
     days: bestDays.map((day) => {
       const bestPark = day.parks
-        .filter((p) => !usedParks.has(p.parkId))
-        .sort((a, b) => a.crowdLevel - b.crowdLevel)[0] ?? day.parks[0];
-      usedParks.add(bestPark.parkId);
-      return { date: day.date, parkId: bestPark.parkId, parkName: bestPark.parkName, crowdLevel: bestPark.crowdLevel };
-    }).sort((a, b) => a.date.localeCompare(b.date)),
+        .filter((p) => p.status === 'OPEN' && !usedParks.has(p.parkId))
+        .sort((a, b) => (a.crowdLevel ?? 4) - (b.crowdLevel ?? 4))[0]
+        ?? day.parks.filter((p) => p.status === 'OPEN')[0];
+      if (bestPark) usedParks.add(bestPark.parkId);
+      return {
+        date: day.date,
+        parkId: bestPark?.parkId ?? '',
+        parkName: bestPark?.parkName ?? '',
+        crowdLevel: bestPark?.crowdLevel ?? (1 as 1 | 2 | 3 | 4),
+      };
+    }).filter((d) => d.parkId !== '').sort((a, b) => a.date.localeCompare(b.date)),
   };
 
   return {
@@ -194,6 +247,7 @@ function generatePlaceholderData(familyId: string, monthStr: string): FamilyCrow
  * Compute crowd days for all parks in a family for the given month.
  * Uses historical aggregate data from forecastAggregates/{parkId}/byDayOfWeek/{dow}/attractions/
  * for all days, with live forecast data from waitTimes/{parkId}/current/ taking priority for today.
+ * Now integrates park schedule data: closed parks get status='CLOSED' instead of crowd data.
  */
 async function computeFamilyCrowdDays(
   parks: Array<{ parkId: string; parkName: string }>,
@@ -210,6 +264,15 @@ async function computeFamilyCrowdDays(
   }
 
   const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Fetch park schedules for all parks/dates in parallel with crowd data
+  const parkIds = parks.map((p) => p.parkId);
+  const [scheduleMap] = await Promise.all([
+    batchGetParkOperatingStatus(parkIds, dates).catch((err) => {
+      console.warn('Schedule batch fetch failed:', (err as Error).message);
+      return null;
+    }),
+  ]);
 
   // For each park, fetch aggregate data per day-of-week (0-6) and live data for today
   const parkAggregates = new Map<string, Map<number, ForecastAggregate[]>>();
@@ -282,7 +345,32 @@ async function computeFamilyCrowdDays(
     const isToday = date === todayStr;
     const dayOfWeek = new Date(date + 'T12:00:00').getDay();
 
-    const parkCrowdDays = parks.map((park) => {
+    const parkCrowdDays: ParkCrowdDay[] = parks.map((park) => {
+      // Check schedule status first
+      const parkStatus = scheduleMap?.get(park.parkId)?.get(date);
+      if (parkStatus) {
+        if (!parkStatus.isOpen) {
+          // Park is closed — return CLOSED status with no crowd data
+          return {
+            parkId: park.parkId,
+            parkName: park.parkName,
+            crowdLevel: 0 as unknown as CrowdLevel,
+            avgWaitMinutes: 0,
+            status: 'CLOSED',
+          } as ParkCrowdDay & { status: string };
+        }
+      } else if (scheduleMap && !parkStatus) {
+        // Schedule map exists but no data for this park/date
+        return {
+          parkId: park.parkId,
+          parkName: park.parkName,
+          crowdLevel: 0 as unknown as CrowdLevel,
+          avgWaitMinutes: 0,
+          status: 'NO_DATA',
+        } as ParkCrowdDay & { status: string };
+      }
+
+      // Park is open (or we couldn't determine) — compute crowd data
       // For today, prefer live forecast data if available
       if (isToday) {
         const liveData = parkLiveForecasts.get(park.parkId);
@@ -296,7 +384,6 @@ async function computeFamilyCrowdDays(
       const aggregates = dowMap?.get(dayOfWeek) ?? [];
 
       if (aggregates.length === 0) {
-        // No aggregate data — return zero (will trigger placeholder fallback)
         return computeParkCrowdDay(park.parkId, park.parkName, new Map());
       }
 

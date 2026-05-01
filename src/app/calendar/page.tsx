@@ -46,9 +46,10 @@ function generateMockData(familyId: string, monthStr: string): FamilyCrowdMonth 
     days: bestDays.map((day) => {
       const bestPark = day.parks
         .filter((p) => !usedParks.has(p.parkId))
-        .sort((a, b) => a.crowdLevel - b.crowdLevel)[0] ?? day.parks[0];
+        .sort((a, b) => (a.crowdLevel ?? 4) - (b.crowdLevel ?? 4))[0] ?? day.parks[0];
       usedParks.add(bestPark.parkId);
-      return { date: day.date, parkId: bestPark.parkId, parkName: bestPark.parkName, crowdLevel: bestPark.crowdLevel };
+      const crowdLevel: 1 | 2 | 3 | 4 = bestPark.crowdLevel ?? 1;
+      return { date: day.date, parkId: bestPark.parkId, parkName: bestPark.parkName, crowdLevel };
     }),
   };
 
@@ -294,6 +295,14 @@ export default function CalendarPage() {
             <span className="text-primary-600">{CROWD_LEVEL_COLORS[level].label}</span>
           </div>
         ))}
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex h-3 items-center rounded bg-red-100 px-1 text-[7px] font-semibold uppercase text-red-700">✕</span>
+          <span className="text-primary-600">Closed</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="h-3 w-3 rounded-full border border-dashed border-gray-300" />
+          <span className="text-primary-600">No Data</span>
+        </div>
         <span className="flex items-center gap-1 text-primary-400">
           <Thermometer className="h-3 w-3" /> Avg temps (°F/°C)
         </span>
