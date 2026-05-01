@@ -253,6 +253,7 @@ export default function ParksPage() {
     setRefreshError(null);
     try {
       const res = await fetch('/api/wait-times', {
+        cache: 'no-store',
         signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) {
