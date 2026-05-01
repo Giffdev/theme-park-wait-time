@@ -1331,6 +1331,85 @@ Document the push & deploy process for Vercel so the team always knows the flow.
 - Verify at: https://theme-park-wait-times.vercel.app
 - Troubleshooting: if `git remote -v` is empty, re-add the remote; if `npx vercel --prod` hangs, use git push instead
 
+### D13: Personal Stats Dashboard + Trip Sharing Scope — 2026-05-01
+
+**Author:** Mikey (Lead/Architect)  
+**Status:** PROPOSED  
+**Scope:** Features
+
+#### Executive Summary
+
+The user requested two related features:
+1. **Personal Stats Dashboard** — enriched user statistics page beyond the current 4-card layout
+2. **Trip Sharing** — ability to share trip summaries with others
+
+**Audit Finding:** Foundational data model is in place (trips, ride logs, stats recomputation, share indexing). Missing:
+- Richer stats calculations beyond trip-level (career-wide trends, averages, achievements)
+- Dedicated stats page UI
+- UI for trip sharing (share button, share link management, public trip view)
+
+**Recommendation:** Build in two phases — MVP (career stats page + trip share button) in Sprint A, then enrich in Sprint B.
+
+#### Phase 1: MVP (Stats Page + Trip Sharing UI)
+
+**1.1 Personal Stats Page (`/personal-stats`)**
+- Owner: Mouth (frontend) + Data (backend if needed)
+- Aggregate all ride logs across trips
+- Display: total rides, total parks, average wait time, favorite attraction, most-visited park
+- Show ride distribution by park; top 5 most-ridden attractions
+- Add date range filter
+- Components: StatsSummary, RideDistribution, TopAttractions, DateRangeFilter
+
+**1.2 Trip Sharing UI**
+- Owner: Mouth (frontend)
+- Add "Share" button to trip detail page
+- Modal with: copy-to-clipboard, "Make Shareable" toggle, social card preview
+- Improve public trip view (`/trips/shared/[shareId]`)
+- Components: ShareModal, PublicTripView
+
+**1.3 Time Saved Stat** (optional for MVP)
+- Owner: Data; Defer to Phase 2 if time tight
+
+#### Prioritized Work Breakdown
+
+| # | Item | Owner | Effort | Sprint |
+|---|------|-------|--------|--------|
+| 1 | Stats aggregation logic (client-side) | Data | 2h | A |
+| 2 | Personal stats page UI | Mouth | 4h | A |
+| 3 | Share button + modal | Mouth | 3h | A |
+| 4 | Public trip view polish | Mouth | 2h | A |
+| 5 | Date range filter | Mouth | 2h | A |
+| 6 | Testing (stats, sharing) | Stef | 4h | A |
+
+**MVP Total Effort:** ~17 hours
+
+#### Firestore Schema Impact
+
+No new collections needed. Leverage existing:
+- `users/{uid}/rideLogs` — all ride history
+- `users/{uid}/trips` — all trips with denormalized stats
+- `sharedTrips/{shareId}` — share index
+
+#### Security & Privacy
+
+- Ride logs stay private to user
+- Trips stay private by default
+- Sharing is opt-in
+- Stats page behind auth; public trip view uses existing lookup
+
+#### Testing Strategy (Stef)
+
+- Unit tests for stats aggregation
+- Integration test: add 5 rides across 2 trips, verify stats roll up
+- E2E: Share a trip, open public link, verify data visible
+- E2E: Toggle share on/off, verify shareId created/deleted
+
+#### Open Questions for Devin
+
+1. Time Saved calculation — should we compute vs. crowd average? (Recommend: Defer to Phase 2)
+2. Public Trip social cards — og:meta tags for Twitter/Facebook? (Recommend: Defer)
+3. Achievements/Badges — specific milestones to celebrate? (Recommend: Defer, gather feedback)
+
 ---
 
 ## Governance
