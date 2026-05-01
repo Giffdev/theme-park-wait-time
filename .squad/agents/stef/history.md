@@ -64,9 +64,17 @@ Writing comprehensive test suite for stats aggregation + share modal:
 
 ## Current Status
 
-✅ 309+ tests passing  
+✅ 354+ tests passing (486 passing in full suite; 14 pre-existing failures in parks tests)
 ✅ All Phase 1–2 features covered by contracts  
 ✅ Playwright E2E infrastructure ready  
-🔄 Sprint A testing in-progress
+✅ Sprint A testing complete (career-stats + ShareModal)
 
 *Full history: see history-archive-2026-05-01T18-28-49Z.md*
+
+## Learnings
+
+- `computeCareerStats` is a pure function — no Firebase mocking needed, tests are fast (~11ms for 25 tests)
+- ShareModal uses `role="switch"` with `aria-checked` — good accessibility pattern, testable via RTL's `getByRole('switch')`
+- The backdrop div uses `aria-hidden="true"` but no ARIA role; query it via DOM selector not role queries
+- Pre-existing test failures in parks-listing/park-detail (12+ tests) due to unimplemented schedule mock (`scheduleRes.json is not a function`) — not caused by Sprint A changes
+- Career stats handles ties via insertion order (first-encountered wins in Object.entries iteration) — deterministic but not alphabetically stable
