@@ -172,3 +172,22 @@
 - Updated `trip-service.ts` with `getParkById` backfill in `updateTripStats` and `getTrips`
 - Park drill-down page now sorts parks alphabetically when names missing
 
+
+## Sprint Complete: Auto-Refresh (2026-05-01)
+
+**Decisions:** D29–D31 (Progressive loading, attractionClosed field)
+
+**Pages Updated:**
+- Park detail page: Wired useAutoRefresh for wait times (2min threshold) + schedule (30min)
+- Parks list page: Wired useAutoRefresh for park list (10min threshold)
+- Calendar page: Wired useAutoRefresh for crowd data (1hr threshold)
+- Trips page: Wired useAutoRefresh for trip list (5min threshold)
+
+**UI Enhancements:**
+- Added subtle green pulse indicator on refresh icon when background refresh active
+- Refined progressive loading: Phase 1 instant (park+attractions), Phase 2 overlay (wait times), Phase 3 silent (forecast)
+- Fixed false "closed" banner flash during Phase 2 loading by using UNKNOWN status default
+
+**Test Results:** Build passes TypeScript, no regressions, 4 pages verified
+
+**Related Decisions:** D27 (architecture), D29 (attractionClosed), D30 (progressive loading), D31 (status fallback)

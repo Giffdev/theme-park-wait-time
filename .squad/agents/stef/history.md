@@ -157,6 +157,12 @@
   - `tests/api/crowd-level-computation.test.ts` — 17 tests: threshold unit tests, null handling, closed parks, all-same-level edge case, greedy assignment
   - `tests/components/crowd-calendar.test.tsx` — 24 tests: FamilySelector, CalendarDayCell (bars + colors + toggle filtering), BestPlanBanner, MiniMonth, full page integration (family switch fetches, park toggle hides, mini month navigates)
 - **2026-04-29:** These are contract tests with inline stubs. When Chunk/Mouth land the real components, swap the stubs for real imports — same `data-testid` attributes, same props, same behavior.
+- **2026-05-01:** Auto-refresh hook tests written (test-first from Mikey's architecture spec). 27 tests across 2 files — all passing against Data's implementation which already landed.
+- **2026-05-01:** `useAutoRefresh` treats never-refreshed data (lastRefreshedAt=null) as Infinity age — always triggers on first visibility return. Tests that assert "fresh" behavior must call forceRefresh first to establish a baseline timestamp.
+- **2026-05-01:** `useAutoRefresh.forceRefresh()` is guarded by `enabled` flag — unlike the spec's implication that forceRefresh bypasses staleness only, it also respects enabled. This is a design choice by Data (prevents refresh during loading states).
+- **2026-05-01:** Test files created:
+  - `src/hooks/__tests__/useVisibility.test.ts` — 8 tests: visible/hidden events, debounce timing, custom debounceMs, iOS focus fallback, listener cleanup
+  - `src/hooks/__tests__/useAutoRefresh.test.ts` — 19 tests: stale/fresh detection, enabled flag, all 5 threshold levels (stale+fresh), in-flight guard, isBackgroundRefreshing state, error silence, forceRefresh
 
 ## Playwright E2E — Critical UI Flow Tests (2026-04-30)
 
@@ -174,3 +180,25 @@
   - `e2e/park-page-loading.spec.ts` — 4 tests: skeleton visible, attractions render in time, no timeout errors, graceful API failure
   - `e2e/fixtures/park-data.ts` — mock park/attractions/wait-times/schedule data
   - `e2e/fixtures/api-handlers.ts` — reusable route interception helpers
+
+## Sprint Complete: Auto-Refresh (2026-05-01)
+
+**Decision:** D32 Playwright E2E — Chromium-Only + Mocked Backend
+
+**Test Suite:**
+- 8 tests for useVisibility hook: visibility change detection, iOS focus fallback, debounce logic, cleanup
+- 19 tests for useAutoRefresh hook: staleness threshold checks, background refresh trigger, silent error handling, in-flight dedup, per-page timing
+
+**Total Tests:** 27 (all passing) using Vitest + jsdom environment
+
+**Key Test Coverage:**
+- Visibility state transitions (visible→hidden→visible)
+- Staleness calculation (now vs lastRefreshed timestamp)
+- Multiple pages with different thresholds simultaneously
+- iOS Safari edge case (focus event as visibility fallback)
+- Error suppression (refresh failure doesn't crash)
+- Debounce prevents rapid refresh hammering
+
+**Build Status:** ✅ All tests passing, zero failures, no regressions
+
+**Related Decisions:** D32 (E2E architecture), D27 (auto-refresh feature)

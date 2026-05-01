@@ -229,3 +229,42 @@ All tests pass (vitest).
 - When parks in timeline have no names (empty `parkNames` array), fallback to alphabetical sort by parkId after applying `getParkById` registry lookup. Ensures consistent ordering even with incomplete data.
 
 **Key pattern applied:** `log.parkName || trip.parkNames[index] || getParkById(parkId) || 'Unknown'` — three-level fallback for any displayed park name.
+
+## Recent Work (2026-05-01T09:47:02-07:00)
+
+### Stale Refresh Bug Fix + Auto-Refresh Hooks
+
+**Root cause of stale data on refresh:**
+The `/api/wait-times` route handler was being cached at multiple levels:
+1. No `export const dynamic = 'force-dynamic'` — Next.js/Vercel could cache the route response at the edge (the internal `{ next: { revalidate: 60 } }` fetch hint contributed to this)
+2. No `Cache-Control: no-store` response header — browsers could serve cached 200 responses
+3. Client `fetch()` in `handleRefresh` had no `cache: 'no-store'` option
+
+Result: user clicks refresh → browser/edge serves cached response → API never re-runs → Firestore data stays stale → "updated as of 3:16 PM" persists.
+
+**Fix applied (3 layers):**
+- `src/app/api/wait-times/route.ts`: Added `export const dynamic = 'force-dynamic'` + `Cache-Control: no-store, max-age=0` on response
+- `src/app/parks/[parkId]/page.tsx`: Added `cache: 'no-store'` to both the refresh fetch and the schedule fetch
+
+**New hooks built (per Mikey's architecture):**
+- `src/hooks/useVisibility.ts` — Page Visibility API + iOS Safari blur/focus fallback + 5s debounce
+- `src/hooks/useAutoRefresh.ts` — Staleness-aware refresh with silent background execution, in-flight dedup, error silence
+
+## Sprint Complete: Auto-Refresh (2026-05-01)
+
+**Decision:** D28 Force-Dynamic Wait Times API + Cache-Busting Client Fetches (Implemented)
+
+**Root Cause Fixed:** Triple-layer caching bug from previous session — Vercel edge cached responses, browser cached HTTP, client fetch lacked no-store directive.
+
+**Implementation:**
+- `export const dynamic = 'force-dynamic'` on /api/wait-times route (ensures Vercel never caches handler response)
+- `Cache-Control: no-store, max-age=0` response header (prevents browser/CDN caching)
+- `cache: 'no-store'` on all volatile data fetches
+
+**Hooks Implemented:**
+- `useVisibility.ts` — Low-level visibility detection with iOS Safari fallback
+- `useAutoRefresh.ts` — Full orchestrator with staleness thresholds, silent background refresh, error suppression
+
+**Test Coverage:** 19 useAutoRefresh unit tests (all passing) covering staleness logic, debounce, in-flight dedup, iOS events
+
+**Related Decisions:** D28 (cache-busting), D27 (overall architecture)

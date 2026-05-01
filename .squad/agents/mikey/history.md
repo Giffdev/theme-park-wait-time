@@ -93,3 +93,30 @@
 - **Key architecture note:** parkNames flows from static registry (`getParkById`) → ride log → trip stats → UI display. Any service writing to Firestore must backfill registry data when document field is empty. No read-path component can assume `parkNames` is populated.
 - **Fallback chain pattern:** `log.field || parentDocument.field || registryLookup || 'Unknown'` — always three levels deep minimum.
 - **Decision files merged:** Park name fallback strategy, background refresh flag pattern, legacy data fallback approach.
+
+### 2026-05-01 — Auto-Refresh on Return Architecture
+- **Decision file:** `.squad/decisions/inbox/mikey-auto-refresh-architecture.md`
+- **Approach:** Custom `useAutoRefresh` + `useVisibility` hooks. No SWR/React Query — Firestore-first data layer doesn't benefit from REST-caching libraries. Total solution is ~80 lines.
+- **Key pattern:** Page Visibility API + `focus` event (iOS fallback) → staleness check → silent background fetch → seamless state update. No spinners on return.
+- **Staleness thresholds:** Wait times = 2 min, park schedule = 30 min, crowd calendar = 1 hr, trips = 5 min, park list = 10 min, attractions = never (static).
+- **Behavior rules:** 5s debounce on rapid tab switches; no double-fire during manual refresh; errors silenced (console only); iOS Safari fallback via `focus` event.
+- **Current data fetching pattern (discovered):** All pages use direct `getCollection`/`getDocument` Firestore calls in local `useState`. No shared data cache. Only shared state is AuthContext. Park detail page already has `dataFreshness` staleness indicator (10-min threshold).
+- **Key files to create:** `src/hooks/useAutoRefresh.ts`, `src/hooks/useVisibility.ts`
+- **Key files to modify:** `src/app/parks/[parkId]/page.tsx`, `src/app/parks/page.tsx`, `src/app/calendar/page.tsx`
+- **Assignments:** Data builds hooks, Mouth wires into pages, Stef tests. ~1 day total.
+
+## Sprint Complete: Auto-Refresh (2026-05-01)
+
+**Architecture Decision:** Implemented custom useAutoRefresh hook + useVisibility API wrapper. No external caching library (SWR/React Query). Per-page staleness thresholds: wait times 2min, schedule 30min, calendar 1hr, trips 5min.
+
+**Scope:** Full auto-refresh system deployed across 4 pages.
+
+**Team Work:**
+- **Mikey:** Designed architecture, captured decision 27
+- **Data:** Fixed triple-layer caching bug (Vercel edge + browser HTTP + client), built hooks  
+- **Mouth:** Wired into parks/calendar/trips pages, added green pulse indicator
+- **Stef:** 27 unit tests (8 useVisibility + 19 useAutoRefresh), all passing
+
+**Build Status:** ✅ TypeScript clean, ✅ All tests passing, ✅ 4 pages updated, ✅ No regressions
+
+**Related Decisions:** D27 (auto-refresh), D28 (cache-busting), D29–D31 (data model, progressive loading), D32 (E2E tests), D33 (PRD)

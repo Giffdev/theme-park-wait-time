@@ -1082,6 +1082,245 @@ Only include parks that exist in the ThemeParks Wiki API. If a park (like Oceans
 
 ---
 
+### 27. Automatic Data Refresh on Return
+
+**Author:** Mikey (Lead/Architect)  
+**Date:** 2026-05-01  
+**Status:** Proposed  
+**Scope:** Client-side data freshness strategy
+
+#### Context
+
+Users leave the app open in a tab while at theme parks. When they switch back, data may be minutes or hours stale. Currently, the only way to get fresh data is clicking the refresh button on the park detail page. This is a bad UX for people checking wait times every 15 minutes while walking between rides.
+
+#### Decision: Custom Lightweight Hook (No Library)
+
+**We will NOT add SWR, React Query, or TanStack Query.**
+
+Rationale:
+1. Our data layer is Firestore-first (one-time reads via `getCollection`, real-time via `onSnapshot` for timer). These libraries are designed for REST/GraphQL endpoints.
+2. We already have zero shared state for fetched data — each page owns its own state. Adding a global cache library introduces complexity disproportionate to our needs.
+3. Our app is a Next.js App Router project. Server components handle static data. The volatile data (wait times) lives in a single page component.
+4. The entire refresh logic is ~80 lines. A library adds 15KB+ of JS for a problem we can solve in one hook.
+
+**Approach: `useAutoRefresh` hook + Page Visibility API + staleness-aware fetch wrapper.**
+
+#### Staleness Thresholds by Data Type
+
+| Data Type | Threshold | Rationale |
+|-----------|-----------|-----------|
+| Wait times | **2 minutes** | Core value prop. Ride waits change fast. |
+| Park schedule/hours | **30 minutes** | Changes at most twice per day (park opens/closes). |
+| Crowd calendar | **1 hour** | Predictions update daily, stale by definition. |
+| User trips | **5 minutes** | Only stale if user modified on another device. |
+| Park list (index) | **10 minutes** | Rarely changes. Hours summary is the volatile part. |
+| Attractions list | **Never auto-refresh** | Static data. Only changes on admin seed. |
+
+#### Assignments
+
+| Who | What | Effort |
+|-----|------|--------|
+| **Data** | Build `useAutoRefresh.ts` + `useVisibility.ts` hooks | 2-3 hours |
+| **Mouth** | Wire hooks into park pages, add subtle refresh indicator | 1-2 hours |
+| **Stef** | Unit tests for hook logic (threshold math, debounce, visibility events) | 1-2 hours |
+| **Mikey** | Review PR, validate mobile browser behavior | 30 min |
+
+---
+
+### 28. Force-Dynamic Wait Times API + Cache-Busting Client Fetches
+
+**Author:** Data (Backend Dev)  
+**Date:** 2026-05-01  
+**Status:** Implemented  
+**Scope:** Data freshness / API caching
+
+#### Context
+
+Devin reported that clicking the refresh button on the park detail page showed stale data — timestamp stuck at "3:16 PM" even after refresh. Root cause: the `/api/wait-times` GET route was being cached at the Vercel edge (due to internal `{ next: { revalidate: 60 } }` fetch hint) and in the browser (no `Cache-Control` header, no `cache: 'no-store'` on client fetch).
+
+#### Decision
+
+1. **`export const dynamic = 'force-dynamic'`** on `/api/wait-times` route — ensures Vercel never caches the route handler response.
+2. **`Cache-Control: no-store, max-age=0`** response header — ensures browsers and CDNs don't cache.
+3. **`cache: 'no-store'`** on all client-side fetches to our own API routes that return volatile data.
+
+#### Impact
+
+- Refresh button now always triggers a real server-side scrape → Firestore write → fresh client read
+- Slightly more serverless invocations on Vercel (no edge caching), but this is correct behavior for real-time data
+- Pattern to follow: any API route returning volatile data should use `dynamic = 'force-dynamic'` + `no-store`
+
+---
+
+### 29. Wait Time Data Model — attractionClosed field
+
+**Author:** Mouth (Frontend Dev)  
+**Date:** 2026-04-30  
+**Status:** Implemented
+
+#### Context
+
+Redesigning wait time input UX required distinguishing between: unknown wait (null), no wait/walk-on (0), actual timed wait (N minutes), and attraction closed.
+
+#### Decision
+
+Added `attractionClosed: boolean` field to `RideLog` type rather than using a sentinel value (like -1) for `waitTimeMinutes`.
+
+**Rationale:**
+- Clean semantic separation — `waitTimeMinutes` stays numeric/null as before
+- No risk of sentinel values leaking into calculations/aggregations
+- `attractionClosed: true` + `waitTimeMinutes: null` = closed
+- `waitTimeMinutes: 0` = walk-on (no wait)
+- `waitTimeMinutes: null` + `attractionClosed: false` = unknown
+- Backward compatible — existing logs without field default to `false`
+
+#### Impact
+
+- `RideLog` type in `src/types/ride-log.ts` — new required field
+- `RideLogUpdateData` includes `attractionClosed`
+- All log creation call sites updated
+- Display logic in `RideLogEntry` handles new states
+- Firestore docs without the field are treated as `attractionClosed: false`
+
+---
+
+### 30. Progressive Loading for Park Detail Page
+
+**Date:** 2026-04-30T13:53:38.718-07:00  
+**Author:** Mouth (Frontend Dev)  
+**Status:** Implemented
+
+#### Context
+
+The park drill-down page (`/parks/[parkId]`) blocked ALL rendering until park info, attractions, wait times, schedule, AND a potential 30s forecast refresh all completed serially. Users saw a blank screen for 3-10+ seconds.
+
+#### Decision
+
+Implemented 3-phase progressive loading:
+
+1. **Phase 1 (instant):** `fetchCore` loads park + attractions → sets `loading=false` immediately. User sees the attraction list.
+2. **Phase 2 (overlay):** `fetchWaitTimes` loads wait times + schedule in parallel → merges into already-visible list. Stats cards show shimmer skeletons until ready.
+3. **Phase 3 (silent):** Forecast refresh is fire-and-forget. No await, no full data reload. On success, only re-fetches wait times.
+
+#### Impact
+
+- Perceived load time drops from 3-10s to <500ms (Phase 1 is a single Firestore query)
+- No more double `fetchData()` calls on initial load
+- Forecast refresh never blocks UI
+
+---
+
+### 31. Progressive Loading Status Fallback
+
+**Author:** Mouth (Frontend Dev)  
+**Date:** 2026-04-30T14:02:12-07:00  
+**Status:** Implemented
+
+#### Context
+
+The progressive loading change split data fetching into Phase 1 (park + attractions) and Phase 2 (wait times + schedule). During Phase 2, all attractions had `status: undefined` which defaulted to `'CLOSED'`, causing a false "park is currently closed" banner on every initial page load.
+
+#### Decision
+
+- When `waitTimesLoading` is true, default attraction status to `'UNKNOWN'` instead of `'CLOSED'`
+- Guard the closed-park banner with `!waitTimesLoading` — only show it once we know for sure
+- Show shimmer placeholders for schedule bar and operating status badge during Phase 2
+
+#### Impact
+
+- Park detail page no longer flashes "closed" banner on load
+- Schedule area shows a shimmer bar instead of blank space while loading
+- No change to final rendered state once data arrives
+
+---
+
+### 32. Playwright E2E — Chromium-Only + Mocked Backend
+
+**Author:** Stef (Tester)  
+**Date:** 2026-04-30  
+**Status:** Proposed
+
+#### Context
+
+Production keeps shipping UI regressions (duplicate elements, broken filters, overlapping modals) because there was no functional E2E testing of the actual rendered UI.
+
+#### Decisions
+
+1. **Chromium-only for speed** — dropped Firefox/WebKit/mobile-chrome from `playwright.config.ts`. These can be added back for pre-release cross-browser validation, but daily dev runs should be fast.
+
+2. **Mock all backends via `page.route()`** — E2E tests intercept Firestore REST, Firebase Auth, and `/api/*` routes. This means tests are deterministic, fast, and don't need Firebase emulators running. The emulator-based tests (integration layer) remain separate.
+
+3. **Fixture-driven** — All mock data lives in `e2e/fixtures/park-data.ts`. Tests import fixtures directly rather than inlining data. This makes it easy to add parks/attractions for new test scenarios.
+
+4. **Tests target known production bugs** — Every test maps to a bug that actually shipped. If the test would have caught it, it belongs here.
+
+#### Impact
+
+- `npm run test:e2e` runs 13 critical flow tests in ~10-15 seconds (chromium only, mocked backend)
+- `npm run test:e2e:ui` opens the interactive Playwright UI for debugging
+- No new infrastructure dependencies (no emulators, no test databases)
+
+---
+
+### 33. PRD Created — Current State Documented
+
+**Author:** Mikey (Lead / Architect)  
+**Date:** 2026-04-30  
+**Status:** Accepted  
+**Scope:** Documentation / squad knowledge base
+
+#### Summary
+
+A comprehensive Product Requirements Document (PRD) has been authored and saved to `docs/PRD.md`. This document now serves as the squad's canonical source of truth for what ParkFlow is, what it does, and how it is built.
+
+#### What Was Documented
+
+The PRD captures the full current state of the application as of 2026-04-30, including:
+
+- **Product overview and design principles**
+- **User personas** (Day-Tripper, Annual Pass Holder, Vacation Planner)
+- **Complete feature inventory** across 15 feature domains with build status per feature
+- **Firestore data model** with full document shapes for RideLog, DiningLog, Trip, ActiveTimer, and CrowdReport
+- **API surface** — all 8 API routes with auth requirements
+- **Full tech stack** — Next.js 15, React 19, TypeScript 5.8, Firebase 11.6, Tailwind CSS 4, Vercel (iad1)
+- **Component reference** — all major components grouped by domain
+- **Current limitations** — Cron not wired, no Google sign-in, no ISR, offline gaps, synthetic crowd data
+- **Future opportunities** — architectural affordances the codebase is positioned to support
+
+#### Impact
+
+- All squad agents should treat `docs/PRD.md` as the authoritative feature reference going forward
+- `.squad/identity/now.md` updated to reflect sprint completion and PRD creation
+- Future sessions should update the PRD when features are added, changed, or removed
+
+---
+
+### D8: User directive — 2026-04-30T13:35:55Z
+
+**By:** Devin Sinha (via Copilot)
+
+When refreshing wait times, the card/ride wait times are the important things to refresh. If someone is on a drill down for a particular park, the refresh should prioritize that particular park's data. Don't block the response on non-critical work (archival, aggregation).
+
+### D9: User directive — 2026-04-30T13:49:46Z
+
+**By:** devsin (via Copilot)
+
+Every UI change MUST have functional testing before deploy. Two gates required: (1) Playwright E2E tests that click through the actual flows, and (2) Stef (Tester) must verify by walking through the UI as a real user would before any deploy is approved. No more "it builds so ship it."
+
+### D10: User directive — 2026-04-30T14:15:06Z
+
+**By:** devsin (via Copilot)
+
+When logging a ride from a trip drill-down page where a park is already indicated for today's date, the park picker should default to that park. The user shouldn't have to search the list each time — smart default based on context, but still changeable.
+
+### D11: User directive — 2026-04-30T14:21:49Z
+
+**By:** devsin (via Copilot)
+
+When a trip is deleted, all logged rides/attractions associated with that trip should also be deleted (cascade delete).
+
+---
+
 ## Governance
 
 - All meaningful changes require team consensus
