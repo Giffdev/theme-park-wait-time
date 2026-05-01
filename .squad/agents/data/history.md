@@ -2,185 +2,53 @@
 
 ## Project Context
 
-- **Project:** theme-park-wait-times — A platform for theme park visitors to track ride wait times, log visits, plan trips with crowd calendars, and crowd-source real-time wait data.
-- **Stack:** React/Next.js, TypeScript, Firebase (Firestore, Auth, Security Rules, Cloud Functions), Vercel
-- **User:** Devin Sinha
-- **Key concern:** Database structure for user accounts, public vs private data separation. Crowd calendars and wait times should be public; user ride logs and profiles should be private.
-- **Deployment pattern:** Similar to Devin's arkham-horror-tracker and unmatched apps (Firebase + Vercel).
+- **Project:** theme-park-wait-times — Platform for tracking ride wait times, logging visits, crowd calendars, and crowd-sourced data.
+- **Stack:** React/Next.js, TypeScript, Firebase (Firestore, Auth, Security Rules), Vercel
+- **Architecture:** Public data (parks, attractions, wait times, calendars) vs private (users, trips, ride logs)
 
-*Detailed history of early work (2026-04-28 through mid-2026-04-29) archived in history-archive.md.*
+*Detailed early work archived in history-archive-20260501.md*
 
-## Recent Work Summary (2026-04-29 onward)
+## Recent Sprints
 
-| Date Range | Sprint | Status | Key Deliverables |
-|---|---|---|---|
-| 2026-04-29 | ParkFlow Brand + Schedule API | ✅ Shipped | Mobile nav restructure, `/api/parks/[slug]/schedule`, `/api/park-hours`, seed script generalization |
-| 2026-04-29 | Forecast System Phase 1 | ✅ Shipped | Blending logic, aggregate sourcing, crowd calendar historical data, confidence thresholds |
-| 2026-04-30 | Stale Data + Auto-Refresh | ✅ Shipped | Triple-layer cache fix, `useAutoRefresh` hook, `useVisibility` hook, 19 unit tests |
-| 2026-05-01 | API 500 Debug + Slug Resolution | ✅ Fixed | Slug-to-UUID resolution in wait-times route, endpoint accepts both formats, all 15 tests pass |
+| Sprint | Status | Deliverables |
+|---|---|---|
+| ParkFlow Brand + Schedule API | ✅ Shipped | `/api/parks/[slug]/schedule`, `/api/park-hours`, mobile nav, seed script multi-destination |
+| Forecast System Phase 1 | ✅ Shipped | `resolveForecast()`, confidence thresholds, historical aggregates |
+| Stale Data + Auto-Refresh | ✅ Shipped | Triple-layer cache fix, hooks, 19 unit tests |
+| Slug Resolution Debug | ✅ Fixed | Wait-times route accepts slug/UUID, 15 tests pass |
 
----
+## Key Contributions
 
-**Orchestration:** ParkFlow Rename + Parks Page Redesign  
-**Status:** ✅ Complete. Deployed to production.
+**Schedule APIs:**
+- `/api/parks/[slug]/schedule` — single park, slug→UUID lookup, 5-min cache
+- `/api/park-hours` — batch endpoint, graceful degradation, minimal payload (slug, name, timezone, status, hours)
 
-### Your Contributions
+**Forecast Blending:**
+- `resolveForecast()` — live > historical > none, confidence = min(samples/50, 1)
+- Threshold: ≥15 samples, ≥3 per hour, public read, server-only write
 
-1. **Mobile Nav Item Priority**
-   - Restructured `AuthNavMobile` in `src/components/AuthNav.tsx` with conditional rendering
-   - Logged-in nav (5 items): Home, Parks, My Rides, Trips, Dashboard
-   - Non-logged-in nav (4 items): Home, Parks, Calendar, Sign In
-   - Calendar dropped from logged-in nav (accessible from home/parks, lower priority for at-park users)
-   - My Rides uses ticket icon SVG for visual distinction from Trips (calendar icon)
+**Data Resilience:**
+- Triple-layer cache: Next.js revalidate + CDN + app state
+- Crowd calendar historical fix: reads `forecastAggregates/byDayOfWeek` for non-today dates
+- Graceful degradation on API outages (429/5xx) with stale fallback
 
-2. **Park Schedule API Design**
-   - Implemented `/api/parks/[slug]/schedule` — single-park schedule resolution
-     - Slug→UUID lookup via Firestore, calls ThemeParks Wiki API
-     - Returns today's full schedule entries + computed OPEN/CLOSED status
-   - Implemented `/api/park-hours` — batch endpoint for all parks
-     - Returns minimal payload: slug, name, timezone, status, openingTime, closingTime
-     - Designed for Mouth's parks listing page
-     - Individual park failures don't break full response (graceful degradation)
-     - 5-minute caching on schedule calls
-   - Slug-based routing fully integrated
+**Seed Script Generalization:**
+- Multi-destination config: `SEED_DESTINATIONS` with `keywords`, `parkFilter`, `timezoneOverride`
+- Worlds of Fun: 94 attractions, `America/Chicago` timezone
+- 13 parks × 627 attractions seeded (Orlando + Kansas City)
 
-3. **Seed Script Generalization**
-   - Refactored `scripts/seed-parks.ts` from Orlando-only to multi-destination configuration
-   - `SEED_DESTINATIONS` map with keywords, parkFilter (UUID allowlist), timezoneOverride
-   - Graceful error handling: 404s skip with warning instead of crash
-   - Worlds of Fun: seeded with 94 attractions, timezone `America/Chicago`
-   - Adding new parks now requires config entry only, no structural code changes
+**Architecture Patterns:**
+- Slug-based routing: Firestore queries use slug; resolve to UUID for upstream API
+- Trip/ride-log decoupling: independent try/catch, ride logs supplementary
+- Park registration: `DESTINATION_FAMILIES` → `park-registry.ts` for slug↔UUID mapping
+- Firestore indexes: `parks.slug`, `attractions.slug`, composite (rideLogs: tripId+rodeAt)
 
-4. **Separate Trip and Ride Log Fetches**
-   - Decoupled trip + ride logs fetch in `src/app/trips/[tripId]/page.tsx`
-   - Independent try/catch blocks prevent ride log errors from blocking trip display
-   - Ride logs are supplementary; trip is primary
-   - Added composite index to `firestore.indexes.json`: `tripId` ASC + `rodeAt` DESC
+## Status
 
-### Decisions Processed
-
-- Decision: Park Schedule API Design
-- Decision: Seed Script Generalized to Multi-Destination
-- Decision: Separate Trip and Ride Log Fetches
-- Decision: Mobile Nav Item Priority (Logged-In Users)
-
-### Tests & QA
-
-✅ All tests passing  
-✅ No breaking changes to existing API contracts  
-✅ Deployed to production alongside Mouth team
-
-### Handoff Notes
-
-- **All agents:** To add new parks, edit `SEED_DESTINATIONS` in `scripts/seed-parks.ts` and run `npx tsx scripts/seed-parks.ts`
-- **Firestore:** Composite index on `rideLogs` required for trip detail page query to function
-- **Frontend:** `/api/park-hours` endpoint contract documented in ParkCard interface
-- **Caching:** 5-minute revalidate on park schedule API calls
-
-### Dependencies
-
-- Requires Firestore indexes: `parks.slug`, `attractions.slug`, composite index on rideLogs (tripId + rodeAt)
-- ThemeParks Wiki API for live schedule data
-
----
-
-## Recent Work (2026-04-29)
-
-### Blended Forecast System — Phase 1
-
-Built forecast resolution logic per Mikey's architecture decision.
-
-**Files Created/Modified:**
-- `src/lib/forecast/blender.ts` — `resolveForecast()` function implements decision logic: live wins, historical fallback at ≥15 totalSamples, confidence = min(totalSamples/50, 1), skips hours with <3 samples. Exports `BlendedForecastResult` interface.
-- `src/types/queue.ts` — Added `ForecastAggregate` and `ForecastMeta` interfaces (Chunk's aggregation module also needs these).
-- `src/app/api/wait-times/route.ts` — Added `blendForecasts()` helper that batch-reads aggregate docs for attractions missing live forecasts (uses `adminDb.getAll()` for efficiency). `formatWaitTimeEntry` now accepts and includes `forecastMeta` field. `forecast` field remains backward-compatible (entries array or null). Historical entries replace null forecasts when available.
-- `firestore.rules` — Added `forecastAggregates/{parkId}/{document=**}` rule: public read, server-only write.
-- Graceful degradation: aggregate read failures fall back to `source: 'none'` with console error. No user-facing errors.
-- TypeScript compiles clean. Next.js build passes.
-
-### Crowd Calendar Historical Fix
-
-Fixed crowd calendar showing empty data for non-today dates. Root cause: `computeFamilyCrowdDays` only read live forecast data from `waitTimes/{parkId}/current` docs which only contain TODAY's hourly forecast. Fix: rewrote function to read historical aggregate data from `forecastAggregates/{parkId}/byDayOfWeek/{dow}/attractions/` for all days in the month. Live data still wins for today. Aggregates require totalSamples ≥ 15 and hourly sampleCount ≥ 3 (matching blender thresholds). Updated `hasRealData` check: if ≥50% of days have data, treat as real (not placeholder). Falls back to `generatePlaceholderData` on cold start. Build passes clean.
-
-## Scribe Batch Update (2026-04-29 21:55:00Z)
-
-**Orchestration:** Blended Forecast System Completion
-
-Successfully shipped forecast blending + crowd calendar historical fix. 11 decisions merged into main decisions.md. All three agents (Chunk, Data, Mouth) delivered core components in parallel.
-
-**Your Contributions to This Batch:**
-- Blending logic: `resolveForecast()` returns live > historical > none with confidence thresholds
-- API response includes `forecastMeta` with source, confidence, dataRange for all attractions
-- Firestore security rules: `forecastAggregates` public read, server-only write
-- Crowd calendar fixed to source from historical aggregates for all days in month
-- No breaking changes — `forecast` field unchanged; metadata in sibling field
-
-**Decisions Processed (18–26):**
-- Blended Forecast Architecture
-- Crowd Calendar Aggregate Sourcing
-- Park Family Calendar UX redesign
-- 4-Tier Crowd Algorithm
-- Park Family Calendar Design Decisions
-- FamilySelector Combobox Implementation
-- Dual Temperature Format (°F/°C)
-- Relative Time Freshness Indicator
-- Home Page Auth-Aware Pattern
-
-**Status:** Batch orchestration complete. Decisions archived. All components integrated. Ready for Phase 2 refinement.
-
-## Scribe Batch Update (2026-04-29 21:55:00Z)
-
-**Orchestration:** Blended Forecast System Completion
-
-Successfully shipped forecast blending + crowd calendar historical fix. 11 decisions merged into main decisions.md. All three agents (Chunk, Data, Mouth) delivered core components in parallel.
-
-**Your Contributions to This Batch:**
-- Blending logic: `resolveForecast()` returns live > historical > none with confidence thresholds
-- API response includes `forecastMeta` with source, confidence, dataRange for all attractions
-- Firestore security rules: `forecastAggregates` public read, server-only write
-- Crowd calendar fixed to source from historical aggregates for all days in month
-- No breaking changes — `forecast` field unchanged; metadata in sibling field
-
-**Decisions Processed (18–26):**
-- Blended Forecast Architecture
-- Crowd Calendar Aggregate Sourcing
-- Park Family Calendar UX redesign
-- 4-Tier Crowd Algorithm
-- Park Family Calendar Design Decisions
-- FamilySelector Combobox Implementation
-- Dual Temperature Format (°F/°C)
-- Relative Time Freshness Indicator
-- Home Page Auth-Aware Pattern
-
-**Status:** Batch orchestration complete. Decisions archived. All components integrated. Ready for Phase 2 refinement.
-
-
-## Recent Work (2026-04-29T15:04:45-07:00)
-
-### Worlds of Fun Park Registration
-
-Added Worlds of Fun (Kansas City) park family to both registries:
-- `src/lib/constants.ts` - Added `worlds-of-fun` entry with parks: Worlds of Fun, Oceans of Fun
-- `src/lib/crowd-calendar/park-families.ts` - Added `worlds-of-fun` entry with slug `wof`, real UUID for Worlds of Fun (`bb731eae-7bd3-4713-bd7b-89d79b031743`), placeholder ID `oceans-of-fun-kc` for water park (not yet in ThemeParks Wiki API)
-- Build passes, deployed to Vercel prod.
-
-## Recent Work (2026-04-29T15:16:06-07:00)
-
-### Seed Script Generalization + Worlds of Fun Seeding
-
-Refactored `scripts/seed-parks.ts` from Orlando-only to a multi-destination architecture:
-- `SEED_DESTINATIONS` config map: each entry has `keywords` (for matching API destinations), optional `parkFilter` (UUID allowlist to exclude water parks not in API), and optional `timezoneOverride`.
-- `fetchJson` now returns `null` on 404 instead of throwing — enables graceful skip for removed parks.
-- Parks that return no data from API are warned and skipped, not crashed.
-- Worlds of Fun seeded: UUID `bb731eae-7bd3-4713-bd7b-89d79b031743`, timezone `America/Chicago`, 94 attractions.
-- Oceans of Fun excluded via `parkFilter` (not in ThemeParks Wiki API).
-- Total: 13 parks, 627 attractions seeded across Orlando + Kansas City.
-
-## Recent Work (2026-04-29T15:23:30-07:00)
-
-### Park Schedule API + Batch Hours Endpoint
-
-Wired up real operating hours from ThemeParks Wiki API:
+✅ All tests passing (15+ suites)  
+✅ Production deployed  
+✅ All endpoints slug-aware  
+✅ Forecast blending integrated
 
 **Files Modified/Created:**
 - `src/app/api/parks/[parkId]/schedule/route.ts` — Replaced placeholder with real implementation. Looks up park by slug in Firestore to get UUID, calls `https://api.themeparks.wiki/v1/entity/{id}/schedule`, returns today's operating hours with timezone. Handles: park not found (404), wiki API down (502), no schedule data (NO_DATA status).
@@ -305,3 +173,19 @@ Result: user clicks refresh → browser/edge serves cached response → API neve
 - Decision: Wait-times API accepts both slugs and UUIDs (implemented, fully tested)
 
 **Next Steps:** Monitor production for any edge cases with slug resolution.
+## Key Patterns & Decisions
+
+- **API slug resolution:** Endpoints accept both slug and UUID formats. Slug-to-UUID lookup via Firestore.
+- **Graceful degradation:** Non-blocking API calls (schedule, hours) don't break responses if data unavailable.
+- **Forecast blending:** esolveForecast() returns live > historical > none with confidence = min(samples/50, 1)
+- **Firestore security rules:** forecastAggregates public read, server-only write. Attractions as park subcollection.
+- **Triple-layer caching:** Next.js revalidate + CloudFlare CDN + app-level state for performance
+- **Seed script generalization:** Multi-destination config with parkFilter allowlists (excludes water parks not in API)
+- **Park registration:** DESTINATION_FAMILIES maps destinations to park groups; park-registry.ts handles slug↔UUID resolution
+
+## Current Status
+
+✅ All tests passing (15+ test suites)  
+✅ Production deployed  
+✅ Seed script supports multi-destination parks  
+✅ Slug resolution working for all endpoints
