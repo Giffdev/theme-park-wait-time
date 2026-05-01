@@ -1530,3 +1530,32 @@ Added an explicit "I don't remember" checkbox below the wait time input in both:
 - `src/app/trips/[tripId]/page.tsx` — Shows "—" for null in trip detail
 - `src/app/trips/shared/[shareId]/page.tsx` — Shows "—" for null in shared view
 
+---
+
+## 2026-05-01
+
+### Decision: Wait-times API accepts both slugs and UUIDs
+
+**Date:** 2026-05-01  
+**Author:** Data  
+**Status:** Implemented (commit 9b62920)
+
+#### Context
+
+The `/api/wait-times?parkId=magic-kingdom` endpoint was returning 500 because the slug was passed directly to the ThemeParks Wiki API, which only accepts entity UUIDs.
+
+#### Decision
+
+The wait-times route now resolves `parkId` before calling the upstream API:
+- If `parkId` is a UUID (regex match), it's used directly.
+- If it's a slug, `getParkBySlug()` from `src/lib/parks/park-registry.ts` resolves it.
+- Unknown slugs return **400** with a descriptive error (not 500).
+
+The response `parks` object is keyed by whatever the caller sent (slug or UUID), but all Firestore writes and upstream API calls use the resolved UUID.
+
+#### Impact
+
+- **Mouth:** Can call the endpoint with either slugs or UUIDs — both work now.
+- **Chunk:** No impact — already uses UUIDs.
+- **Stef:** Tests pass with slug-based `parkId` values.
+

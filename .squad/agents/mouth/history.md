@@ -10,9 +10,17 @@
 
 *Detailed history of Phase 1–3 UI implementation archived in history-archive.md.*
 
----
+## Recent Work Summary (2026-04-29 onward)
 
-## Scribe Batch Update (2026-04-29T22:06:00Z)
+| Date Range | Sprint | Status | Key Deliverables |
+|---|---|---|---|
+| 2026-04-29 | ParkFlow Brand Rename | ✅ Shipped | App rebrand (ParkPulse → ParkFlow), 3-column grid layout, friendly URL slugs, status badges, location data |
+| 2026-04-29 | Forecast + Calendar UX | ✅ Shipped | Forecast label clarity, park family selector, breadcrumbs, favorite parks (localStorage) |
+| 2026-04-30 | Trip Logging Refinement | ✅ Shipped | Trip logging redesign architecture, dining consolidation, unknown wait time pattern, multi-day park carryover |
+| 2026-04-30 | Refresh Flow Integration | ✅ Shipped | `useAutoRefresh` wiring on parks/trips pages, progressive loading phases, status fallback handling |
+| 2026-05-01 | Cache Bug Fix | ✅ Fixed | Added `cache: no-store` to parks list fetch, "last refresh" timestamp now accurate |
+
+---
 
 **Orchestration:** ParkFlow Rename + Parks Page Redesign  
 **Status:** ✅ Complete. Deployed to production.
@@ -191,3 +199,47 @@
 **Test Results:** Build passes TypeScript, no regressions, 4 pages verified
 
 **Related Decisions:** D27 (architecture), D29 (attractionClosed), D30 (progressive loading), D31 (status fallback)
+
+---
+
+## Learnings
+
+### Refresh Flow Architecture (2026-05-01)
+
+- **"Last refresh" timestamp** comes from `fetchedAt` field on Firestore `waitTimes/{parkId}/current` documents - set by the backend scraper, not the frontend.
+- **`useAutoRefresh` hook** only fires on visibility change (tab return after >5s hidden). Does NOT fire on initial page load. It re-reads Firestore (not the scraping API), so it only picks up fresh data if the backend has written it.
+- **"Refresh Data" button** (`handleRefresh`) is the only user action that triggers a live scrape via `/api/wait-times`. Shows error toast on 500.
+- **Stale timestamp is a backend issue** - if `/api/wait-times` returns 500, no new data is written to Firestore, so `fetchedAt` stays at its last successful value. The frontend correctly displays whatever Firestore has.
+- **Caching decision (D-caching):** All client-side fetches to volatile API routes must use `cache: 'no-store'`. Parks list page was missing this on refresh - fixed in commit 4432553.
+
+### Key File Paths for Refresh Flow
+- `src/hooks/useAutoRefresh.ts` - staleness-aware visibility hook
+- `src/hooks/useVisibility.ts` - Page Visibility API wrapper with debounce
+- `src/app/parks/page.tsx` - Parks list (latestFetchedAt derived from max fetchedAt across all parks)
+- `src/app/parks/[parkId]/page.tsx` - Park detail (dataFreshness derived from max fetchedAt in that parks wait times)
+- `src/app/api/wait-times/route.ts` - Backend scrape trigger + force-dynamic + Cache-Control no-store
+
+---
+
+## Team Update (2026-05-01T17:45:00Z)
+
+### Multi-Agent Investigation: API 500 Error & Stale Cache
+
+**Status:** ✅ Both issues resolved
+
+**Issue 1: `/api/wait-times?parkId=magic-kingdom` returning 500 (Data team)**
+- **Root Cause:** Endpoint accepted park slugs but passed them directly to ThemeParks Wiki API, which requires UUIDs
+- **Fix:** Data team added slug-to-UUID resolution via `getParkBySlug()` in wait-times route. Endpoint now accepts both formats.
+- **Impact:** You can continue using slugs for API calls (which align with URL structures). All 15 tests passing.
+- **Commit:** 9b62920
+
+**Issue 2: Frontend stale "last refresh" timestamp (Your investigation)**
+- **Root Cause:** Parks list fetch was being cached, preventing fresh timestamp on each navigation
+- **Fix:** Added `cache: no-store` to fetch in parks listing page (`src/app/parks/page.tsx`)
+- **Impact:** Parks list now shows accurate real-time status
+- **Commit:** 4432553
+
+**Decision Merged:**
+- Decision: Wait-times API accepts both slugs and UUIDs (implemented, fully tested)
+
+**Next Steps:** Monitor production for edge cases with slug resolution and cache behavior.

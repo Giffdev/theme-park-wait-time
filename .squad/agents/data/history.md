@@ -10,7 +10,16 @@
 
 *Detailed history of early work (2026-04-28 through mid-2026-04-29) archived in history-archive.md.*
 
-## Scribe Batch Update (2026-04-29T22:06:00Z)
+## Recent Work Summary (2026-04-29 onward)
+
+| Date Range | Sprint | Status | Key Deliverables |
+|---|---|---|---|
+| 2026-04-29 | ParkFlow Brand + Schedule API | ✅ Shipped | Mobile nav restructure, `/api/parks/[slug]/schedule`, `/api/park-hours`, seed script generalization |
+| 2026-04-29 | Forecast System Phase 1 | ✅ Shipped | Blending logic, aggregate sourcing, crowd calendar historical data, confidence thresholds |
+| 2026-04-30 | Stale Data + Auto-Refresh | ✅ Shipped | Triple-layer cache fix, `useAutoRefresh` hook, `useVisibility` hook, 19 unit tests |
+| 2026-05-01 | API 500 Debug + Slug Resolution | ✅ Fixed | Slug-to-UUID resolution in wait-times route, endpoint accepts both formats, all 15 tests pass |
+
+---
 
 **Orchestration:** ParkFlow Rename + Parks Page Redesign  
 **Status:** ✅ Complete. Deployed to production.
@@ -216,6 +225,9 @@ All tests pass (vitest).
 - Park slug → UUID resolution: Firestore `parks` collection has a `slug` field. Query `where('slug', '==', slug).limit(1)` to resolve.
 - Compound Firestore queries (multiple `where` + `orderBy`) require composite indexes. If the index is missing, the query throws and can cascade-fail other fetches if wrapped in `Promise.all`. Always separate independent fetches so one failure doesn't mask the other.
 - `firestore.indexes.json` is the source of truth for deployed indexes. Always add new composite indexes there when adding compound queries.
+- Vercel CLI deployment (2026-05-01): `npx vercel --prod` works from project root. Spinner animations break terminal buffer capture — pipe to `Out-File` to get final output. Production alias: `https://theme-park-wait-times.vercel.app`. Build region: iad1 (Washington D.C.). Project scope: `giffdevs-projects`.
+- **Wait-times API slug resolution (2026-05-01):** The `/api/wait-times` route previously passed the `parkId` query param directly to ThemeParks Wiki API. The API requires entity UUIDs, not slugs. Fixed by adding `getParkBySlug()` resolution from `src/lib/parks/park-registry.ts`. The endpoint now accepts both slugs (`magic-kingdom`) and UUIDs. Unknown slugs return 400 instead of 500. The response `parks` object is keyed by the original `parkId` the caller sent (slug or UUID), but Firestore writes use the resolved UUID.
+- `src/lib/parks/park-registry.ts` exports `getParkBySlug(slug)` and `getParkById(uuid)` — use these for any slug↔UUID resolution in API routes.
 
 ## Recent Work (2026-04-30T15:07:41-07:00)
 
@@ -268,3 +280,28 @@ Result: user clicks refresh → browser/edge serves cached response → API neve
 **Test Coverage:** 19 useAutoRefresh unit tests (all passing) covering staleness logic, debounce, in-flight dedup, iOS events
 
 **Related Decisions:** D28 (cache-busting), D27 (overall architecture)
+
+---
+
+## Team Update (2026-05-01T17:45:00Z)
+
+### Multi-Agent Investigation: API 500 Error & Stale Cache
+
+**Status:** ✅ Both issues resolved
+
+**Issue 1: `/api/wait-times?parkId=magic-kingdom` returning 500**
+- **Root Cause:** Endpoint accepted park slugs but passed them directly to ThemeParks Wiki API, which requires UUIDs
+- **Fix:** Added slug-to-UUID resolution via `getParkBySlug()` in wait-times route. Endpoint now accepts both formats.
+- **Impact:** Parks listing page can now use slugs for API calls (which already use them for URLs). All 15 tests passing.
+- **Commit:** 9b62920
+
+**Issue 2: Frontend stale "last refresh" timestamp (Mouth team)**
+- **Root Cause:** Parks list fetch was being cached, preventing fresh timestamp on each navigation
+- **Fix:** Added `cache: no-store` to fetch in parks listing page
+- **Impact:** Parks list now shows accurate real-time status
+- **Commit:** 4432553
+
+**Decision Merged:**
+- Decision: Wait-times API accepts both slugs and UUIDs (implemented, fully tested)
+
+**Next Steps:** Monitor production for any edge cases with slug resolution.
