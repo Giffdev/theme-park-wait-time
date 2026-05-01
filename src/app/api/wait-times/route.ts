@@ -6,6 +6,7 @@ import { resolveForecast } from '@/lib/forecast/blender';
 import type { ForecastAggregate, ForecastMeta } from '@/types/queue';
 
 export const maxDuration = 30; // seconds — Vercel serverless function timeout
+export const dynamic = 'force-dynamic'; // Never cache this route — wait times must be fresh
 
 const API_BASE = 'https://api.themeparks.wiki/v1';
 
@@ -334,11 +335,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      fetchedAt: fetchedAt.toDate().toISOString(),
-      stale: isStale,
-      parks: results,
-    });
+    return NextResponse.json(
+      {
+        fetchedAt: fetchedAt.toDate().toISOString(),
+        stale: isStale,
+        parks: results,
+      },
+      {
+        headers: { 'Cache-Control': 'no-store, max-age=0' },
+      }
+    );
   } catch (error) {
     console.error('Wait times API error:', error);
     return NextResponse.json(
