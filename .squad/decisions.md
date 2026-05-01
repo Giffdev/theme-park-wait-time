@@ -1319,6 +1319,18 @@ When logging a ride from a trip drill-down page where a park is already indicate
 
 When a trip is deleted, all logged rides/attractions associated with that trip should also be deleted (cascade delete).
 
+### D12: User directive — 2026-05-01T18:12:02Z
+
+**By:** Devin Sinha (via Copilot)
+
+Document the push & deploy process for Vercel so the team always knows the flow. After a difficult session recovering from a missing git remote, Devin wants this process captured as team knowledge. The team discovered:
+- Git remote `origin` points to `https://github.com/Giffdev/theme-park-wait-time.git`
+- Branch: `master` (tracking `origin/master`)
+- Vercel auto-deploys on push to `master` — no manual `npx vercel --prod` needed
+- Process: commit locally → `git push origin master` → Vercel detects → auto-builds + deploys
+- Verify at: https://theme-park-wait-times.vercel.app
+- Troubleshooting: if `git remote -v` is empty, re-add the remote; if `npx vercel --prod` hangs, use git push instead
+
 ---
 
 ## Governance
