@@ -42,3 +42,13 @@
 | D13 | Personal Stats Dashboard + Trip Sharing Scope | PROPOSED |
 
 *Full history: see history-archive-2026-05-01T18-28-49Z.md*
+
+---
+## 2026-05-01 Team Spawn
+
+Team session initiated with background agents. Decisions merged:
+- Park Hours & Closures Data Strategy (P0) — mikey
+- Expandable Calendar UX Paradigm — mouth
+- Mobile-First Directive applied (user requirement)
+
+Tester (stef) reported: 45 tests written (25 career-stats, 20 ShareModal), all passing.

@@ -78,3 +78,13 @@ Writing comprehensive test suite for stats aggregation + share modal:
 - The backdrop div uses `aria-hidden="true"` but no ARIA role; query it via DOM selector not role queries
 - Pre-existing test failures in parks-listing/park-detail (12+ tests) due to unimplemented schedule mock (`scheduleRes.json is not a function`) — not caused by Sprint A changes
 - Career stats handles ties via insertion order (first-encountered wins in Object.entries iteration) — deterministic but not alphabetically stable
+
+---
+## 2026-05-01 Team Spawn
+
+Team session initiated with background agents. Decisions merged:
+- Park Hours & Closures Data Strategy (P0) — mikey
+- Expandable Calendar UX Paradigm — mouth
+- Mobile-First Directive applied (user requirement)
+
+Tester (stef) reported: 45 tests written (25 career-stats, 20 ShareModal), all passing.

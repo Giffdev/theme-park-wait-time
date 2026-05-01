@@ -1,6 +1,39 @@
 # Squad Decisions
 
 ## Active Decisions
+### 4. Park Hours & Closures Data Strategy
+
+**Architect:** Mikey  
+**Date:** 2026-05-01  
+**Status:** Proposed  
+**Priority:** P0 (blocking P1-P3 work)
+
+[Full proposal in mikey-park-hours-architecture.md — integrating park schedule/closure data into crowd calendar pipeline]
+
+---
+
+### 5. Expandable Calendar UX Paradigm
+
+**Designer:** Mouth (Frontend)  
+**Date:** 2026-05-01  
+**Status:** Proposed
+
+[Full proposal in mouth-calendar-ux-design.md — mobile-first expandable calendar design for crowd visualization]
+
+---
+
+### 6. Mobile-First Directive
+
+**By:** Devin Sinha (via Copilot)  
+**Date:** 2026-05-01  
+**Status:** Team Requirement
+
+**What:** The experience must look good on mobile just as well as larger computer screens. Mobile-first responsive design is a hard requirement for all features, especially the crowd calendar expansion.
+
+**Why:** User request — captured for team memory
+
+---
+
 
 ### 1. Firebase Infrastructure Patterns
 
@@ -1417,3 +1450,4 @@ No new collections needed. Leverage existing:
 - All meaningful changes require team consensus
 - Document architectural decisions here
 - Keep history focused on work, decisions focused on direction
+
