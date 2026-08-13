@@ -6,8 +6,7 @@ import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { getCollection } from '@/lib/firebase/firestore';
 import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
 import { getLocationByDestinationId, formatLocation } from '@/lib/parks/park-locations';
-
-const FAVORITES_STORAGE_KEY = 'parkflow-favorite-families';
+import { loadFavoriteFamilyIds, saveFavoriteFamilyIds } from '@/lib/parks/favorite-families';
 
 /** Map family names to familyIds and vice versa for localStorage persistence */
 const FAMILY_NAME_TO_ID: Record<string, string> = {};
@@ -77,8 +76,11 @@ function resolveLocation(park: { id: string; destinationId?: string }): string |
 export default function ParksPage() {
   const [parks, setParks] = useState<Park[]>([]);
   const [loading, setLoading] = useState(true);
+  const [parksError, setParksError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [waitMetricsLoading, setWaitMetricsLoading] = useState(true);
+  const [waitDataFailures, setWaitDataFailures] = useState(0);
   const [waitMetrics, setWaitMetrics] = useState<Record<string, { average: number | null; activeRideCount: number }>>({});
   const [parkHours, setParkHours] = useState<Record<string, ParkHoursEntry>>({});
   const [latestFetchedAt, setLatestFetchedAt] = useState<number | null>(null);
@@ -94,11 +96,7 @@ export default function ParksPage() {
   // Initialize favorites from localStorage
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) setFavorites(parsed);
-      }
+      setFavorites(loadFavoriteFamilyIds(localStorage));
     } catch {
       // Ignore parse errors
     }
@@ -111,7 +109,7 @@ export default function ParksPage() {
         ? prev.filter((id) => id !== familyId)
         : [...prev, familyId];
       try {
-        localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(next));
+        saveFavoriteFamilyIds(localStorage, next);
       } catch {
         // Storage full or unavailable
       }
@@ -170,8 +168,11 @@ export default function ParksPage() {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    setWaitMetricsLoading(true);
+    setWaitDataFailures(0);
 
     let maxTimestamp = 0;
+    let failureCount = 0;
 
     for (let i = 0; i < parkList.length; i += BATCH_SIZE) {
       if (controller.signal.aborted) return;
@@ -219,17 +220,21 @@ export default function ParksPage() {
           // Failed fetch — mark as no data
           const idx = batchResults.indexOf(result);
           batchMetrics[batch[idx].id] = { average: null, activeRideCount: 0 };
+          failureCount += 1;
         }
       }
 
       setWaitMetrics((prev) => ({ ...prev, ...batchMetrics }));
+      setWaitDataFailures(failureCount);
       if (maxTimestamp > 0) setLatestFetchedAt(maxTimestamp);
     }
 
     setNow(Date.now());
+    setWaitMetricsLoading(false);
   }, []);
 
   const fetchParks = useCallback(async () => {
+    setParksError(null);
     try {
       const data = await getCollection<Park>('parks');
       setParks(data);
@@ -239,6 +244,7 @@ export default function ParksPage() {
       fetchWaitTimes(data);
     } catch (error) {
       console.error('Failed to fetch parks:', error);
+      setParksError('We couldn’t load the park directory. Check your connection and try again.');
       setLoading(false);
     }
   }, [fetchWaitTimes]);
@@ -273,14 +279,16 @@ export default function ParksPage() {
     }
   };
 
-  // Auto-refresh park list + hours when user returns to tab after 10+ minutes
-  const { isBackgroundRefreshing } = useAutoRefresh({
+  // Auto-refresh park list + hours on arrival (if stale) and when user
+  // returns to tab after 10+ minutes
+  const { isBackgroundRefreshing, lastRefreshError: parksRefreshError } = useAutoRefresh({
     key: 'park-list-index',
     staleness: 10 * 60 * 1000, // 10 minutes
     onRefresh: async () => {
       await Promise.all([fetchParks(), fetchParkHours()]);
     },
     enabled: !loading && !refreshing,
+    initialDataAge: latestFetchedAt ? Date.now() - latestFetchedAt : null,
   });
 
   // All unique destination family names sorted alphabetically
@@ -377,7 +385,8 @@ export default function ParksPage() {
         <button
           onClick={handleRefresh}
           disabled={refreshing}
-          className="relative inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+          className="relative inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50 sm:w-auto"
+          aria-describedby="parks-data-status"
         >
           <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
           {refreshing ? 'Refreshing...' : 'Refresh Data'}
@@ -390,16 +399,63 @@ export default function ParksPage() {
         </button>
       </div>
       {refreshError && (
-        <p className="mb-4 text-right text-sm text-red-600">{refreshError}</p>
+        <p className="mb-4 text-right text-sm text-red-600" role="alert">{refreshError}</p>
       )}
       {dataFreshness && (
-        <p className={`-mt-6 mb-6 text-right text-xs ${dataFreshness.isStale ? 'text-amber-600' : 'text-primary-400'}`}>
+        <p className={`-mt-6 mb-1 text-right text-xs ${dataFreshness.isStale ? 'text-amber-600' : 'text-primary-400'}`}>
           {dataFreshness.label}
         </p>
       )}
+      {!refreshError && parksRefreshError != null && (
+        <p className="-mt-1 mb-6 text-right text-xs text-amber-600">
+          Background refresh failed — showing the last known data.
+        </p>
+      )}
+      <div id="parks-data-status" className="sr-only" aria-live="polite" aria-atomic="true">
+        {refreshing
+          ? 'Refreshing park data'
+          : parksError
+            ? 'Park directory unavailable'
+            : loading || waitMetricsLoading
+              ? 'Loading park data'
+              : waitDataFailures > 0
+                ? `Live wait times unavailable for ${waitDataFailures} parks`
+                : dataFreshness?.label || 'Park directory loaded'}
+      </div>
+
+      {parksError && (
+        <div className="mb-8 rounded-xl border border-red-200 bg-red-50 p-5" role="alert">
+          <p className="font-semibold text-red-800">Park directory unavailable</p>
+          <p className="mt-1 text-sm text-red-700">{parksError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              fetchParks();
+              fetchParkHours();
+            }}
+            className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border border-red-700 px-4 py-2 text-sm font-medium text-red-700"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {!waitMetricsLoading && parks.length > 0 && waitDataFailures > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3" role="status">
+          <p className="text-sm font-semibold text-amber-800">
+            {waitDataFailures === parks.length
+              ? 'Live wait times are temporarily unavailable'
+              : `Live wait times are unavailable for ${waitDataFailures} parks`}
+          </p>
+          <p className="mt-1 text-sm text-amber-700">
+            Park hours and directory links still work. Open a park or retry when the feed recovers.
+          </p>
+        </div>
+      )}
 
       {/* Unified Search & Filter */}
-      {!loading && (
+      {!loading && !parksError && (
         <div className="relative mb-8" ref={dropdownRef}>
           {/* Input with optional family chip */}
           <div className="flex items-center gap-2 rounded-lg border border-primary-200 bg-white px-3 py-2.5 transition-colors focus-within:border-primary-400 focus-within:ring-1 focus-within:ring-primary-400">
@@ -543,7 +599,7 @@ export default function ParksPage() {
             </section>
           ))}
         </div>
-      ) : grouped.length === 0 ? (
+      ) : parksError ? null : grouped.length === 0 ? (
         <p className="py-12 text-center text-primary-400">
           No parks match &ldquo;{searchQuery}&rdquo;
         </p>

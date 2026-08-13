@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run --config vitest.integration.config.ts tests/security-rules/firestore.rules.test.ts\"",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "type-check": "tsc --noEmit",
@@ -32,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
+    "@firebase/rules-unit-testing": "^4.0.1",
     "@playwright/test": "^1.52.0",
     "@tailwindcss/postcss": "^4.1.4",
     "@testing-library/jest-dom": "^6.6.3",
@@ -43,6 +45,7 @@
     "@vitejs/plugin-react": "^4.4.1",
     "eslint": "^9.26.0",
     "eslint-config-next": "^15.3.1",
+    "firebase-tools": "^13.35.1",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.1.4",

@@ -8,8 +8,11 @@ interface WaitTimeBadgeProps {
 export default function WaitTimeBadge({ waitMinutes, size = 'md' }: WaitTimeBadgeProps) {
   if (waitMinutes === null || waitMinutes === undefined) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-500">
-        N/A
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-500"
+        aria-label="Wait time unavailable"
+      >
+        Unknown
       </span>
     );
   }

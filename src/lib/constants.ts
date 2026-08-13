@@ -1,8 +1,8 @@
 /** App-wide constants */
 
-import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
+import { DESTINATION_FAMILIES, getParkBySlug } from '@/lib/parks/park-registry';
 
-export const APP_NAME = 'ParkFlow';
+export const APP_NAME = 'ParkPulse';
 
 export const CROWD_LEVELS = {
   1: { label: 'Very Low', color: 'sage' },
@@ -35,6 +35,22 @@ export interface ParkFamily {
   id: string;
   name: string;
   parks: { id: string; name: string }[];
+}
+
+/**
+ * Resolve the canonical ThemeParks Wiki entity UUID for a `PARK_FAMILIES`
+ * park id (a slug, e.g. `'worlds-of-fun'`).
+ *
+ * `PARK_FAMILIES` intentionally exposes slugs (not UUIDs) as `parks[].id`
+ * because the calendar UI links to `/parks/{slug}`. Any code that talks to
+ * a schedule/entity endpoint (ThemeParks Wiki requires a UUID, not a slug)
+ * must translate through this single canonical lookup instead of assuming
+ * the slug is a valid entity id — that mismatch previously caused schedule
+ * lookups to silently fail (404/invalid response) for every park reached
+ * through this path, not just one specific park.
+ */
+export function resolveScheduleParkId(familyParkId: string): string | null {
+  return getParkBySlug(familyParkId)?.id ?? null;
 }
 
 /** Crowd level colors for the park-family calendar (4-tier scale) */

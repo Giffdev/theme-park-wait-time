@@ -96,9 +96,9 @@ describe('WaitTimeBadge', () => {
     expect(badge?.className).toContain('bg-amber-100');
   });
 
-  it('shows "N/A" when waitMinutes is null', () => {
+  it('labels a missing wait as unknown', () => {
     render(<WaitTimeBadge waitMinutes={null} />);
-    expect(screen.getByText('N/A')).toBeInTheDocument();
+    expect(screen.getByText('Unknown')).toHaveAccessibleName('Wait time unavailable');
   });
 
   it('supports different sizes (sm, md, lg)', () => {
@@ -213,13 +213,25 @@ describe('AttractionRow', () => {
 
   it('does not show wait time badge for CLOSED attractions', () => {
     render(<AttractionRow name="Splash Mountain" entityType="ATTRACTION" status="CLOSED" waitMinutes={null} />);
-    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText('Closed')).toBeInTheDocument();
     expect(screen.queryByText('min')).not.toBeInTheDocument();
   });
 
   it('does not show wait time badge for REFURBISHMENT attractions', () => {
     render(<AttractionRow name="Tron" entityType="ATTRACTION" status="REFURBISHMENT" waitMinutes={null} />);
-    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText('Refurbishment')).toBeInTheDocument();
+  });
+
+  it('distinguishes an operating attraction with an unknown wait', () => {
+    render(<AttractionRow name="PeopleMover" entityType="ATTRACTION" status="OPERATING" waitMinutes={null} />);
+    expect(screen.getByText('Unknown')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /PeopleMover, operating, wait time unavailable/i })).toBeInTheDocument();
+  });
+
+  it('labels a ride missing from the current snapshot as unavailable', () => {
+    render(<AttractionRow name="Carousel" entityType="ATTRACTION" status="UNKNOWN" waitMinutes={null} />);
+    expect(screen.getByText('Unavailable')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Carousel, Unavailable/i })).toBeInTheDocument();
   });
 
   it('shows entity type badge', () => {

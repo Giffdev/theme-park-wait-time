@@ -11,7 +11,7 @@
  * - purchases array (Lightning Lane pricing) included
  * - Overlapping time segments edge case
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 // ---------------------------------------------------------------------------
@@ -306,6 +306,71 @@ describe('GET /api/park-schedule', () => {
       const operating = data.segments[0];
       // purchases should be null/undefined/empty, not crash
       expect(operating.purchases === undefined || operating.purchases === null || Array.isArray(operating.purchases)).toBe(true);
+    });
+  });
+
+  describe('Bounded reads/writes (production 45s-hang regression)', () => {
+    // Root cause: this route previously had zero timeout/deadline handling
+    // anywhere — an unbounded Firestore `cacheRef.get()`/`.set()` or a
+    // stalled upstream fetch could hang the whole request indefinitely,
+    // observed in production as a 45+ second hang for Islands of Adventure
+    // and Magic Kingdom while the upstream API itself responded in ~253ms.
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('degrades a hung Firestore cache read to a cache miss and still serves fresh data', async () => {
+      // Cache read never resolves — simulates a stalled/hung Firestore call.
+      mockDocGet.mockReturnValue(new Promise(() => {}));
+
+      const responsePromise = GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+
+      // Advance past the cache-read timeout (3s) but well below the route
+      // deadline (15s) — the read should be abandoned, not awaited forever.
+      await vi.advanceTimersByTimeAsync(3_100);
+
+      const response = await responsePromise;
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.segments).toHaveLength(3);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns an explicit 504 rather than hanging when every stage stalls past the route deadline', async () => {
+      // Both the cache read and the upstream fetch hang indefinitely —
+      // exactly the failure mode observed in production.
+      mockDocGet.mockReturnValue(new Promise(() => {}));
+      mockFetch.mockReturnValue(new Promise(() => {}));
+
+      const responsePromise = GET(createRequest({ parkId: 'islands-of-adventure', date: '2026-04-29' }));
+
+      // Advance past the route-level deadline (15s).
+      await vi.advanceTimersByTimeAsync(15_100);
+
+      const response = await responsePromise;
+      const data = await response.json();
+
+      expect(response.status).toBe(504);
+      expect(data.error).toMatch(/deadline/i);
+    });
+
+    it('never awaits the Firestore cache write before responding', async () => {
+      // Cache write hangs forever — the response must still return promptly
+      // because the write is deferred via scheduleBackgroundWrite(), not
+      // awaited in the response path.
+      mockDocSet.mockReturnValue(new Promise(() => {}));
+
+      const response = await GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.segments).toHaveLength(3);
     });
   });
 });

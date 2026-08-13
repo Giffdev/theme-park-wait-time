@@ -60,8 +60,9 @@ vi.mock('@/lib/firebase/auth', () => ({
 }));
 
 // Mock auth context
+const mockUseAuth = vi.fn(() => ({ user: null as { uid: string } | null, loading: false, signOut: vi.fn() }));
 vi.mock('@/lib/firebase/auth-context', () => ({
-  useAuth: () => ({ user: null, loading: false, signOut: vi.fn() }),
+  useAuth: () => mockUseAuth(),
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
@@ -76,7 +77,7 @@ describe('SignIn Page', () => {
       render(<SignInPage />);
 
       expect(screen.getByText('Welcome back')).toBeInTheDocument();
-      expect(screen.getByText('Sign in to your ParkFlow account')).toBeInTheDocument();
+      expect(screen.getByText('Sign in to your ParkPulse account')).toBeInTheDocument();
     });
 
     it('renders the Google sign-in button', async () => {
@@ -175,15 +176,27 @@ describe('SignIn Page', () => {
       expect(true).toBe(true);
     });
 
-    it('should redirect to /dashboard after successful sign-in', () => {
-      // Spec: router.push('/dashboard') called on success
-      expect(true).toBe(true);
+    it('should redirect to /parks after successful sign-in', async () => {
+      const user = userEvent.setup();
+      mockSignIn.mockResolvedValueOnce(undefined);
+      const { default: SignInPage } = await import('@/app/auth/signin/page');
+      render(<SignInPage />);
+
+      await user.type(screen.getByPlaceholderText('Email address'), 'test@example.com');
+      await user.type(screen.getByPlaceholderText('Password'), 'password123');
+      await user.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+      await vi.waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith('/parks');
+      });
     });
 
-    it('should redirect authenticated users to /dashboard', () => {
-      // Spec: If useAuth().user is non-null and loading is false,
-      // redirect to /dashboard immediately (no flash of sign-in page)
-      expect(true).toBe(true);
+    it('should redirect authenticated users to /parks', async () => {
+      mockUseAuth.mockReturnValueOnce({ user: { uid: 'u1' }, loading: false, signOut: vi.fn() });
+      const { default: SignInPage } = await import('@/app/auth/signin/page');
+      render(<SignInPage />);
+
+      expect(mockReplace).toHaveBeenCalledWith('/parks');
     });
   });
 });

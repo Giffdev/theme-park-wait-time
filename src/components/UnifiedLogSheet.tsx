@@ -42,7 +42,8 @@ const TYPE_FILTERS: { value: string; label: string }[] = [
 
 const LOGGABLE_ENTITY_TYPES = new Set(['ATTRACTION', 'RIDE', 'SHOW', 'MEET_AND_GREET']);
 
-const LAST_PARK_KEY = 'parkflow-last-park';
+const LAST_PARK_KEY = 'parkpulse-last-park';
+const LEGACY_LAST_PARK_KEY = 'parkflow-last-park';
 
 // ---------------------------------------------------------------------------
 // Component
@@ -121,7 +122,18 @@ export default function UnifiedLogSheet({
       setSelectedParkId(initialParkId);
       return;
     }
-    const last = typeof window !== 'undefined' ? localStorage.getItem(LAST_PARK_KEY) : null;
+    let last: string | null = null;
+    if (typeof window !== 'undefined') {
+      last = localStorage.getItem(LAST_PARK_KEY) || localStorage.getItem(LEGACY_LAST_PARK_KEY);
+      if (last && !localStorage.getItem(LAST_PARK_KEY)) {
+        try {
+          localStorage.setItem(LAST_PARK_KEY, last);
+          localStorage.removeItem(LEGACY_LAST_PARK_KEY);
+        } catch {
+          // Preserve the legacy value if storage migration is unavailable.
+        }
+      }
+    }
     if (last) setSelectedParkId(last);
   }, [open, initialParkId]);
 

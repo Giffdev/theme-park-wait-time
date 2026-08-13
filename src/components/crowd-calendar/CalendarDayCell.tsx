@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { Thermometer } from 'lucide-react';
 import { CROWD_LEVEL_COLORS } from '@/lib/constants';
 import type { CrowdDay, CrowdDayPark, ParkDayStatus } from '@/types/crowd-calendar';
 
@@ -9,18 +8,6 @@ interface CalendarDayCellProps {
   day: CrowdDay | null;
   dayNumber: number | null;
   enabledParkIds: Set<string>;
-  month: number; // 0-indexed for temp calc
-}
-
-function fToC(f: number): number {
-  return Math.round((f - 32) * 5 / 9);
-}
-
-function getTemperature(month: number, day: number): { high: number; low: number } {
-  const baseHighs = [71, 73, 78, 83, 88, 91, 92, 92, 90, 84, 77, 72];
-  const baseLows = [49, 51, 56, 60, 66, 71, 73, 73, 72, 65, 57, 51];
-  const variation = ((day * 13 + month * 7) % 7) - 3;
-  return { high: baseHighs[month] + variation, low: baseLows[month] + variation };
 }
 
 /** Resolve park status with backward-compat: missing status = OPEN */
@@ -28,7 +15,7 @@ function getParkStatus(park: CrowdDayPark): ParkDayStatus {
   return park.status ?? 'OPEN';
 }
 
-export function CalendarDayCell({ day, dayNumber, enabledParkIds, month }: CalendarDayCellProps) {
+export function CalendarDayCell({ day, dayNumber, enabledParkIds }: CalendarDayCellProps) {
   const [expanded, setExpanded] = useState(false);
 
   if (dayNumber === null) {
@@ -40,7 +27,6 @@ export function CalendarDayCell({ day, dayNumber, enabledParkIds, month }: Calen
   const closedParks = filteredParks.filter((p) => getParkStatus(p) === 'CLOSED');
   const noDataParks = filteredParks.filter((p) => getParkStatus(p) === 'NO_DATA');
   const allClosed = filteredParks.length > 0 && openParks.length === 0 && noDataParks.length === 0;
-  const temp = getTemperature(month, dayNumber);
 
   return (
     <>
@@ -142,13 +128,6 @@ export function CalendarDayCell({ day, dayNumber, enabledParkIds, month }: Calen
           </span>
         )}
 
-        {/* Temperature (desktop only) */}
-        {!allClosed && (
-          <div className="mt-auto hidden items-center gap-0.5 text-[8px] text-primary-400 opacity-70 sm:flex">
-            <Thermometer className="h-2 w-2" />
-            <span>{temp.high}°/{temp.low}°F ({fToC(temp.high)}°/{fToC(temp.low)}°C)</span>
-          </div>
-        )}
       </button>
 
       {/* Mobile expanded overlay */}
@@ -167,10 +146,6 @@ export function CalendarDayCell({ day, dayNumber, enabledParkIds, month }: Calen
               </h3>
               <button onClick={() => setExpanded(false)} className="text-primary-400 text-xl">✕</button>
             </div>
-            <p className="mb-3 flex items-center gap-1 text-xs text-primary-500">
-              <Thermometer className="h-3 w-3" /> High {temp.high}°F ({fToC(temp.high)}°C) / Low {temp.low}°F ({fToC(temp.low)}°C)
-            </p>
-
             {/* Mixed state summary */}
             {closedParks.length > 0 && openParks.length > 0 && (
               <p className="mb-2 rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-700">

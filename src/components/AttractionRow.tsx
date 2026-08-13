@@ -11,6 +11,11 @@ interface AttractionRowProps {
   status: string;
   waitMinutes: number | null;
   queue?: QueueData | null;
+  /** True while wait-time data is still loading. When status is the default
+   * `UNKNOWN` placeholder and this is true, the row must show a neutral
+   * "checking" state instead of a definitive "Unavailable" claim — those two
+   * signals can never be shown at the same time. */
+  loading?: boolean;
   onClick?: () => void;
 }
 
@@ -96,14 +101,36 @@ function QueueBadges({ queue }: { queue: QueueData }) {
   );
 }
 
-export default function AttractionRow({ name, entityType, status, waitMinutes, queue, onClick }: AttractionRowProps) {
+export default function AttractionRow({ name, entityType, status, waitMinutes, queue, loading = false, onClick }: AttractionRowProps) {
   const typeBadgeClass = TYPE_BADGES[entityType] || 'bg-primary-100 text-primary-600';
+  // Wait-time data hasn't resolved yet — an UNKNOWN status here is provisional,
+  // never a confirmed "Unavailable" (that would contradict a loading header).
+  const isPendingUnknown = loading && status === 'UNKNOWN';
+  const statusLabel =
+    status === 'CLOSED'
+      ? 'Closed'
+      : status === 'DOWN'
+        ? 'Temporarily down'
+        : status === 'REFURBISHMENT'
+          ? 'Refurbishment'
+          : status === 'UNKNOWN'
+            ? (isPendingUnknown ? 'Checking…' : 'Unavailable')
+            : status.toLowerCase().replace(/_/g, ' ');
+  const accessibleStatus =
+    status === 'OPERATING'
+      ? waitMinutes === null
+        ? 'operating, wait time unavailable'
+        : `operating, ${waitMinutes} minute wait`
+      : isPendingUnknown
+        ? 'status still loading'
+        : statusLabel;
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-primary-50 active:bg-primary-100"
+      aria-label={`${name}, ${accessibleStatus}`}
+      className="flex min-h-12 w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-primary-50 active:bg-primary-100 sm:gap-3"
     >
       {/* Name + type badge + queue badges */}
       <div className="flex-1 min-w-0 flex items-center gap-2">
@@ -115,16 +142,26 @@ export default function AttractionRow({ name, entityType, status, waitMinutes, q
       </div>
 
       {/* Sparkline */}
-      {status === 'OPERATING' && (
+      {status === 'OPERATING' && waitMinutes !== null && (
         <WaitTimeSparkline rideName={name} currentWait={waitMinutes} width={60} height={18} />
       )}
 
       {/* Wait time */}
-      <div className="shrink-0 w-16 text-right">
+      <div className="w-20 shrink-0 text-right sm:w-24">
         {status === 'OPERATING' ? (
           <WaitTimeBadge waitMinutes={waitMinutes} size="sm" />
         ) : (
-          <span className="text-xs text-primary-300">—</span>
+          <span className={`text-xs font-medium ${
+            status === 'DOWN'
+              ? 'text-red-600'
+              : status === 'REFURBISHMENT'
+                ? 'text-amber-600'
+                : isPendingUnknown
+                  ? 'animate-pulse text-primary-300'
+                  : 'text-primary-400'
+          }`}>
+            {statusLabel}
+          </span>
         )}
       </div>
     </button>

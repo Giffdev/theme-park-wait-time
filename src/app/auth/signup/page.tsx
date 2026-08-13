@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { signUp, signInWithGoogle } from '@/lib/firebase/auth';
 import { FirebaseError } from 'firebase/app';
+import { APP_NAME } from '@/lib/constants';
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof FirebaseError) {
@@ -41,7 +42,7 @@ export default function SignUpPage() {
 
   // Redirect if already signed in
   if (!authLoading && user) {
-    router.replace('/dashboard');
+    router.replace('/parks');
     return null;
   }
 
@@ -51,7 +52,7 @@ export default function SignUpPage() {
     setLoading(true);
     try {
       await signUp(email, password, displayName || undefined);
-      router.push('/dashboard');
+      router.push('/parks');
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -64,7 +65,7 @@ export default function SignUpPage() {
     setLoading(true);
     try {
       await signInWithGoogle();
-      router.push('/dashboard');
+      router.push('/parks');
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -86,7 +87,7 @@ export default function SignUpPage() {
         <div className="text-center">
           <span className="text-4xl">🎢</span>
           <h1 className="mt-4 text-2xl font-bold text-primary-900">Create your account</h1>
-          <p className="mt-1 text-sm text-primary-500">Join the ParkFlow community</p>
+          <p className="mt-1 text-sm text-primary-500">Join the {APP_NAME} community</p>
         </div>
 
         <div className="mt-8 space-y-4">

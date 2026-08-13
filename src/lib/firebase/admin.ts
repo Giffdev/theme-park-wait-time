@@ -1,5 +1,5 @@
 import { initializeApp, getApps, cert, type App } from 'firebase-admin/app';
-import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { initializeFirestore, getFirestore, type Firestore } from 'firebase-admin/firestore';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -32,5 +32,19 @@ if (getApps().length === 0) {
   adminApp = getApps()[0];
 }
 
-export const adminDb: Firestore = getFirestore(adminApp);
+// Serverless cold starts pay for gRPC channel/stream setup on the first
+// Firestore call. `preferRest: true` makes the Admin SDK use plain HTTP/1.1
+// REST instead, which was evidence-backed (production 504 investigation) as
+// a meaningfully faster path for a cold container's first Firestore touch.
+// `initializeFirestore` throws if a Firestore instance already exists for
+// this app (e.g. a module re-import in tests, or hot reload in dev), so fall
+// back to the existing instance rather than crashing module load.
+let adminDbInstance: Firestore;
+try {
+  adminDbInstance = initializeFirestore(adminApp, { preferRest: true });
+} catch {
+  adminDbInstance = getFirestore(adminApp);
+}
+
+export const adminDb: Firestore = adminDbInstance;
 export { adminApp };

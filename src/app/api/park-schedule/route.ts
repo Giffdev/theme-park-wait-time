@@ -1,6 +1,23 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { Timestamp } from 'firebase-admin/firestore';
+import {
+  ScheduleDeadlineError,
+  scheduleBackgroundWrite,
+  withDeadline,
+  withTimeout,
+  SCHEDULE_CACHE_READ_TIMEOUT_MS,
+  SCHEDULE_UPSTREAM_TIMEOUT_MS,
+} from '@/lib/parks/schedule-timing';
+
+// Bounds the whole request well below Vercel's function `maxDuration` so a
+// stalled stage fails fast with an explicit response instead of the
+// platform silently killing the invocation after the client has already
+// given up. See `schedule-timing.ts` for the root-cause writeup: this route
+// previously had zero timeouts on any Firestore read/write or upstream
+// fetch and was observed hanging 45+ seconds in production.
+export const maxDuration = 20;
+const ROUTE_DEADLINE_MS = 15_000;
 
 const API_BASE = 'https://api.themeparks.wiki/v1';
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -92,6 +109,7 @@ function transformSchedule(
 async function fetchScheduleFromApi(parkId: string): Promise<ScheduleApiResponse> {
   const res = await fetch(`${API_BASE}/entity/${parkId}/schedule`, {
     next: { revalidate: 0 },
+    signal: AbortSignal.timeout(SCHEDULE_UPSTREAM_TIMEOUT_MS),
   });
 
   if (!res.ok) {
@@ -106,6 +124,67 @@ async function fetchScheduleFromApi(parkId: string): Promise<ScheduleApiResponse
 function isCacheFresh(fetchedAt: string): boolean {
   const fetchedTime = new Date(fetchedAt).getTime();
   return Date.now() - fetchedTime < CACHE_TTL_MS;
+}
+
+async function handleSchedule(parkId: string, date: string): Promise<NextResponse> {
+  // Check Firestore cache. Bounded: a stalled read degrades to a cache miss
+  // (`cached` stays `null`) rather than hanging the whole request.
+  const cacheRef = adminDb
+    .collection('parkSchedules')
+    .doc(parkId)
+    .collection('daily')
+    .doc(date);
+
+  const cached = await withTimeout(cacheRef.get(), SCHEDULE_CACHE_READ_TIMEOUT_MS);
+
+  if (cached?.exists) {
+    const cachedData = cached.data() as ParkDaySchedule;
+    if (isCacheFresh(cachedData.fetchedAt)) {
+      return NextResponse.json(cachedData);
+    }
+  }
+
+  // Fetch fresh data from ThemeParks Wiki
+  let apiData: ScheduleApiResponse;
+  try {
+    apiData = await fetchScheduleFromApi(parkId);
+  } catch (err: unknown) {
+    const error = err as Error & { status?: number };
+    const status = error.status || 0;
+
+    // On 429 or 5xx, return stale cache if available
+    if (status === 429 || status >= 500) {
+      if (cached?.exists) {
+        const staleData = cached.data() as ParkDaySchedule;
+        return NextResponse.json({ ...staleData, stale: true });
+      }
+      return NextResponse.json(
+        { error: 'Park schedule data is temporarily unavailable. Please try again later.' },
+        { status: 503 }
+      );
+    }
+
+    throw error;
+  }
+
+  const fetchedAt = Timestamp.now().toDate().toISOString();
+  const schedule = transformSchedule(
+    parkId,
+    date,
+    apiData.timezone,
+    apiData.schedule,
+    fetchedAt
+  );
+
+  // Cache in Firestore, deferred via `after()` (request-lifecycle
+  // scheduling) so a slow/cold write can never block the response.
+  scheduleBackgroundWrite(
+    cacheRef.set(schedule).catch((err) => {
+      console.warn(`Failed to cache park schedule for ${parkId}/${date}:`, (err as Error).message);
+    })
+  );
+
+  return NextResponse.json(schedule);
 }
 
 export async function GET(request: NextRequest) {
@@ -128,59 +207,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check Firestore cache
-    const cacheRef = adminDb
-      .collection('parkSchedules')
-      .doc(parkId)
-      .collection('daily')
-      .doc(date);
-
-    const cached = await cacheRef.get();
-
-    if (cached.exists) {
-      const cachedData = cached.data() as ParkDaySchedule;
-      if (isCacheFresh(cachedData.fetchedAt)) {
-        return NextResponse.json(cachedData);
-      }
-    }
-
-    // Fetch fresh data from ThemeParks Wiki
-    let apiData: ScheduleApiResponse;
-    try {
-      apiData = await fetchScheduleFromApi(parkId);
-    } catch (err: unknown) {
-      const error = err as Error & { status?: number };
-      const status = error.status || 0;
-
-      // On 429 or 5xx, return stale cache if available
-      if (status === 429 || status >= 500) {
-        if (cached.exists) {
-          const staleData = cached.data() as ParkDaySchedule;
-          return NextResponse.json({ ...staleData, stale: true });
-        }
-        return NextResponse.json(
-          { error: 'Park schedule data is temporarily unavailable. Please try again later.' },
-          { status: 503 }
-        );
-      }
-
-      throw error;
-    }
-
-    const fetchedAt = Timestamp.now().toDate().toISOString();
-    const schedule = transformSchedule(
-      parkId,
-      date,
-      apiData.timezone,
-      apiData.schedule,
-      fetchedAt
+    return await withDeadline(
+      handleSchedule(parkId, date),
+      ROUTE_DEADLINE_MS,
+      'park-schedule route'
     );
-
-    // Cache in Firestore
-    await cacheRef.set(schedule);
-
-    return NextResponse.json(schedule);
   } catch (error) {
+    if (error instanceof ScheduleDeadlineError) {
+      // Explicit, honest timeout status rather than hanging until Vercel
+      // kills the invocation — matches the deadline pattern already proven
+      // in /api/wait-times.
+      console.error('Park schedule route exceeded its response deadline:', error.message);
+      return NextResponse.json(
+        { error: 'Park schedule request exceeded its response deadline.' },
+        { status: 504 }
+      );
+    }
     console.error('Park schedule API error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch park schedule' },

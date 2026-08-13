@@ -3,63 +3,98 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, Thermometer } from 'lucide-react';
+import { AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
-import { PARK_FAMILIES, CROWD_LEVEL_COLORS } from '@/lib/constants';
+import { PARK_FAMILIES, CROWD_LEVEL_COLORS, resolveScheduleParkId } from '@/lib/constants';
 import { FamilySelector } from '@/components/crowd-calendar/FamilySelector';
 import { CalendarDayCell } from '@/components/crowd-calendar/CalendarDayCell';
 import { MiniMonth } from '@/components/crowd-calendar/MiniMonth';
-import type { FamilyCrowdMonth, CrowdDay } from '@/types/crowd-calendar';
+import type { CrowdDataQuality, FamilyCrowdMonth, CrowdDay } from '@/types/crowd-calendar';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MIN_DEFENSIBLE_COVERAGE = 0.5;
 
-/** Generate deterministic mock data for a park family month */
-function generateMockData(familyId: string, monthStr: string): FamilyCrowdMonth {
-  const family = PARK_FAMILIES.find((f) => f.id === familyId) ?? PARK_FAMILIES[0];
-  const [year, month] = monthStr.split('-').map(Number);
-  const daysInMonth = new Date(year, month, 0).getDate();
+/**
+ * Canonical identity boundary for crowd-calendar data joins.
+ *
+ * `PARK_FAMILIES` (and therefore `currentFamily.parks[].id`, the park toggle
+ * chips, and `/parks/{slug}` links) intentionally key parks by slug, since
+ * slugs are the user-facing URL identity. The `/api/crowd-calendar` route,
+ * however, now emits real/computed `CrowdDayPark.parkId` (and top-level
+ * `parks[].id` / `bestPlan.days[].parkId`) values keyed by the canonical
+ * ThemeParks Wiki entity UUID — matching the same slug→UUID resolution
+ * `resolveScheduleParkId` already performs for schedule lookups. Firestore
+ * cache entries generated before that change (and still within the
+ * `/api/crowd-calendar` 6h cache TTL) may still carry the legacy slug-keyed
+ * ids for a while during rollout.
+ *
+ * Every park id coming off the wire is normalized through this single
+ * boundary immediately after fetch: a recognized slug is translated to its
+ * canonical UUID via `resolveScheduleParkId` (reusing the existing
+ * canonical mapping — no new registry, no heuristics); anything that isn't
+ * a known slug (i.e. it's already a canonical UUID, or an id we don't
+ * recognize at all) passes through unchanged rather than being guessed at.
+ * All in-app filtering/grouping (`enabledParks`, `CalendarDayCell`) then
+ * operates purely in this normalized id space, while slugs are preserved
+ * solely for `/parks/{slug}` links and the family/park picker.
+ */
+function normalizeParkId(rawId: string): string {
+  return resolveScheduleParkId(rawId) ?? rawId;
+}
 
-  const days: CrowdDay[] = [];
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const dayOfWeek = new Date(year, month - 1, d).getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+function normalizeFamilyCrowdMonth(data: FamilyCrowdMonth): FamilyCrowdMonth {
+  return {
+    ...data,
+    parks: data.parks.map((p) => ({ ...p, id: normalizeParkId(p.id) })),
+    days: data.days.map((day) => ({
+      ...day,
+      parks: day.parks.map((p) => ({ ...p, parkId: normalizeParkId(p.parkId) })),
+    })),
+    bestPlan: data.bestPlan
+      ? { days: data.bestPlan.days.map((d) => ({ ...d, parkId: normalizeParkId(d.parkId) })) }
+      : data.bestPlan,
+  };
+}
 
-    const parks = family.parks.map((park, pi) => {
-      // Deterministic crowd based on day, park index, and weekend
-      const base = ((d * 7 + pi * 13 + month * 3) % 4) + 1;
-      const weekendBoost = isWeekend ? 1 : 0;
-      const crowdLevel = Math.min(4, Math.max(1, base + weekendBoost - (d % 3 === 0 ? 1 : 0))) as 1 | 2 | 3 | 4;
-      const avgWaitMinutes = crowdLevel * 15 + ((d * pi) % 10);
-      return { parkId: park.id, parkName: park.name, crowdLevel, avgWaitMinutes };
-    });
+function hasVerifiableQuality(data: FamilyCrowdMonth): data is FamilyCrowdMonth & { dataQuality: CrowdDataQuality } {
+  const quality = data.dataQuality;
+  return Boolean(
+    quality
+    && ['historical', 'stale-cache', 'estimated'].includes(quality.source)
+    && Number.isFinite(quality.coverageRatio)
+    && quality.coverageRatio >= 0
+    && quality.coverageRatio <= 1
+    && Number.isFinite(quality.daysWithData)
+    && Number.isFinite(quality.totalDays)
+    && quality.totalDays > 0
+  );
+}
 
-    const aggregateCrowdLevel = Math.round(parks.reduce((sum, p) => sum + p.crowdLevel, 0) / parks.length) as 1 | 2 | 3 | 4;
-    days.push({ date: dateStr, parks, aggregateCrowdLevel });
+function describeQuality(data: FamilyCrowdMonth & { dataQuality: CrowdDataQuality }) {
+  const quality = data.dataQuality;
+  const percent = Math.round(quality.coverageRatio * 100);
+  const limited = quality.coverageRatio < MIN_DEFENSIBLE_COVERAGE;
+
+  if (data.stale || quality.source === 'stale-cache') {
+    return {
+      tone: 'amber' as const,
+      title: 'Older historical estimate',
+      detail: `Fresh coverage is unavailable. This older estimate covers ${quality.daysWithData} of ${quality.totalDays} days (${percent}%) and is not a live crowd measurement.`,
+    };
   }
 
-  // Generate best 3-day plan: pick the 3 days with lowest crowd, assign parks optimally
-  const sortedDays = [...days].sort((a, b) => a.aggregateCrowdLevel - b.aggregateCrowdLevel);
-  const bestDays = sortedDays.slice(0, 3);
-  const usedParks = new Set<string>();
-  const bestPlan = {
-    days: bestDays.map((day) => {
-      const bestPark = day.parks
-        .filter((p) => !usedParks.has(p.parkId))
-        .sort((a, b) => (a.crowdLevel ?? 4) - (b.crowdLevel ?? 4))[0] ?? day.parks[0];
-      usedParks.add(bestPark.parkId);
-      const crowdLevel: 1 | 2 | 3 | 4 = bestPark.crowdLevel ?? 1;
-      return { date: day.date, parkId: bestPark.parkId, parkName: bestPark.parkName, crowdLevel };
-    }),
-  };
+  if (quality.source === 'estimated' || limited) {
+    return {
+      tone: 'amber' as const,
+      title: 'Limited-data estimate',
+      detail: `Historical coverage is ${percent}% (${quality.daysWithData} of ${quality.totalDays} days). Treat these broad estimates as directional, not measured crowd conditions.`,
+    };
+  }
 
   return {
-    familyId: family.id,
-    familyName: family.name,
-    month: monthStr,
-    parks: family.parks.map((p) => ({ id: p.id, name: p.name })),
-    days,
-    bestPlan,
+    tone: 'blue' as const,
+    title: 'Historical estimate',
+    detail: `Based on qualifying historical wait-time patterns with ${percent}% day coverage. This is planning guidance, not a live crowd measurement.`,
   };
 }
 
@@ -80,6 +115,8 @@ export default function CalendarPage() {
   const [enabledParks, setEnabledParks] = useState<Set<string>>(new Set());
   const [data, setData] = useState<FamilyCrowdMonth | null>(null);
   const [futureData, setFutureData] = useState<FamilyCrowdMonth[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dataError, setDataError] = useState<string | null>(null);
 
   const currentFamily = PARK_FAMILIES.find((f) => f.id === selectedFamilyId) ?? PARK_FAMILIES[0];
 
@@ -104,43 +141,54 @@ export default function CalendarPage() {
 
   // Enable all parks when family changes
   useEffect(() => {
-    setEnabledParks(new Set(currentFamily.parks.map((p) => p.id)));
+    setEnabledParks(new Set(currentFamily.parks.map((p) => normalizeParkId(p.id))));
   }, [selectedFamilyId]);
 
-  // Fetch data (uses mock for now, structured to hit real API)
-  const fetchData = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/crowd-calendar?familyId=${selectedFamilyId}&month=${monthStr}`);
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      } else {
-        // Fallback to mock data
-        setData(generateMockData(selectedFamilyId, monthStr));
-      }
-    } catch {
-      setData(generateMockData(selectedFamilyId, monthStr));
+  const readVerifiedMonth = useCallback(async (targetMonth: string): Promise<FamilyCrowdMonth> => {
+    const res = await fetch(`/api/crowd-calendar?familyId=${selectedFamilyId}&month=${targetMonth}`, {
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      throw new Error(`Crowd calendar returned ${res.status}`);
     }
 
-    // Fetch future months
-    try {
-      const [res1, res2] = await Promise.all([
-        fetch(`/api/crowd-calendar?familyId=${selectedFamilyId}&month=${futureMonthStr1}`),
-        fetch(`/api/crowd-calendar?familyId=${selectedFamilyId}&month=${futureMonthStr2}`),
-      ]);
-      const future: FamilyCrowdMonth[] = [];
-      if (res1.ok) future.push(await res1.json());
-      else future.push(generateMockData(selectedFamilyId, futureMonthStr1));
-      if (res2.ok) future.push(await res2.json());
-      else future.push(generateMockData(selectedFamilyId, futureMonthStr2));
-      setFutureData(future);
-    } catch {
-      setFutureData([
-        generateMockData(selectedFamilyId, futureMonthStr1),
-        generateMockData(selectedFamilyId, futureMonthStr2),
-      ]);
+    const json = await res.json() as FamilyCrowdMonth;
+    if (!hasVerifiableQuality(json)) {
+      throw new Error('Crowd calendar response did not include verifiable coverage metadata');
     }
-  }, [selectedFamilyId, monthStr, futureMonthStr1, futureMonthStr2]);
+    return normalizeFamilyCrowdMonth(json);
+  }, [selectedFamilyId]);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setDataError(null);
+    setData(null);
+    setFutureData([]);
+
+    try {
+      const current = await readVerifiedMonth(monthStr);
+      setData(current);
+
+      const futureResults = await Promise.allSettled([
+        readVerifiedMonth(futureMonthStr1),
+        readVerifiedMonth(futureMonthStr2),
+      ]);
+      setFutureData(
+        futureResults
+          .filter((result): result is PromiseFulfilledResult<FamilyCrowdMonth> => result.status === 'fulfilled')
+          .map((result) => result.value)
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      setDataError(
+        message.includes('coverage metadata')
+          ? 'We can’t verify the historical coverage behind this calendar, so crowd levels are not being shown.'
+          : 'The crowd data service could not be reached. No fallback crowd levels are being substituted.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [monthStr, futureMonthStr1, futureMonthStr2, readVerifiedMonth]);
 
   useEffect(() => {
     fetchData();
@@ -153,8 +201,10 @@ export default function CalendarPage() {
     onRefresh: async () => {
       await fetchData();
     },
-    enabled: !!data,
+    enabled: !loading,
   });
+
+  const qualityDescription = data && hasVerifiableQuality(data) ? describeQuality(data) : null;
 
   // Toggle a park on/off
   const togglePark = (parkId: string) => {
@@ -191,10 +241,10 @@ export default function CalendarPage() {
     return cells;
   }, [data]);
 
-  const monthLabel = data
-    ? new Date(parseInt(data.month.split('-')[0]), parseInt(data.month.split('-')[1]) - 1)
-        .toLocaleString('default', { month: 'long', year: 'numeric' })
-    : '';
+  const monthLabel = new Date(
+    parseInt(monthStr.split('-')[0]),
+    parseInt(monthStr.split('-')[1]) - 1
+  ).toLocaleString('default', { month: 'long', year: 'numeric' });
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:px-6 md:pb-10 lg:px-8">
@@ -202,7 +252,7 @@ export default function CalendarPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-primary-900 sm:text-3xl">Crowd Calendar</h1>
         <p className="mt-1 text-sm text-primary-500">
-          Compare crowd levels across parks. Plan the best days for your visit.
+          Compare historical crowd estimates across parks, with coverage clearly labeled.
         </p>
       </div>
 
@@ -214,11 +264,12 @@ export default function CalendarPage() {
       {/* Park toggle chips */}
       <div className="mb-5 flex flex-wrap gap-2">
         {currentFamily.parks.map((park) => {
-          const isOn = enabledParks.has(park.id);
+          const canonicalId = normalizeParkId(park.id);
+          const isOn = enabledParks.has(canonicalId);
           return (
             <div key={park.id} className="inline-flex items-center gap-0.5">
               <button
-                onClick={() => togglePark(park.id)}
+                onClick={() => togglePark(canonicalId)}
                 className={`inline-flex items-center gap-1.5 rounded-l-full px-3 py-1.5 text-xs font-medium transition-all ${
                   isOn
                     ? 'bg-primary-100 text-primary-800 ring-1 ring-primary-300'
@@ -242,7 +293,38 @@ export default function CalendarPage() {
         })}
       </div>
 
+      {qualityDescription && (
+        <div
+          className={`mb-5 rounded-xl border px-4 py-3 ${
+            qualityDescription.tone === 'amber'
+              ? 'border-amber-200 bg-amber-50 text-amber-800'
+              : 'border-blue-200 bg-blue-50 text-blue-800'
+          }`}
+          role="status"
+        >
+          <p className="text-sm font-semibold">{qualityDescription.title}</p>
+          <p className="mt-1 text-sm opacity-90">{qualityDescription.detail}</p>
+        </div>
+      )}
 
+      {dataError && (
+        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-5" role="alert">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+            <div>
+              <p className="font-semibold text-red-800">Crowd estimates unavailable</p>
+              <p className="mt-1 text-sm text-red-700">{dataError}</p>
+              <button
+                type="button"
+                onClick={fetchData}
+                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border border-red-700 px-4 py-2 text-sm font-medium text-red-700"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Month navigation */}
       <div className="mb-3 flex items-center justify-between">
@@ -263,55 +345,67 @@ export default function CalendarPage() {
         </button>
       </div>
 
-      {/* Large calendar grid */}
-      <div className="overflow-hidden rounded-xl border border-primary-200 bg-white shadow-sm">
-        {/* Weekday headers */}
-        <div className="grid grid-cols-7 bg-primary-50 text-center">
-          {WEEKDAYS.map((d) => (
-            <div key={d} className="py-2 text-[10px] font-semibold uppercase tracking-wide text-primary-500 sm:text-xs">
-              {d}
-            </div>
-          ))}
-        </div>
-        {/* Day cells */}
-        <div className="grid grid-cols-7">
-          {calendarCells.map((cell, i) => (
-            <CalendarDayCell
-              key={i}
-              dayNumber={cell.dayNumber}
-              day={cell.crowdDay}
-              enabledParkIds={enabledParks}
-              month={normalizedMonth}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs">
-        {([1, 2, 3, 4] as const).map((level) => (
-          <div key={level} className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: CROWD_LEVEL_COLORS[level].hex }} />
-            <span className="text-primary-600">{CROWD_LEVEL_COLORS[level].label}</span>
+      {loading ? (
+        <div className="overflow-hidden rounded-xl border border-primary-200 bg-white p-4 shadow-sm" role="status">
+          <p className="sr-only">Loading crowd estimates</p>
+          <div className="grid grid-cols-7 gap-1">
+            {Array.from({ length: 35 }, (_, index) => (
+              <div key={index} className="h-16 animate-pulse rounded bg-primary-50 sm:h-20" />
+            ))}
           </div>
-        ))}
-        <div className="flex items-center gap-1.5">
-          <span className="inline-flex h-3 items-center rounded bg-red-100 px-1 text-[7px] font-semibold uppercase text-red-700">✕</span>
-          <span className="text-primary-600">Closed</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <div className="h-3 w-3 rounded-full border border-dashed border-gray-300" />
-          <span className="text-primary-600">No Data</span>
-        </div>
-        <span className="flex items-center gap-1 text-primary-400">
-          <Thermometer className="h-3 w-3" /> Avg temps (°F/°C)
-        </span>
-      </div>
+      ) : data ? (
+        <>
+          {/* Large calendar grid */}
+          <div className="overflow-hidden rounded-xl border border-primary-200 bg-white shadow-sm">
+            {/* Weekday headers */}
+            <div className="grid grid-cols-7 bg-primary-50 text-center">
+              {WEEKDAYS.map((d) => (
+                <div key={d} className="py-2 text-[10px] font-semibold uppercase tracking-wide text-primary-500 sm:text-xs">
+                  {d}
+                </div>
+              ))}
+            </div>
+            {/* Day cells */}
+            <div className="grid grid-cols-7">
+              {calendarCells.map((cell, i) => (
+                <CalendarDayCell
+                  key={i}
+                  dayNumber={cell.dayNumber}
+                  day={cell.crowdDay}
+                  enabledParkIds={enabledParks}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Legend */}
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs">
+            {([1, 2, 3, 4] as const).map((level) => (
+              <div key={level} className="flex items-center gap-1.5">
+                <div className="h-3 w-3 rounded-full" style={{ backgroundColor: CROWD_LEVEL_COLORS[level].hex }} />
+                <span className="text-primary-600">{CROWD_LEVEL_COLORS[level].label}</span>
+              </div>
+            ))}
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex h-3 items-center rounded bg-red-100 px-1 text-[7px] font-semibold uppercase text-red-700">✕</span>
+              <span className="text-primary-600">Closed</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-3 w-3 rounded-full border border-dashed border-gray-300" />
+              <span className="text-primary-600">No Data</span>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {/* Mini future months */}
       {futureData.length > 0 && (
         <div className="mt-6">
-          <h3 className="mb-3 text-sm font-medium text-primary-600">Upcoming months</h3>
+          <div className="mb-3">
+            <h3 className="text-sm font-medium text-primary-600">Upcoming months</h3>
+            <p className="text-xs text-primary-400">Historical estimates with verified coverage metadata.</p>
+          </div>
           <div className="flex gap-3">
             {futureData.map((fm, i) => (
               <MiniMonth

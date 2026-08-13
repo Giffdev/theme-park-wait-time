@@ -7,13 +7,38 @@ import {
   computeBestPlan,
   type ForecastEntry,
 } from '@/lib/crowd-calendar';
-import { PARK_FAMILIES } from '@/lib/constants';
-import type { FamilyCrowdMonth, CrowdDay, CrowdDayPark, ParkDayStatus } from '@/types/crowd-calendar';
+import { PARK_FAMILIES, resolveScheduleParkId } from '@/lib/constants';
+import type {
+  FamilyCrowdMonth,
+  CrowdDataQuality,
+  CrowdDay,
+  CrowdDayPark,
+  ParkDayStatus,
+} from '@/types/crowd-calendar';
 import { CrowdLevel, type FamilyCrowdDay, type ParkCrowdDay } from '@/types/parkFamily';
 import type { ForecastAggregate } from '@/types/queue';
-import { batchGetParkOperatingStatus } from '@/lib/parks/park-schedule-check';
+import {
+  batchGetParkOperatingStatus,
+  getLocalDateString,
+  type ParkOperatingStatus,
+} from '@/lib/parks/park-schedule-check';
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+function dataQuality(
+  source: CrowdDataQuality['source'],
+  daysWithData: number,
+  totalDays: number,
+  generatedAt: string
+): CrowdDataQuality {
+  return {
+    source,
+    coverageRatio: totalDays > 0 ? daysWithData / totalDays : 0,
+    daysWithData,
+    totalDays,
+    generatedAt,
+  };
+}
 
 /**
  * GET /api/crowd-calendar?familyId={id}&month={YYYY-MM}
@@ -69,7 +94,15 @@ export async function GET(request: NextRequest) {
         ) ?? [];
         const cacheHasQuality = cachedDaysWithData.length >= Math.ceil((cachedData.days?.length ?? 1) * 0.5);
         if (Date.now() - generatedTime < CACHE_TTL_MS && cacheHasQuality) {
-          return NextResponse.json(cachedData);
+          return NextResponse.json({
+            ...cachedData,
+            dataQuality: cachedData.dataQuality ?? dataQuality(
+              'historical',
+              cachedDaysWithData.length,
+              cachedData.days?.length ?? 0,
+              cachedData.generatedAt ?? new Date().toISOString()
+            ),
+          });
         }
       }
 
@@ -84,6 +117,7 @@ export async function GET(request: NextRequest) {
         if (hasRealData) {
           const days = rawDays.map(toCrowdDay);
           const bestPlan = computeBestPlan(rawDays, 3);
+          const generatedAt = new Date().toISOString();
 
           const response: FamilyCrowdMonth = {
             familyId,
@@ -92,10 +126,16 @@ export async function GET(request: NextRequest) {
             parks: family.parks.map((p) => ({ id: p.parkId, name: p.parkName })),
             days,
             bestPlan,
+            dataQuality: dataQuality(
+              'historical',
+              daysWithData.length,
+              rawDays.length,
+              generatedAt
+            ),
           };
 
           // Cache in Firestore
-          await cacheRef.set({ ...response, generatedAt: new Date().toISOString() });
+          await cacheRef.set({ ...response, generatedAt });
           return NextResponse.json(response);
         }
       }
@@ -107,7 +147,20 @@ export async function GET(request: NextRequest) {
           (d) => d.parks?.some((p) => (p.avgWaitMinutes ?? 0) > 0)
         ) ?? [];
         if (staleDaysWithData.length >= Math.ceil((staleData.days?.length ?? 1) * 0.5)) {
-          return NextResponse.json({ ...staleData, stale: true });
+          const generatedAt =
+            (staleData as FamilyCrowdMonth & { generatedAt?: string }).generatedAt ??
+            staleData.dataQuality?.generatedAt ??
+            new Date().toISOString();
+          return NextResponse.json({
+            ...staleData,
+            stale: true,
+            dataQuality: dataQuality(
+              'stale-cache',
+              staleDaysWithData.length,
+              staleData.days?.length ?? 0,
+              generatedAt
+            ),
+          });
         }
       }
     } catch (error) {
@@ -116,7 +169,15 @@ export async function GET(request: NextRequest) {
 
     // Fallback: generate placeholder data with schedule-awareness
     const response = await generatePlaceholderData(familyId, month);
-    return NextResponse.json(response);
+    return NextResponse.json({
+      ...response,
+      dataQuality: dataQuality(
+        'estimated',
+        0,
+        response.days.length,
+        new Date().toISOString()
+      ),
+    });
   } catch (error) {
     console.error('Crowd calendar API error:', error);
     return NextResponse.json(
@@ -164,9 +225,19 @@ async function generatePlaceholderData(familyId: string, monthStr: string): Prom
     dates.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
   }
 
-  // Fetch park schedules to determine open/closed status
-  const parkIds = family.parks.map((p) => p.id);
-  let scheduleMap: Map<string, Map<string, { isOpen: boolean; hasData: boolean }>> | null = null;
+  // Fetch park schedules to determine open/closed status. `family.parks[].id`
+  // is a slug (used for `/parks/{slug}` routing), but the ThemeParks Wiki
+  // schedule endpoint requires an entity UUID — resolve through the single
+  // canonical registry lookup for every park (not just one) instead of
+  // sending the slug straight through, which previously 404'd/returned no
+  // usable schedule for any park reached via this fallback path.
+  const scheduleIdByParkId = new Map(
+    family.parks.map((p) => [p.id, resolveScheduleParkId(p.id)] as const)
+  );
+  const parkIds = [...scheduleIdByParkId.values()].filter(
+    (id): id is string => !!id
+  );
+  let scheduleMap: Map<string, Map<string, ParkOperatingStatus>> | null = null;
 
   try {
     scheduleMap = await batchGetParkOperatingStatus(parkIds, dates);
@@ -181,10 +252,17 @@ async function generatePlaceholderData(familyId: string, monthStr: string): Prom
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
     const parks: CrowdDayPark[] = family.parks.map((park, pi) => {
-      // Check schedule status
-      const parkSchedule = scheduleMap?.get(park.id)?.get(dateStr);
+      // Check schedule status via the resolved canonical entity id.
+      const scheduleParkId = scheduleIdByParkId.get(park.id);
+      const parkSchedule = scheduleParkId ? scheduleMap?.get(scheduleParkId)?.get(dateStr) : undefined;
 
       if (parkSchedule) {
+        // A fetch/timeout/malformed-response failure yields hasData:false —
+        // that must surface as NO_DATA, never CLOSED. Only a *valid* schedule
+        // response with zero OPERATING segments is a legitimate CLOSED day.
+        if (!parkSchedule.hasData) {
+          return { parkId: park.id, parkName: park.name, status: 'NO_DATA' as const };
+        }
         if (!parkSchedule.isOpen) {
           return { parkId: park.id, parkName: park.name, status: 'CLOSED' as const };
         }
@@ -196,12 +274,8 @@ async function generatePlaceholderData(familyId: string, monthStr: string): Prom
         return { parkId: park.id, parkName: park.name, status: 'OPEN' as const, crowdLevel, avgWaitMinutes };
       }
 
-      // No schedule entry for this park/date — treat as no data
-      if (scheduleMap) {
-        return { parkId: park.id, parkName: park.name, status: 'NO_DATA' as const };
-      }
-
-      // No schedule map at all (fetch failed entirely) — mark as NO_DATA
+      // No schedule entry for this park/date (unresolvable id, fetch failed
+      // entirely, or no matching cached/API entry) — always NO_DATA.
       return { parkId: park.id, parkName: park.name, status: 'NO_DATA' as const };
     });
 
@@ -263,8 +337,6 @@ async function computeFamilyCrowdDays(
     dates.push(`${month}-${String(d).padStart(2, '0')}`);
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10);
-
   // Fetch park schedules for all parks/dates in parallel with crowd data
   const parkIds = parks.map((p) => p.parkId);
   const [scheduleMap] = await Promise.all([
@@ -273,6 +345,20 @@ async function computeFamilyCrowdDays(
       return null;
     }),
   ]);
+
+  // "Today" must be computed in each park's own local timezone, not the
+  // server's (UTC on Vercel) date — e.g. 9pm Eastern is already 1am UTC the
+  // next day, which would otherwise skip a US park's live data by one day
+  // (and the reverse for parks east of UTC late in the UTC day).
+  const now = new Date();
+  const parkTodayStr = new Map<string, string>();
+  for (const park of parks) {
+    const perDatePark = scheduleMap?.get(park.parkId);
+    const timezone = perDatePark
+      ? [...perDatePark.values()].find((status) => status.timezone)?.timezone
+      : undefined;
+    parkTodayStr.set(park.parkId, getLocalDateString(now, timezone ?? 'UTC'));
+  }
 
   // For each park, fetch aggregate data per day-of-week (0-6) and live data for today
   const parkAggregates = new Map<string, Map<number, ForecastAggregate[]>>();
@@ -307,7 +393,8 @@ async function computeFamilyCrowdDays(
           })
       );
 
-      // Fetch live forecast data (for today only)
+      // Fetch live forecast data (for today only, in this park's own timezone)
+      const parkToday = parkTodayStr.get(park.parkId) ?? getLocalDateString(now, 'UTC');
       const liveFetch = adminDb
         .collection('waitTimes')
         .doc(park.parkId)
@@ -320,7 +407,7 @@ async function computeFamilyCrowdDays(
             const forecast = data.forecast as ForecastEntry[] | null;
             if (!forecast || forecast.length === 0) continue;
 
-            const todayEntries = forecast.filter((e) => e.time.startsWith(todayStr));
+            const todayEntries = forecast.filter((e) => e.time.startsWith(parkToday));
             if (todayEntries.length > 0) {
               attractionMap.set(doc.id, todayEntries);
             }
@@ -342,13 +429,25 @@ async function computeFamilyCrowdDays(
   const familyDays: FamilyCrowdDay[] = [];
 
   for (const date of dates) {
-    const isToday = date === todayStr;
     const dayOfWeek = new Date(date + 'T12:00:00').getDay();
 
     const parkCrowdDays: ParkCrowdDay[] = parks.map((park) => {
       // Check schedule status first
       const parkStatus = scheduleMap?.get(park.parkId)?.get(date);
       if (parkStatus) {
+        // A fetch/timeout/malformed-response failure yields hasData:false —
+        // that must surface as NO_DATA, never CLOSED. Only a *valid*
+        // schedule response with zero OPERATING segments is legitimately
+        // CLOSED.
+        if (!parkStatus.hasData) {
+          return {
+            parkId: park.parkId,
+            parkName: park.parkName,
+            crowdLevel: 0 as unknown as CrowdLevel,
+            avgWaitMinutes: 0,
+            status: 'NO_DATA',
+          } as ParkCrowdDay & { status: string };
+        }
         if (!parkStatus.isOpen) {
           // Park is closed — return CLOSED status with no crowd data
           return {
@@ -371,7 +470,9 @@ async function computeFamilyCrowdDays(
       }
 
       // Park is open (or we couldn't determine) — compute crowd data
-      // For today, prefer live forecast data if available
+      // For today (in this park's own local timezone), prefer live forecast
+      // data if available
+      const isToday = date === parkTodayStr.get(park.parkId);
       if (isToday) {
         const liveData = parkLiveForecasts.get(park.parkId);
         if (liveData && liveData.size > 0) {

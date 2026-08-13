@@ -3,7 +3,7 @@ import { Suspense } from 'react';
 
 export const metadata: Metadata = {
   title: 'Crowd Calendar',
-  description: 'See predicted crowd levels for every day across major theme parks.',
+  description: 'Compare clearly labeled historical crowd estimates and coverage across theme parks.',
 };
 
 export default function CalendarLayout({ children }: { children: React.ReactNode }) {

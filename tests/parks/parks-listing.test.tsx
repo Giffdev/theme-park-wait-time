@@ -182,7 +182,10 @@ describe('Parks Listing Page', () => {
 
       await user.click(screen.getByText('Refresh Data'));
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/wait-times', { signal: expect.any(AbortSignal) });
+      expect(mockFetch).toHaveBeenCalledWith('/api/wait-times', {
+        cache: 'no-store',
+        signal: expect.any(AbortSignal),
+      });
     });
 
     it('shows "Refreshing..." text while refresh is in progress', async () => {
@@ -201,15 +204,91 @@ describe('Parks Listing Page', () => {
     });
   });
 
-  describe('error handling', () => {
-    it('handles Firestore fetch errors gracefully (no crash)', async () => {
-      mockGetCollection.mockRejectedValue(new Error('Network error'));
+  describe('initial-arrival refresh', () => {
+    it('automatically refreshes the wait-time feed on arrival when the cached snapshot is stale', async () => {
+      const staleFetchedAt = new Date(Date.now() - 15 * 60 * 1000).toISOString(); // 15 min old — past the 10 min threshold
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') return Promise.resolve(mockParks);
+        if (typeof collectionPath === 'string' && collectionPath.startsWith('waitTimes/')) {
+          return Promise.resolve([
+            { attractionId: 'a1', attractionName: 'Ride', status: 'OPERATING', waitMinutes: 20, fetchedAt: staleFetchedAt },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
 
       render(<ParksPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('Theme Parks')).toBeInTheDocument();
+        expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
       });
+
+      // A background refresh should fire automatically on arrival (without a
+      // manual click), re-querying the wait-times collections a second time —
+      // i.e. more than the single initial-load round (3 parks × 1 round).
+      await waitFor(() => {
+        const waitTimesCalls = mockGetCollection.mock.calls.filter(
+          (call) => typeof call[0] === 'string' && call[0].startsWith('waitTimes/')
+        ).length;
+        expect(waitTimesCalls).toBeGreaterThan(mockParks.length);
+      });
+    });
+
+    it('does not auto-refresh on arrival when the cached snapshot is already fresh', async () => {
+      const freshFetchedAt = new Date(Date.now() - 30 * 1000).toISOString(); // 30s old
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') return Promise.resolve(mockParks);
+        if (typeof collectionPath === 'string' && collectionPath.startsWith('waitTimes/')) {
+          return Promise.resolve([
+            { attractionId: 'a1', attractionName: 'Ride', status: 'OPERATING', waitMinutes: 20, fetchedAt: freshFetchedAt },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+
+      render(<ParksPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
+      });
+
+      const waitTimesCallsAfterLoad = mockGetCollection.mock.calls.filter(
+        (call) => typeof call[0] === 'string' && call[0].startsWith('waitTimes/')
+      ).length;
+
+      // Give any stray async work a tick, then confirm no extra fetch occurred.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+
+      const waitTimesCallsAfterWait = mockGetCollection.mock.calls.filter(
+        (call) => typeof call[0] === 'string' && call[0].startsWith('waitTimes/')
+      ).length;
+      expect(waitTimesCallsAfterWait).toBe(waitTimesCallsAfterLoad);
+    });
+  });
+
+  describe('error handling', () => {
+    it('shows a retryable directory error when the parks query fails', async () => {
+      mockGetCollection.mockRejectedValue(new Error('Network error'));
+
+      render(<ParksPage />);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Park directory unavailable');
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+      expect(screen.queryByText(/No parks match/)).not.toBeInTheDocument();
+    });
+
+    it('keeps the directory useful when every live wait-time read fails', async () => {
+      mockGetCollection
+        .mockResolvedValueOnce(mockParks)
+        .mockRejectedValue(new Error('Missing permission'));
+
+      render(<ParksPage />);
+
+      expect(await screen.findByText('Live wait times are temporarily unavailable')).toBeInTheDocument();
+      expect(screen.getByText(/Park hours and directory links still work/i)).toBeInTheDocument();
+      expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
     });
   });
 });

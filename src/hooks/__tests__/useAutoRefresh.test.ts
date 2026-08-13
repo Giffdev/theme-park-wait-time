@@ -332,4 +332,185 @@ describe('useAutoRefresh', () => {
     // Implementation guards forceRefresh behind enabled too
     expect(onRefresh).not.toHaveBeenCalled();
   });
+
+  describe('initial-arrival refresh (mount-time staleness)', () => {
+    it('refreshes immediately on mount when cached data is already stale', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      await act(async () => {
+        renderHook(() =>
+          useAutoRefresh({
+            key: 'arrival-stale',
+            staleness: 2 * 60 * 1000,
+            onRefresh,
+            enabled: true,
+            initialDataAge: 5 * 60 * 1000, // cached data is 5 min old — stale
+          })
+        );
+      });
+
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT refresh on mount when cached data is still fresh', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      await act(async () => {
+        renderHook(() =>
+          useAutoRefresh({
+            key: 'arrival-fresh',
+            staleness: 10 * 60 * 1000,
+            onRefresh,
+            enabled: true,
+            initialDataAge: 60 * 1000, // only 1 min old — fresh
+          })
+        );
+      });
+
+      expect(onRefresh).not.toHaveBeenCalled();
+    });
+
+    it('does not evaluate arrival staleness at all when initialDataAge is omitted (legacy behavior)', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      await act(async () => {
+        renderHook(() =>
+          useAutoRefresh({
+            key: 'arrival-unused',
+            staleness: 2 * 60 * 1000,
+            onRefresh,
+            enabled: true,
+            // initialDataAge intentionally omitted
+          })
+        );
+      });
+
+      expect(onRefresh).not.toHaveBeenCalled();
+    });
+
+    it('waits for a real value when initialDataAge starts as null, then evaluates once available', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      const { rerender } = await (async () => {
+        let utils!: ReturnType<typeof renderHook>;
+        await act(async () => {
+          utils = renderHook(
+            ({ age }: { age: number | null }) =>
+              useAutoRefresh({
+                key: 'arrival-wait',
+                staleness: 2 * 60 * 1000,
+                onRefresh,
+                enabled: true,
+                initialDataAge: age,
+              }),
+            { initialProps: { age: null } }
+          );
+        });
+        return utils;
+      })();
+
+      // Still waiting for a real value — no decision made yet
+      expect(onRefresh).not.toHaveBeenCalled();
+
+      await act(async () => {
+        rerender({ age: 5 * 60 * 1000 }); // now stale
+      });
+
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not double-fire when a visibility change happens immediately after an arrival refresh', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      await act(async () => {
+        renderHook(() =>
+          useAutoRefresh({
+            key: 'arrival-dedup',
+            staleness: 2 * 60 * 1000,
+            onRefresh,
+            enabled: true,
+            initialDataAge: 5 * 60 * 1000, // stale on arrival
+          })
+        );
+      });
+
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      // A visibility change fires right after mount — should be a no-op since
+      // the in-flight guard/refreshed timestamp already covers this window.
+      await act(async () => {
+        simulateVisible();
+      });
+
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('respects enabled=false — no arrival refresh fires while disabled', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      await act(async () => {
+        renderHook(() =>
+          useAutoRefresh({
+            key: 'arrival-disabled',
+            staleness: 2 * 60 * 1000,
+            onRefresh,
+            enabled: false,
+            initialDataAge: 10 * 60 * 1000,
+          })
+        );
+      });
+
+      expect(onRefresh).not.toHaveBeenCalled();
+    });
+
+    it('surfaces lastRefreshError when the arrival refresh fails, without throwing', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const failure = new Error('Snapshot fetch failed');
+      const onRefresh = vi.fn().mockRejectedValue(failure);
+
+      let result!: ReturnType<typeof renderHook>['result'];
+      await act(async () => {
+        ({ result } = renderHook(() =>
+          useAutoRefresh({
+            key: 'arrival-error',
+            staleness: 2 * 60 * 1000,
+            onRefresh,
+            enabled: true,
+            initialDataAge: 5 * 60 * 1000,
+          })
+        ));
+      });
+
+      expect(result.current.lastRefreshError).toBe(failure);
+      expect(result.current.isBackgroundRefreshing).toBe(false);
+      consoleSpy.mockRestore();
+    });
+
+    it('clears lastRefreshError after a subsequent successful refresh', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const onRefresh = vi.fn().mockRejectedValueOnce(new Error('fail')).mockResolvedValue(undefined);
+
+      let result!: ReturnType<typeof renderHook>['result'];
+      await act(async () => {
+        ({ result } = renderHook(() =>
+          useAutoRefresh({
+            key: 'arrival-error-clear',
+            staleness: 2 * 60 * 1000,
+            onRefresh,
+            enabled: true,
+            initialDataAge: 5 * 60 * 1000,
+          })
+        ));
+      });
+
+      expect(result.current.lastRefreshError).not.toBeNull();
+
+      await act(async () => {
+        await result.current.forceRefresh();
+      });
+
+      expect(result.current.lastRefreshError).toBeNull();
+      consoleSpy.mockRestore();
+    });
+  });
 });

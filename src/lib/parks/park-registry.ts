@@ -107,10 +107,10 @@ const UNIVERSAL_ORLANDO: DestinationEntry = {
   name: 'Universal Orlando Resort',
   slug: 'universal-orlando',
   parks: [
-    { id: 'eb3f4560-2383-4a36-9152-6b3e5ed66bc57', name: 'Universal Studios Florida', slug: 'universal-studios-florida' },
+    { id: 'eb3f4560-2383-4a36-9152-6b3e5ed6bc57', name: 'Universal Studios Florida', slug: 'universal-studios-florida' },
     { id: '267615cc-8943-4c2a-ae2c-5da728ca591f', name: 'Islands of Adventure', slug: 'islands-of-adventure' },
-    { id: '12dbb85b-265f-44e6-bccf-f1faa172111fc', name: 'Epic Universe', slug: 'epic-universe' },
-    { id: 'fe78a026-b91b-470c-b906-9d2266b6922da', name: "Volcano Bay", slug: 'volcano-bay' },
+    { id: '12dbb85b-265f-44e6-bccf-f1faa17211fc', name: 'Epic Universe', slug: 'epic-universe' },
+    { id: 'fe78a026-b91b-470c-b906-9d2266b692da', name: "Volcano Bay", slug: 'volcano-bay' },
   ],
 };
 
@@ -137,7 +137,7 @@ const UNIVERSAL_BEIJING: DestinationEntry = {
   name: 'Universal Beijing Resort',
   slug: 'universal-beijing',
   parks: [
-    { id: '68e1d8f0-ed42-4351-af25-160421e337ce0', name: 'Universal Studios Beijing', slug: 'universal-beijing-park' },
+    { id: '68e1d8f0-ed42-4351-af25-160421e37ce0', name: 'Universal Studios Beijing', slug: 'universal-beijing-park' },
   ],
 };
 
@@ -146,7 +146,7 @@ const UNIVERSAL_SINGAPORE: DestinationEntry = {
   name: 'Universal Studios Singapore',
   slug: 'universal-singapore',
   parks: [
-    { id: 'f95d7f76-2024-4510-b799-26ee122d0e448', name: 'Universal Studios Singapore', slug: 'universal-singapore-park' },
+    { id: 'f95d7f76-2024-4510-b799-26e122d0e448', name: 'Universal Studios Singapore', slug: 'universal-singapore-park' },
   ],
 };
 
@@ -157,7 +157,7 @@ const SIX_FLAGS_MAGIC_MOUNTAIN: DestinationEntry = {
   name: 'Six Flags Magic Mountain',
   slug: 'six-flags-magic-mountain',
   parks: [
-    { id: 'c6073ab0-83aa-4e25-8d60-12c8f256884bc', name: 'Six Flags Magic Mountain', slug: 'magic-mountain' },
+    { id: 'c6073ab0-83aa-4e25-8d60-12c8f25684bc', name: 'Six Flags Magic Mountain', slug: 'magic-mountain' },
   ],
 };
 
@@ -175,7 +175,7 @@ const SIX_FLAGS_GREAT_AMERICA: DestinationEntry = {
   name: 'Six Flags Great America',
   slug: 'six-flags-great-america-dest',
   parks: [
-    { id: '15805a4d-4023-4702-b9f2-3d3cab2e0c11e', name: 'Six Flags Great America', slug: 'six-flags-great-america' },
+    { id: '15805a4d-4023-4702-b9f2-3d3cab2e0c1e', name: 'Six Flags Great America', slug: 'six-flags-great-america' },
   ],
 };
 
@@ -238,7 +238,7 @@ const SIX_FLAGS_DISCOVERY_KINGDOM: DestinationEntry = {
   name: 'Six Flags Discovery Kingdom',
   slug: 'six-flags-discovery-kingdom',
   parks: [
-    { id: '3237a0c2-8e35-4a1c-9356-a3119d5988e7c', name: 'Six Flags Discovery Kingdom', slug: 'discovery-kingdom' },
+    { id: '3237a0c2-8e35-4a1c-9356-a319d5988e7c', name: 'Six Flags Discovery Kingdom', slug: 'discovery-kingdom' },
   ],
 };
 
@@ -265,7 +265,7 @@ const SIX_FLAGS_FRONTIER_CITY: DestinationEntry = {
   name: 'Six Flags Frontier City',
   slug: 'six-flags-frontier-city',
   parks: [
-    { id: '589627eb-fe16-4373-a2db-08d73805fb11f', name: 'Six Flags Frontier City', slug: 'frontier-city' },
+    { id: '589627eb-fe16-4373-a2db-08d73805fb1f', name: 'Six Flags Frontier City', slug: 'frontier-city' },
   ],
 };
 
@@ -385,7 +385,7 @@ const WORLDS_OF_FUN: DestinationEntry = {
   slug: 'worlds-of-fun-dest',
   parks: [
     { id: 'bb731eae-7bd3-4713-bd7b-89d79b031743', name: 'Worlds of Fun', slug: 'worlds-of-fun' },
-    { id: '951987f7-3387-4221-8368-2859469aebcd', name: 'Oceans of Fun', slug: 'oceans-of-fun' },
+    { id: 'b5a89552-3381-47ad-88cc-ab0087019c8b', name: 'Oceans of Fun', slug: 'oceans-of-fun' },
   ],
 };
 
@@ -396,8 +396,8 @@ const SEAWORLD_ORLANDO: DestinationEntry = {
   name: 'SeaWorld Orlando',
   slug: 'seaworld-orlando-dest',
   parks: [
-    { id: '27d64dee-d85e-48dc-ad6d-80774455cd946', name: 'SeaWorld Orlando', slug: 'seaworld-orlando' },
-    { id: '9e2867f8-68eb-454f-b367-0ed0fd772d72a', name: 'Aquatica Orlando', slug: 'aquatica-orlando' },
+    { id: '27d64dee-d85e-48dc-ad6d-8077445cd946', name: 'SeaWorld Orlando', slug: 'seaworld-orlando' },
+    { id: '9e2867f8-68eb-454f-b367-0ed0fd72d72a', name: 'Aquatica Orlando', slug: 'aquatica-orlando' },
   ],
 };
 

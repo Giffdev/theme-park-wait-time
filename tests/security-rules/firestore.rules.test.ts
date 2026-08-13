@@ -24,6 +24,7 @@ import {
   deleteDoc,
   collection,
   addDoc,
+  getDocs,
 } from 'firebase/firestore';
 
 let testEnv: RulesTestEnvironment;
@@ -122,23 +123,51 @@ describe('Attractions subcollection', () => {
 // 3. CURRENT WAIT TIMES — Public read, server-only write
 // ===========================================================================
 describe('Current wait times', () => {
-  const waitTimePath = 'parks/magic-kingdom/currentWaitTimes/space-mountain';
+  const legacyWaitTimePath = 'parks/magic-kingdom/currentWaitTimes/space-mountain';
+  const waitTimePath = 'waitTimes/magic-kingdom/current/space-mountain';
   const waitData = { waitMinutes: 45, status: 'operating', source: 'api' };
 
   beforeEach(async () => {
+    await seedDoc(legacyWaitTimePath, waitData);
     await seedDoc(waitTimePath, waitData);
   });
 
-  it('allows unauthenticated read', async () => {
+  it('allows unauthenticated document read from the API write path', async () => {
     const ctx = unauthenticatedContext(testEnv);
     const ref = doc(ctx.firestore(), waitTimePath);
     await expect(getDoc(ref)).resolves.toBeDefined();
   });
 
-  it('denies client write', async () => {
+  it('allows unauthenticated collection reads used by park pages', async () => {
+    const ctx = unauthenticatedContext(testEnv);
+    const ref = collection(ctx.firestore(), 'waitTimes/magic-kingdom/current');
+    await expect(getDocs(ref)).resolves.toBeDefined();
+  });
+
+  it('allows authenticated reads', async () => {
+    const ctx = authenticatedContext(testEnv, 'user-1');
+    const ref = doc(ctx.firestore(), waitTimePath);
+    await expect(getDoc(ref)).resolves.toBeDefined();
+  });
+
+  it('denies unauthenticated client writes', async () => {
+    const ctx = unauthenticatedContext(testEnv);
+    const ref = doc(ctx.firestore(), waitTimePath);
+    await expect(setDoc(ref, waitData)).rejects.toThrow();
+  });
+
+  it('denies authenticated client writes', async () => {
     const ctx = authenticatedContext(testEnv, 'user-1');
     const ref = doc(ctx.firestore(), waitTimePath);
     await expect(setDoc(ref, waitData)).rejects.toThrow();
+  });
+
+  it('does not expose sibling waitTimes subcollections', async () => {
+    const privatePath = 'waitTimes/magic-kingdom/internal/diagnostics';
+    await seedDoc(privatePath, { upstreamStatus: 200 });
+    const ctx = unauthenticatedContext(testEnv);
+    const ref = doc(ctx.firestore(), privatePath);
+    await expect(getDoc(ref)).rejects.toThrow();
   });
 });
 

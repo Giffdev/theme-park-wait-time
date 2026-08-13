@@ -38,8 +38,8 @@ export default function HomePage() {
             <span className="text-coral-300">Ride more.</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-primary-200 sm:text-xl">
-            Real-time wait times, crowd predictions, and ride logging for theme park
-            fans who want to make the most of their trip to the park.
+            Current wait-time snapshots, clearly labeled historical crowd estimates,
+            and ride logging for theme park fans who want to make the most of their day.
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
@@ -82,7 +82,7 @@ export default function HomePage() {
             { value: '130+', label: 'Theme Parks' },
             { value: '7,900+', label: 'Attractions' },
             { value: 'Live', label: 'Wait Times' },
-            { value: '365', label: 'Days of Crowd Data' },
+            { value: 'Labeled', label: 'Crowd Estimates' },
           ].map((stat) => (
             <div key={stat.label}>
               <div className="text-2xl font-bold text-primary-700 sm:text-3xl">

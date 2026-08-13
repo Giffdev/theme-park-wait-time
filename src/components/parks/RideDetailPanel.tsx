@@ -155,7 +155,13 @@ export default function RideDetailPanel({ attractionId, parkId, name, entityType
         <div className="px-5 py-5 space-y-6">
           {/* Status + Wait */}
           <div className="flex items-center gap-4">
-            <WaitTimeBadge waitMinutes={waitMinutes} size="lg" />
+            {status === 'OPERATING' ? (
+              <WaitTimeBadge waitMinutes={waitMinutes} size="lg" />
+            ) : (
+              <span className="inline-flex rounded-full bg-primary-100 px-4 py-2 text-sm font-semibold text-primary-600">
+                {status === 'UNKNOWN' ? 'Wait unavailable' : status.toLowerCase().replace(/_/g, ' ')}
+              </span>
+            )}
             <div>
               <p className="text-sm font-medium text-primary-600 capitalize">
                 {status.toLowerCase().replace(/_/g, ' ')}

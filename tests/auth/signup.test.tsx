@@ -57,8 +57,9 @@ vi.mock('@/lib/firebase/auth', () => ({
 }));
 
 // Mock auth context
+const mockUseAuth = vi.fn(() => ({ user: null as { uid: string } | null, loading: false, signOut: vi.fn() }));
 vi.mock('@/lib/firebase/auth-context', () => ({
-  useAuth: () => ({ user: null, loading: false, signOut: vi.fn() }),
+  useAuth: () => mockUseAuth(),
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
@@ -73,7 +74,7 @@ describe('SignUp Page', () => {
       render(<SignUpPage />);
 
       expect(screen.getByText('Create your account')).toBeInTheDocument();
-      expect(screen.getByText('Join the ParkFlow community')).toBeInTheDocument();
+      expect(screen.getByText('Join the ParkPulse community')).toBeInTheDocument();
     });
 
     it('renders the Google sign-up button', async () => {
@@ -156,9 +157,19 @@ describe('SignUp Page', () => {
       expect(true).toBe(true);
     });
 
-    it('should redirect to /dashboard after successful sign-up', () => {
-      // Spec: router.push('/dashboard') called after registration
-      expect(true).toBe(true);
+    it('should redirect to /parks after successful sign-up', async () => {
+      const user = userEvent.setup();
+      mockSignUp.mockResolvedValueOnce(undefined);
+      const { default: SignUpPage } = await import('@/app/auth/signup/page');
+      render(<SignUpPage />);
+
+      await user.type(screen.getByPlaceholderText('Email address'), 'new@example.com');
+      await user.type(screen.getByPlaceholderText('Password (min 6 characters)'), 'securepass123');
+      await user.click(screen.getByRole('button', { name: /create account/i }));
+
+      await vi.waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith('/parks');
+      });
     });
 
     it('should show error for auth/weak-password', () => {
@@ -182,9 +193,12 @@ describe('SignUp Page', () => {
       expect(true).toBe(true);
     });
 
-    it('should redirect authenticated users to /dashboard', () => {
-      // Spec: If useAuth().user is non-null, redirect immediately
-      expect(true).toBe(true);
+    it('should redirect authenticated users to /parks', async () => {
+      mockUseAuth.mockReturnValueOnce({ user: { uid: 'u1' }, loading: false, signOut: vi.fn() });
+      const { default: SignUpPage } = await import('@/app/auth/signup/page');
+      render(<SignUpPage />);
+
+      expect(mockReplace).toHaveBeenCalledWith('/parks');
     });
   });
 });

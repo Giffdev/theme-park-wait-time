@@ -1,39 +1,27 @@
+import { fileURLToPath } from 'url';
+import path from 'path';
 import { adminDb } from '../src/lib/firebase/admin';
 import { Timestamp } from 'firebase-admin/firestore';
+import { DESTINATION_FAMILIES, getParkById } from '../src/lib/parks/park-registry';
 
 const API_BASE = 'https://api.themeparks.wiki/v1';
 
-// Virtual park ID for Oceans of Fun (water park) — split from the single API entity
-const OCEANS_OF_FUN_VIRTUAL_ID = '951987f7-3387-4221-8368-2859469aebcd';
-
-// Attraction IDs that belong to Oceans of Fun (water park)
-const OCEANS_OF_FUN_ATTRACTION_IDS = new Set([
-  '85cd8db0-ef0e-403c-94e6-9f218c0b7f3a', // Splash Island
-  '8b1be132-d160-4981-a41d-4797af390c14', // Riptide Raceway
-  '6b5834eb-3fcf-4817-b3fc-17e5864f8874', // Fury of the Nile
-  'cf91110a-57de-43ca-9176-2e560739cbe8', // Surf City Wave Pool
-  'e05f03b6-7d09-4930-9b14-ce67fafc6d13', // Hurricane Falls
-  'c76d33b5-7ecb-49a5-99cd-aaa7a9bf6b6d', // Coconut Cove
-  'ae03a408-78b4-4e35-abf2-e01929507492', // Captain Kidd's
-  'c7d86310-a1a6-49e2-8ba5-bb44c9ab8bc2', // Predators' Plunge
-  'c7536536-ed7a-424b-9f3b-093d3d64938d', // Sharks' Revenge
-  '646c76fb-aa26-42b3-ae39-c1c5e706a7fd', // Crocodile Isle
-  '522b6d56-c58b-41ef-8dd6-766db8b3604b', // Aruba Tuba
-  '519fbe03-2fe9-423e-9f42-8f6fb4fe9031', // Caribbean Cooler
-  'd99c0844-bb06-43e5-8614-b6b01ed3a0e2', // Typhoon
-  '0c9a28f4-0396-4b12-b467-29e02e114a23', // Paradise Falls
-  'c8185f45-5863-46a5-8d5b-538518e619b4', // Castaway Cove
-  'aea9e23a-dd82-4867-aaf8-c22478696af8', // Viking Voyager
-]);
-
-// Destinations to seed, matched by keyword in destination name
+// Per-destination overrides for behavior the upstream API can't express on
+// its own (virtual water-park splits, timezone gaps, filtering out API-listed
+// parks we don't support yet). Keyed by the *destination* UUID exactly as it
+// appears both in `park-registry.ts` and in the ThemeParks Wiki API response —
+// this is the only place a destination should need special-casing.
 interface DestinationConfig {
-  keywords: string[];
   // If specified, only seed parks matching these UUIDs (skip others like water parks not in API)
   parkFilter?: string[];
   // Override timezone for parks in this destination
   timezoneOverride?: string;
-  // Virtual split: split a single API park into two virtual parks by attraction IDs
+  // Virtual split: split a single API park into two virtual parks by attraction IDs.
+  // Kept as a general-purpose escape hatch for a destination whose upstream API
+  // entity doesn't yet separate two on-the-ground parks; NOT currently used by
+  // any configured destination (see history for the retired Worlds of Fun/Oceans
+  // of Fun override — ThemeParks Wiki now reports Oceans of Fun as its own
+  // real entity, so the fabrication is obsolete and would fight the real ids).
   virtualSplit?: {
     sourceId: string;
     virtualParkId: string;
@@ -42,24 +30,52 @@ interface DestinationConfig {
   };
 }
 
-const SEED_DESTINATIONS: Record<string, DestinationConfig> = {
-  orlando: {
-    keywords: ['walt disney world', 'universal orlando', 'seaworld orlando', 'seaworld parks'],
-  },
-  'worlds-of-fun': {
-    keywords: ['worlds of fun'],
-    parkFilter: ['bb731eae-7bd3-4713-bd7b-89d79b031743'],
+const DESTINATION_CONFIG_OVERRIDES: Record<string, DestinationConfig> = {
+  // Worlds of Fun (Cedar Fair) — Oceans of Fun used to be fabricated locally
+  // as a virtual park split from Worlds of Fun's attraction list, because the
+  // upstream API previously exposed only a single combined entity. ThemeParks
+  // Wiki now lists Oceans of Fun as its own distinct entity
+  // (b5a89552-3381-47ad-88cc-ab0087019c8b, matching the corrected
+  // park-registry.ts id) with its own attractions/schedule/timezone, so both
+  // parks are seeded normally — no virtual split needed.
+  'c4231018-dc6f-4d8d-bfc2-7a21a6c9e9fa': {
+    parkFilter: ['bb731eae-7bd3-4713-bd7b-89d79b031743', 'b5a89552-3381-47ad-88cc-ab0087019c8b'],
     timezoneOverride: 'America/Chicago',
-    virtualSplit: {
-      sourceId: 'bb731eae-7bd3-4713-bd7b-89d79b031743',
-      virtualParkId: OCEANS_OF_FUN_VIRTUAL_ID,
-      virtualParkName: 'Oceans of Fun',
-      attractionIds: OCEANS_OF_FUN_ATTRACTION_IDS,
-    },
   },
 };
 
-interface Destination {
+/**
+ * Destination UUIDs actively seeded into Firestore. This is the single
+ * reusable mapping path between `park-registry.ts` (the app's supported-park
+ * source of truth) and this script (the Firestore data source of truth) —
+ * to onboard a new destination that already exists in `park-registry.ts`,
+ * add its destination id here. `getRegistryDestinationIds()` / the parity
+ * test in `tests/scripts/seed-parks-parity.test.ts` guard against typos and
+ * against a registry destination silently having no seed coverage.
+ *
+ * Previously this script matched destinations via fuzzy keyword search
+ * against the upstream API's destination *names* (e.g. "worlds of fun").
+ * That silently skipped any registry destination whose name didn't match a
+ * configured keyword — which is exactly how Alton Towers ended up present in
+ * `park-registry.ts` (and thus linkable in the UI) but absent from Firestore,
+ * producing "Park details unavailable". Direct id lookups can't drift like
+ * that: an id either matches a registry destination and an API destination,
+ * or the mismatch is caught explicitly below.
+ */
+export const SEED_DESTINATION_IDS: string[] = [
+  'e957da41-3552-4cf6-b636-5babc5cbc4e5', // Walt Disney World
+  '89db5d43-c434-4097-b71f-f6869f495a22', // Universal Orlando Resort
+  '643e837e-b244-4663-8d3a-148c26ecba9c', // SeaWorld Orlando
+  'c4231018-dc6f-4d8d-bfc2-7a21a6c9e9fa', // Worlds of Fun
+  '8e6bf2ae-77ac-403d-8e10-d7cd9b6c05d7', // Alton Towers
+];
+
+/** All destination ids known to park-registry.ts, used to validate SEED_DESTINATION_IDS. */
+export function getRegistryDestinationIds(): Set<string> {
+  return new Set(DESTINATION_FAMILIES.flatMap((family) => family.destinations.map((d) => d.id)));
+}
+
+export interface Destination {
   id: string;
   name: string;
   slug: string;
@@ -89,6 +105,26 @@ function slugify(name: string): string {
     .replace(/^-|-$/g, '');
 }
 
+/**
+ * Resolve the slug to persist for a seeded park document.
+ *
+ * `park-registry.ts` is the app's canonical source of truth for a park's
+ * slug — it's what routing and detail-page Firestore lookups
+ * (`where('slug', '==', ...)`) resolve against. The upstream ThemeParks Wiki
+ * API also reports its own, independently-chosen `slug` field per park,
+ * which is NOT guaranteed to match the registry (e.g. Islands of Adventure:
+ * upstream reports "universal-islands-of-adventure" while the registry uses
+ * "islands-of-adventure"). Preferring the registry slug by UUID keeps this a
+ * reusable, generic mapping rather than a one-off remap, and falls back to
+ * the upstream/derived slug only for parks not yet present in the registry.
+ */
+export function resolveParkSlug(
+  park: { id: string; slug?: string; name: string },
+  lookupRegistrySlug: (id: string) => string | undefined = (id) => getParkById(id)?.slug
+): string {
+  return lookupRegistrySlug(park.id) || park.slug || slugify(park.name);
+}
+
 async function fetchJson<T>(url: string): Promise<T | null> {
   const res = await fetch(url);
   if (!res.ok) {
@@ -112,27 +148,49 @@ async function getConfiguredDestinations(): Promise<MatchedDestination[]> {
     throw new Error('Could not fetch destinations list from API');
   }
 
-  const matched: MatchedDestination[] = [];
-
-  for (const [name, config] of Object.entries(SEED_DESTINATIONS)) {
-    const found = data.destinations.filter((dest) =>
-      config.keywords.some((keyword) => dest.name.toLowerCase().includes(keyword))
-    );
-
-    if (found.length === 0) {
-      console.warn(`  ⚠ No destinations matched for "${name}" — skipping`);
-      continue;
-    }
-
-    for (const dest of found) {
-      matched.push({ destination: dest, config });
-    }
-  }
+  const matched = resolveSeedDestinations(data.destinations);
 
   console.log(`\nMatched ${matched.length} destinations:`);
   matched.forEach((m) =>
     console.log(`  - ${m.destination.name} (${m.destination.parks.length} parks)`)
   );
+
+  return matched;
+}
+
+/**
+ * Pure id-based matcher between `SEED_DESTINATION_IDS` and the destinations
+ * returned by the ThemeParks Wiki API. Exported (and free of network/Firestore
+ * side effects) so it can be exercised directly in tests with fixture data.
+ *
+ * Throws if a configured seed id isn't a real `park-registry.ts` destination
+ * (a typo in `SEED_DESTINATION_IDS`) rather than silently skipping it — this
+ * is the parity guarantee that replaces the old fuzzy keyword matching.
+ */
+export function resolveSeedDestinations(
+  apiDestinations: Destination[],
+  seedDestinationIds: string[] = SEED_DESTINATION_IDS
+): MatchedDestination[] {
+  const registryIds = getRegistryDestinationIds();
+  const apiById = new Map(apiDestinations.map((dest) => [dest.id, dest]));
+  const matched: MatchedDestination[] = [];
+
+  for (const destinationId of seedDestinationIds) {
+    if (!registryIds.has(destinationId)) {
+      throw new Error(
+        `SEED_DESTINATION_IDS contains "${destinationId}", which is not a destination in ` +
+          `park-registry.ts. Fix the seed list or add the destination to the registry first.`
+      );
+    }
+
+    const dest = apiById.get(destinationId);
+    if (!dest) {
+      console.warn(`  ⚠ Destination ${destinationId} not found in ThemeParks Wiki API — skipping`);
+      continue;
+    }
+
+    matched.push({ destination: dest, config: DESTINATION_CONFIG_OVERRIDES[destinationId] ?? {} });
+  }
 
   return matched;
 }
@@ -183,10 +241,16 @@ async function seedParksAndAttractions(matches: MatchedDestination[]): Promise<v
 
       // Write park document
       const parkName = PARK_NAME_OVERRIDES[park.id] || park.name;
+      // Slug identity: see resolveParkSlug() — root cause was Islands of
+      // Adventure being seeded with the upstream API's own slug
+      // ("universal-islands-of-adventure") instead of park-registry.ts's
+      // canonical slug ("islands-of-adventure"), causing the Firestore
+      // `parks` doc (which frontend navigation resolves against) to drift
+      // from the registry's canonical identity.
       const parkDoc = {
         id: park.id,
         name: parkName,
-        slug: park.slug || slugify(park.name),
+        slug: resolveParkSlug(park),
         destinationName: dest.name,
         destinationId: dest.id,
         timezone: finalTimezone,
@@ -303,4 +367,12 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+// Only run when executed directly (`npx tsx scripts/seed-parks.ts`), not when
+// imported by tests — importing this module still triggers the Firebase Admin
+// module-level init in `../src/lib/firebase/admin`, so tests mock that module.
+const isDirectlyExecuted =
+  !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectlyExecuted) {
+  main();
+}

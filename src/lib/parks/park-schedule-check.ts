@@ -1,8 +1,22 @@
 /**
  * Helper to check park operating status for a given date.
  * Checks Firestore cache first, falls back to ThemeParks Wiki API.
+ *
+ * Every Firestore read/write and upstream fetch below is bounded (see
+ * `schedule-timing.ts`). Production evidence showed `/api/park-schedule`
+ * hanging 45+ seconds for some parks while the upstream API itself
+ * responded in ~253ms — traced to unbounded `cacheRef.get()`/`cacheRef.set()`
+ * calls with no timeout. A bounded read/write degrades to a cache-miss /
+ * deferred-write instead of hanging, and callers still get an honest
+ * `hasData: false` rather than an indefinite wait.
  */
 import { adminDb } from '@/lib/firebase/admin';
+import {
+  scheduleBackgroundWrite,
+  withTimeout,
+  SCHEDULE_CACHE_READ_TIMEOUT_MS,
+  SCHEDULE_UPSTREAM_TIMEOUT_MS,
+} from './schedule-timing';
 
 const API_BASE = 'https://api.themeparks.wiki/v1';
 const SCHEDULE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -18,6 +32,34 @@ export interface ParkOperatingStatus {
   isOpen: boolean;
   hasData: boolean;
   segments?: ScheduleSegment[];
+  /** IANA timezone the schedule's dates/segments were reported in, when known. */
+  timezone?: string;
+}
+
+/**
+ * Format a `Date` as a `YYYY-MM-DD` calendar date in a specific IANA
+ * timezone. Used so "today" for a given park is computed from that park's
+ * own local calendar date rather than the server's (UTC on Vercel) date —
+ * evenings in US parks are already the next calendar day in UTC, and the
+ * reverse applies to parks east of UTC late in the UTC day.
+ */
+export function getLocalDateString(date: Date, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  } catch {
+    // Invalid/unknown IANA timezone — fall back to UTC rather than throwing.
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'UTC',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  }
 }
 
 interface CachedScheduleDoc {
@@ -59,16 +101,17 @@ export async function getParkOperatingStatus(
   date: string
 ): Promise<ParkOperatingStatus> {
   try {
-    // Check Firestore cache
+    // Check Firestore cache. Bounded: a stalled read is treated exactly like
+    // a cache miss (`cached` stays `null`) rather than hanging the request.
     const cacheRef = adminDb
       .collection('parkSchedules')
       .doc(parkId)
       .collection('daily')
       .doc(date);
 
-    const cached = await cacheRef.get();
+    const cached = await withTimeout(cacheRef.get(), SCHEDULE_CACHE_READ_TIMEOUT_MS);
 
-    if (cached.exists) {
+    if (cached?.exists) {
       const data = cached.data() as CachedScheduleDoc;
       if (!isScheduleStale(data.fetchedAt)) {
         const operatingSegments = data.segments.filter((s) => s.type === 'OPERATING');
@@ -76,24 +119,28 @@ export async function getParkOperatingStatus(
           isOpen: operatingSegments.length > 0,
           hasData: true,
           segments: data.segments,
+          timezone: data.timezone,
         };
       }
     }
 
-    // Fetch from ThemeParks Wiki API
+    // Fetch from ThemeParks Wiki API. Bounded so a stalled upstream
+    // connection fails fast instead of hanging the request indefinitely.
     const res = await fetch(`${API_BASE}/entity/${parkId}/schedule`, {
       next: { revalidate: 0 },
+      signal: AbortSignal.timeout(SCHEDULE_UPSTREAM_TIMEOUT_MS),
     });
 
     if (!res.ok) {
       // If API fails but we have stale cache, use it
-      if (cached.exists) {
+      if (cached?.exists) {
         const data = cached.data() as CachedScheduleDoc;
         const operatingSegments = data.segments.filter((s) => s.type === 'OPERATING');
         return {
           isOpen: operatingSegments.length > 0,
           hasData: true,
           segments: data.segments,
+          timezone: data.timezone,
         };
       }
       return { isOpen: false, hasData: false };
@@ -109,7 +156,9 @@ export async function getParkOperatingStatus(
       closingTime: entry.closingTime,
     }));
 
-    // Cache in Firestore
+    // Cache in Firestore. Deferred via `after()` (request-lifecycle
+    // scheduling) so a slow/cold write can never block the response — the
+    // caller already has everything it needs from `apiData` above.
     const cacheDoc: CachedScheduleDoc = {
       parkId,
       date,
@@ -117,15 +166,18 @@ export async function getParkOperatingStatus(
       segments,
       fetchedAt: new Date().toISOString(),
     };
-    await cacheRef.set(cacheDoc).catch((err) => {
-      console.warn(`Failed to cache schedule for ${parkId}/${date}:`, err.message);
-    });
+    scheduleBackgroundWrite(
+      cacheRef.set(cacheDoc).catch((err) => {
+        console.warn(`Failed to cache schedule for ${parkId}/${date}:`, err.message);
+      })
+    );
 
     const operatingSegments = segments.filter((s) => s.type === 'OPERATING');
     return {
       isOpen: operatingSegments.length > 0,
       hasData: true,
       segments,
+      timezone: apiData.timezone,
     };
   } catch (error) {
     console.warn(`Schedule check failed for ${parkId}/${date}:`, (error as Error).message);
@@ -159,7 +211,10 @@ export async function batchGetParkOperatingStatus(
             .collection('daily')
             .doc(date);
 
-          const cached = await cacheRef.get().catch(() => null);
+          const cached = await withTimeout(
+            cacheRef.get().catch(() => null),
+            SCHEDULE_CACHE_READ_TIMEOUT_MS
+          );
           if (cached?.exists) {
             const data = cached.data() as CachedScheduleDoc;
             if (!isScheduleStale(data.fetchedAt)) {
@@ -168,6 +223,7 @@ export async function batchGetParkOperatingStatus(
                 isOpen: operatingSegments.length > 0,
                 hasData: true,
                 segments: data.segments,
+                timezone: data.timezone,
               });
               return;
             }
@@ -181,6 +237,7 @@ export async function batchGetParkOperatingStatus(
         try {
           const res = await fetch(`${API_BASE}/entity/${parkId}/schedule`, {
             next: { revalidate: 0 },
+            signal: AbortSignal.timeout(SCHEDULE_UPSTREAM_TIMEOUT_MS),
           });
 
           if (res.ok) {
@@ -201,21 +258,27 @@ export async function batchGetParkOperatingStatus(
                 isOpen: operatingSegments.length > 0,
                 hasData: true,
                 segments,
+                timezone: apiData.timezone,
               });
 
-              // Fire-and-forget cache write
+              // Deferred cache write via `after()` so a slow/cold write
+              // can never block returning this park's results.
               const cacheRef = adminDb
                 .collection('parkSchedules')
                 .doc(parkId)
                 .collection('daily')
                 .doc(date);
-              cacheRef.set({
-                parkId,
-                date,
-                timezone: apiData.timezone,
-                segments,
-                fetchedAt,
-              } as CachedScheduleDoc).catch(() => {});
+              scheduleBackgroundWrite(
+                cacheRef
+                  .set({
+                    parkId,
+                    date,
+                    timezone: apiData.timezone,
+                    segments,
+                    fetchedAt,
+                  } as CachedScheduleDoc)
+                  .catch(() => {})
+              );
             }
           } else {
             // API failed — mark uncached dates as NO_DATA

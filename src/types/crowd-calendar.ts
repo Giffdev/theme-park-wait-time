@@ -1,6 +1,16 @@
 /** Park-family crowd calendar data types */
 
 export type ParkDayStatus = 'OPEN' | 'CLOSED' | 'NO_DATA';
+export type CrowdDataSource = 'historical' | 'stale-cache' | 'estimated';
+
+export interface CrowdDataQuality {
+  source: CrowdDataSource;
+  /** Fraction of days backed by qualifying historical data, from 0 to 1. */
+  coverageRatio: number;
+  daysWithData: number;
+  totalDays: number;
+  generatedAt?: string;
+}
 
 export interface FamilyCrowdMonth {
   familyId: string;
@@ -9,6 +19,9 @@ export interface FamilyCrowdMonth {
   parks: { id: string; name: string }[];
   days: CrowdDay[];
   bestPlan: BestPlan | null;
+  /** Required for trustworthy display; older responses may omit it and are rejected by the UI. */
+  dataQuality?: CrowdDataQuality;
+  stale?: boolean;
 }
 
 export interface CrowdDay {

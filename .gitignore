@@ -58,3 +58,27 @@ service-account.json
 
 .vercel
 firebase-debug.log
+.squad/.cache/
+
+# Locally generated artifacts (emulator/debug logs, test + tooling output).
+# Scoped to exact known-generated names/directories so no source file can be
+# hidden by accident.
+firestore-debug.log
+firestore-debug.log.*
+firebase-debug.*.log
+pglite-debug.log
+lasttext.txt
+seed-run-output.txt
+deploy-output.txt
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+.playwright-mcp/
+/spark-*.png
+.squad/health-report-*.txt
+
+# Local-only agent/tooling config and hand-made backups. Root-anchored and
+# suffix-scoped so no committed source file can be hidden by these rules.
+/.mcp.json
+*.local-backup

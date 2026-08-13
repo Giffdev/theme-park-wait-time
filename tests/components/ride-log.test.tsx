@@ -43,6 +43,8 @@ vi.mock('lucide-react', () => ({
   Trash2: ({ className }: { className?: string }) => <span data-testid="icon-trash" className={className} />,
   Edit: () => <span data-testid="icon-edit" />,
   ChevronDown: ({ className }: { className?: string }) => <span data-testid="icon-chevron" className={className} />,
+  Ban: ({ className }: { className?: string }) => <span data-testid="icon-ban" className={className} />,
+  XCircle: ({ className }: { className?: string }) => <span data-testid="icon-x-circle" className={className} />,
   X: () => <span data-testid="icon-x" />,
 }));
 

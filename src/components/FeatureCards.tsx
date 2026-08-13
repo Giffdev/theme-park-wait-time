@@ -27,7 +27,7 @@ export function FeatureCards() {
       href: '/calendar',
       emoji: '📅',
       title: 'Crowd Calendar',
-      description: 'See predicted crowd levels for every day. Pick the perfect date for your visit.',
+      description: 'Compare historical crowd estimates with clear coverage labels before choosing a date.',
       color: 'bg-sage-50 hover:bg-sage-100 border-sage-200',
       textColor: 'text-sage-700',
     },

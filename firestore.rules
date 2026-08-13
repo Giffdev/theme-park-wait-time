@@ -28,10 +28,26 @@ service cloud.firestore {
       }
     }
 
+    // ── ATTRACTIONS (top-level collection; public read, admin/server write) ──
+    // The app and seed scripts store attractions as top-level documents keyed
+    // by attraction id (with a `parkId` field used for querying), not as a
+    // `parks/{parkId}/attractions` subcollection. This mirrors the same
+    // public-read/no-client-write policy as the nested rule above.
+    match /attractions/{attractionId} {
+      allow read: if true;
+      allow write: if false; // Admin SDK only (seeding scripts)
+    }
+
     // ── WAIT TIME HISTORY (public read, server write) ──
     match /waitTimeHistory/{docId} {
       allow read: if true;
       allow write: if false;
+    }
+
+    // ── CURRENT WAIT TIMES (public read, server write) ──
+    match /waitTimes/{parkId}/current/{attractionId} {
+      allow read: if true;
+      allow write: if false; // Admin SDK only (wait-times API route)
     }
 
     // ── CROWD CALENDAR (public read, server write) ──

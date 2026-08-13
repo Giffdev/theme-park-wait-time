@@ -1,370 +1,294 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin';
-import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { updateForecastAggregates } from '@/lib/forecast/aggregation';
-import { resolveForecast } from '@/lib/forecast/blender';
-import { getParkBySlug, getParkById } from '@/lib/parks/park-registry';
-import type { ForecastAggregate, ForecastMeta } from '@/types/queue';
+import { getParkById, getParkBySlug } from '@/lib/parks/park-registry';
+import {
+  getConfiguredParkIds,
+  refreshPark,
+  refreshParksBoundedWithData,
+  RefreshDeadlineError,
+  UpstreamFetchError,
+  withDeadline,
+  type ParkRefreshTiming,
+  type ParkResponseMeta,
+} from '@/lib/wait-times/refresh';
 
-export const maxDuration = 30; // seconds — Vercel serverless function timeout
-export const dynamic = 'force-dynamic'; // Never cache this route — wait times must be fresh
+export const maxDuration = 30;
+export const dynamic = 'force-dynamic';
 
-const API_BASE = 'https://api.themeparks.wiki/v1';
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// --- Interfaces reflecting the full ThemeParks Wiki API response ---
+// Bounded fan-out for the no-parkId ("all configured parks") branch. The
+// worker cap keeps peak concurrent upstream/Firestore load flat as the park
+// catalog grows, and the deadline keeps the whole branch comfortably inside
+// `maxDuration` (30s) no matter how many parks are configured. 20s matches
+// the `no-parkid` budget in tests/config/wait-times-cold-concurrent-matrix.ts.
+const ALL_PARKS_CONCURRENCY = 6;
+const ALL_PARKS_DEADLINE_MS = 20_000;
 
-interface QueuePrice {
-  amount: number;
-  currency: string;
-  formatted: string;
+// The `parks` collection read that enumerates configured parks sits on the
+// critical path *before* the fan-out, so it needs its own bound for the same
+// reason every other Firestore read on this route has one: an unbounded await
+// here is a hang, and a hang is a 504. Its budget plus ALL_PARKS_DEADLINE_MS
+// stays inside `maxDuration`. Exceeding it is surfaced explicitly rather than
+// degraded to an empty-but-successful park list.
+const CONFIGURED_PARKS_DEADLINE_MS = 3_000;
+
+// CDN cache-control for the *public read* path only. In-process
+// `refreshPark` in-flight coalescing collapses same-park bursts that land on
+// one serverless instance; it can do nothing for bursts spread across
+// instances. A short shared `s-maxage` lets Vercel's edge collapse those,
+// and `stale-while-revalidate` means the refresh happens off the critical
+// path of a user request instead of on it.
+//
+// `s-maxage` is deliberately shorter than the server-side single-doc cache
+// TTL (CACHE_READ_TTL_MS, 45s) and far shorter than the client's own
+// 2-minute staleness threshold, so the edge can never be the freshest-data
+// bottleneck. Degraded responses (any park serving stale data) get a much
+// smaller window so stale data is never pinned at the edge for long, and any
+// response carrying per-park errors is not shared at all.
+const FRESH_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=60';
+const DEGRADED_CACHE_CONTROL = 'public, s-maxage=5, stale-while-revalidate=30';
+const NO_STORE = 'no-store, max-age=0';
+
+// Message used for the "this `parks` document is not in park-registry.ts"
+// case. It is a *static catalog* condition, not a runtime failure: the same
+// request will produce the same result until either the registry or the
+// Firestore catalog changes. Production currently has 57 such documents
+// (parks seeded before the registry existed / retired upstream entities),
+// which meant the all-parks response permanently carried per-park errors and
+// therefore was permanently `no-store` — the CDN coalescing this route was
+// given cache headers for could never engage, and the listing paid the full
+// 11-12.7s fan-out on every request. Catalog mismatch is still reported
+// honestly in the JSON body; it just no longer masquerades as a transient
+// error for cache-control purposes.
+const CATALOG_MISMATCH_ERROR = 'Park is not present in the supported park registry.';
+
+interface StageTimings {
+  cacheReadMs?: number;
+  upstreamMs?: number;
+  blendMs?: number;
 }
 
-interface ReturnTimeQueue {
-  state: 'AVAILABLE' | 'TEMPORARILY_FULL' | 'FINISHED' | string;
-  returnStart: string | null;
-  returnEnd: string | null;
-}
-
-interface PaidReturnTimeQueue extends ReturnTimeQueue {
-  price: QueuePrice | null;
-}
-
-interface BoardingGroupQueue {
-  state: 'AVAILABLE' | 'PAUSED' | 'CLOSED' | string;
-  currentGroupStart: number | null;
-  currentGroupEnd: number | null;
-  estimatedWait: number | null;
-}
-
-interface LiveEntryQueue {
-  STANDBY?: { waitTime: number | null };
-  RETURN_TIME?: ReturnTimeQueue;
-  PAID_RETURN_TIME?: PaidReturnTimeQueue;
-  BOARDING_GROUP?: BoardingGroupQueue;
-}
-
-interface ForecastEntry {
-  time: string;
-  waitTime: number;
-  percentage: number;
-}
-
-interface OperatingHoursEntry {
-  type: string;
-  startTime: string;
-  endTime: string;
-}
-
-interface LiveEntry {
-  id: string;
-  name: string;
-  entityType: string;
-  status?: string;
-  queue?: LiveEntryQueue;
-  forecast?: ForecastEntry[];
-  operatingHours?: OperatingHoursEntry[];
-  lastUpdated?: string;
-}
-
-// --- Stale data cache for resilience ---
-
-interface CachedParkData {
-  liveData: LiveEntry[];
-  fetchedAt: string;
-}
-
-const parkDataCache: Record<string, CachedParkData> = {};
-
-async function fetchLiveDataForPark(parkId: string): Promise<{ liveData: LiveEntry[]; stale: boolean }> {
-  try {
-    const res = await fetch(`${API_BASE}/entity/${parkId}/live`, { next: { revalidate: 60 } });
-
-    if (res.status === 429 || res.status >= 500) {
-      console.warn(`ThemeParks API returned ${res.status} for park ${parkId}, serving stale cache`);
-      const cached = parkDataCache[parkId];
-      if (cached) {
-        return { liveData: cached.liveData, stale: true };
-      }
-      throw new Error(`ThemeParks API error ${res.status} and no cached data available`);
-    }
-
-    if (!res.ok) {
-      throw new Error(`ThemeParks API error: ${res.status}`);
-    }
-
-    const data = (await res.json()) as { liveData: LiveEntry[] };
-    const liveData = data.liveData || [];
-
-    // Update cache on success
-    parkDataCache[parkId] = {
-      liveData,
-      fetchedAt: new Date().toISOString(),
-    };
-
-    return { liveData, stale: false };
-  } catch (error) {
-    // Network errors — try stale cache
-    const cached = parkDataCache[parkId];
-    if (cached) {
-      console.warn(`ThemeParks API unreachable for park ${parkId}, serving stale cache`);
-      return { liveData: cached.liveData, stale: true };
-    }
-    throw error;
+// Parks in the fan-out branch are refreshed concurrently, so the stage cost
+// that actually sits on the response's critical path is the slowest park's,
+// not the sum of all of them.
+function mergeStageTimings(target: StageTimings, timing?: ParkRefreshTiming): StageTimings {
+  if (!timing) return target;
+  const stages = ['cacheReadMs', 'upstreamMs', 'blendMs'] as const;
+  for (const stage of stages) {
+    const value = timing[stage];
+    if (typeof value !== 'number') continue;
+    target[stage] = Math.max(target[stage] ?? 0, value);
   }
+  return target;
 }
 
-function formatWaitTimeEntry(entry: LiveEntry, fetchedAt: Timestamp, forecastMeta?: ForecastMeta) {
-  return {
-    attractionId: entry.id,
-    attractionName: entry.name,
-    status: entry.status || 'UNKNOWN',
-    waitMinutes: entry.queue?.STANDBY?.waitTime ?? null,
-    lastUpdated: entry.lastUpdated || null,
-    fetchedAt: fetchedAt.toDate().toISOString(),
-    // Full queue data (virtual queues, paid return time, boarding groups)
-    queue: entry.queue
-      ? {
-          RETURN_TIME: entry.queue.RETURN_TIME
-            ? {
-                state: entry.queue.RETURN_TIME.state,
-                returnStart: entry.queue.RETURN_TIME.returnStart ?? null,
-                returnEnd: entry.queue.RETURN_TIME.returnEnd ?? null,
-              }
-            : null,
-          PAID_RETURN_TIME: entry.queue.PAID_RETURN_TIME
-            ? {
-                state: entry.queue.PAID_RETURN_TIME.state,
-                returnStart: entry.queue.PAID_RETURN_TIME.returnStart ?? null,
-                returnEnd: entry.queue.PAID_RETURN_TIME.returnEnd ?? null,
-                price: entry.queue.PAID_RETURN_TIME.price ?? null,
-              }
-            : null,
-          BOARDING_GROUP: entry.queue.BOARDING_GROUP
-            ? {
-                state: entry.queue.BOARDING_GROUP.state,
-                currentGroupStart: entry.queue.BOARDING_GROUP.currentGroupStart ?? null,
-                currentGroupEnd: entry.queue.BOARDING_GROUP.currentGroupEnd ?? null,
-                estimatedWait: entry.queue.BOARDING_GROUP.estimatedWait ?? null,
-              }
-            : null,
-        }
-      : null,
-    // Hourly wait time forecast (~60-70% of attractions have this)
-    forecast: entry.forecast?.length
-      ? entry.forecast.map((f) => ({
-          time: f.time,
-          waitTime: f.waitTime,
-          percentage: f.percentage,
-        }))
-      : null,
-    // Forecast metadata (source, confidence, data range)
-    forecastMeta: forecastMeta ?? { source: 'none' as const, confidence: null, dataRange: null },
-    // Per-attraction operating hours
-    operatingHours: entry.operatingHours?.length
-      ? entry.operatingHours.map((h) => ({
-          type: h.type,
-          startTime: h.startTime,
-          endTime: h.endTime,
-        }))
-      : null,
-  };
+// Server-Timing exposes per-stage latency so an operator can tell "upstream
+// was slow" from "our blend was slow" from "our cache read was slow" without
+// shipping logs anywhere. Values are numbers and fixed stage labels only —
+// never env values, credentials, error text, or request headers.
+function serverTiming(stages: StageTimings, routeMs: number, parkCount: number): string {
+  return [
+    typeof stages.cacheReadMs === 'number' ? `cache;dur=${stages.cacheReadMs}` : null,
+    typeof stages.upstreamMs === 'number' ? `upstream;dur=${stages.upstreamMs}` : null,
+    typeof stages.blendMs === 'number' ? `blend;dur=${stages.blendMs}` : null,
+    `parks;desc="${parkCount}"`,
+    `route;dur=${routeMs}`,
+  ]
+    .filter((metric): metric is string => metric !== null)
+    .join(', ');
 }
 
-/** Archive a historical snapshot for each attraction (one doc per attraction per day). */
-async function archiveHistoricalSnapshot(
-  parkId: string,
-  liveData: LiveEntry[],
-  fetchedAt: Timestamp
-) {
-  const now = fetchedAt.toDate();
-  const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
-  const timeStr = now.toISOString();
-
-  const BATCH_SIZE = 499;
-  for (let i = 0; i < liveData.length; i += BATCH_SIZE) {
-    const batch = adminDb.batch();
-    const chunk = liveData.slice(i, i + BATCH_SIZE);
-    for (const entry of chunk) {
-      const ref = adminDb
-        .collection('waitTimeHistory')
-        .doc(parkId)
-        .collection('daily')
-        .doc(dateStr)
-        .collection('attractions')
-        .doc(entry.id);
-
-      batch.set(
-        ref,
-        {
-          snapshots: FieldValue.arrayUnion({
-            time: timeStr,
-            waitMinutes: entry.queue?.STANDBY?.waitTime ?? null,
-          }),
-        },
-        { merge: true }
-      );
-    }
-    await batch.commit();
-  }
+function responseHeaders(cacheControl: string, timing: string): Record<string, string> {
+  return { 'Cache-Control': cacheControl, 'Server-Timing': timing };
 }
 
-/**
- * For each attraction, resolve forecast using live data or historical aggregate fallback.
- * Reads aggregate docs only for attractions missing a live forecast.
- */
-async function blendForecasts(
-  parkId: string,
-  liveData: LiveEntry[],
-  fetchedAt: Timestamp
-) {
-  const dayOfWeek = fetchedAt.toDate().getDay(); // 0=Sunday, 6=Saturday
+// Cache-control policy:
+//   • any *transient* per-park error (upstream down, deadline elapsed,
+//     Firestore unreadable) → no-store. A failure must never be pinned at
+//     the edge, because the next request might well succeed.
+//   • static registry/catalog mismatch only → degraded window. The mismatch
+//     cannot resolve itself between two requests seconds apart, so sharing
+//     the response is safe; the short window keeps it from outliving a
+//     catalog fix by more than a few seconds.
+//   • stale (any park serving fallback data) → degraded window.
+function cacheControlFor(options: {
+  stale: boolean;
+  hasTransientErrors: boolean;
+  hasCatalogMismatch: boolean;
+}): string {
+  if (options.hasTransientErrors) return NO_STORE;
+  if (options.stale || options.hasCatalogMismatch) return DEGRADED_CACHE_CONTROL;
+  return FRESH_CACHE_CONTROL;
+}
 
-  // Identify attractions without a live forecast
-  const needsHistorical = liveData.filter(
-    (entry) => !entry.forecast || entry.forecast.length === 0
-  );
-
-  // Batch-read aggregate docs for those attractions
-  const aggregateMap: Record<string, ForecastAggregate | null> = {};
-
-  if (needsHistorical.length > 0) {
-    try {
-      const refs = needsHistorical.map((entry) =>
-        adminDb
-          .collection('forecastAggregates')
-          .doc(parkId)
-          .collection('byDayOfWeek')
-          .doc(String(dayOfWeek))
-          .collection('attractions')
-          .doc(entry.id)
-      );
-
-      const docs = await adminDb.getAll(...refs);
-      for (let i = 0; i < docs.length; i++) {
-        const doc = docs[i];
-        aggregateMap[needsHistorical[i].id] = doc.exists
-          ? (doc.data() as ForecastAggregate)
-          : null;
-      }
-    } catch (err) {
-      // Graceful degradation: if aggregate read fails, all get source:'none'
-      console.error('Failed to read forecast aggregates:', err);
-    }
-  }
-
-  // Format each entry with resolved forecastMeta
-  return liveData.map((entry) => {
-    const liveForecast = entry.forecast?.length ? entry.forecast : null;
-    const aggregate = aggregateMap[entry.id] ?? null;
-    const { entries, meta } = resolveForecast(liveForecast, aggregate);
-
-    // If blender provided historical entries and no live forecast, use them
-    const formattedEntry = formatWaitTimeEntry(entry, fetchedAt, meta);
-    if (meta.source === 'historical' && entries) {
-      formattedEntry.forecast = entries;
-    }
-    return formattedEntry;
-  });
+function logRouteTelemetry(fields: Record<string, unknown>) {
+  console.log(JSON.stringify({ scope: 'wait-times-route', ...fields }));
 }
 
 export async function GET(request: NextRequest) {
+  const routeStart = Date.now();
+  const stages: StageTimings = {};
+  let parkCount = 0;
+
+  const elapsed = () => Date.now() - routeStart;
+  const timingHeader = () => serverTiming(stages, elapsed(), parkCount);
+
   try {
     const { searchParams } = new URL(request.url);
-    const parkId = searchParams.get('parkId');
-
-    const fetchedAt = Timestamp.now();
+    const hasParkId = searchParams.has('parkId');
+    const requestedParkId = searchParams.get('parkId')?.trim() ?? '';
     const results: Record<string, unknown[]> = {};
+    const parkMeta: Record<string, ParkResponseMeta> = {};
+    const errors: Record<string, string> = {};
+    // Park ids whose only "error" is that the Firestore catalog lists a park
+    // park-registry.ts doesn't support. Tracked separately from `errors` so
+    // the JSON body stays honest while cache-control can distinguish a
+    // static catalog condition from a transient failure.
+    const catalogMismatches = new Set<string>();
     let isStale = false;
 
-    if (parkId) {
-      // Resolve parkId: accept either a UUID or a slug
-      let entityId = parkId;
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parkId);
-      if (!isUuid) {
-        const resolved = getParkBySlug(parkId);
-        if (!resolved) {
-          return NextResponse.json(
-            { error: `Unknown park: "${parkId}". Use a valid park slug or entity UUID.` },
-            { status: 400 }
-          );
-        }
-        entityId = resolved.id;
+    if (hasParkId) {
+      if (!requestedParkId) {
+        return NextResponse.json(
+          { error: 'parkId must be a non-empty park slug or entity UUID.' },
+          { status: 400, headers: responseHeaders(NO_STORE, timingHeader()) }
+        );
       }
 
-      const { liveData, stale } = await fetchLiveDataForPark(entityId);
-      isStale = stale;
-
-      // Resolve forecast for each attraction (blend live + historical)
-      const formatted = await blendForecasts(entityId, liveData, fetchedAt);
-      results[parkId] = formatted;
-
-      // Cache in Firestore
-      const BATCH_SIZE = 499;
-      for (let i = 0; i < formatted.length; i += BATCH_SIZE) {
-        const batch = adminDb.batch();
-        const chunk = formatted.slice(i, i + BATCH_SIZE);
-        for (const entry of chunk) {
-          const ref = adminDb
-            .collection('waitTimes')
-            .doc(entityId)
-            .collection('current')
-            .doc(entry.attractionId as string);
-          batch.set(ref, entry, { merge: true });
-        }
-        await batch.commit();
+      const resolved = UUID_PATTERN.test(requestedParkId)
+        ? getParkById(requestedParkId.toLowerCase())
+        : getParkBySlug(requestedParkId);
+      if (!resolved) {
+        return NextResponse.json(
+          { error: `Unknown park: "${requestedParkId}". Use a valid park slug or entity UUID.` },
+          { status: 400, headers: responseHeaders(NO_STORE, timingHeader()) }
+        );
       }
 
-      // Archive historical snapshot (fire-and-forget — don't block response)
-      archiveHistoricalSnapshot(entityId, liveData, fetchedAt).catch((err) =>
-        console.error('Historical archive error:', err)
-      );
-
-      // Update forecast aggregates for today's day-of-week (fire-and-forget)
-      const todayStr = fetchedAt.toDate().toISOString().slice(0, 10);
-      updateForecastAggregates(entityId, todayStr).catch((err) =>
-        console.error('Forecast aggregation error:', err)
-      );
+      const refresh = await refreshPark(resolved.id);
+      parkCount = 1;
+      mergeStageTimings(stages, refresh.timing);
+      results[requestedParkId] = refresh.entries;
+      parkMeta[requestedParkId] = refresh.meta;
+      isStale = refresh.meta.stale;
     } else {
-      // Fetch for all parks
-      const parksSnapshot = await adminDb.collection('parks').get();
-      const parks = parksSnapshot.docs.map((doc) => doc.data() as { id: string; name: string });
+      let configured;
+      try {
+        configured = await withDeadline(getConfiguredParkIds(), CONFIGURED_PARKS_DEADLINE_MS);
+      } catch (error) {
+        if (!(error instanceof RefreshDeadlineError)) throw error;
+        logRouteTelemetry({ mode: 'all-parks', status: 503, parkCount: 0, routeMs: elapsed() });
+        return NextResponse.json(
+          { error: 'Configured park list is temporarily unavailable.' },
+          { status: 503, headers: responseHeaders(NO_STORE, timingHeader()) }
+        );
+      }
 
-      for (const park of parks) {
-        try {
-          const { liveData, stale } = await fetchLiveDataForPark(park.id);
-          if (stale) isStale = true;
-          results[park.id] = await blendForecasts(park.id, liveData, fetchedAt);
-          // Archive historical snapshot for each park (fire-and-forget)
-          archiveHistoricalSnapshot(park.id, liveData, fetchedAt).catch((err) =>
-            console.error('Historical archive error:', err)
-          );
+      for (const parkId of configured.unsupported) {
+        results[parkId] = [];
+        errors[parkId] = CATALOG_MISMATCH_ERROR;
+        catalogMismatches.add(parkId);
+      }
 
-          // Update forecast aggregates (fire-and-forget)
-          const todayStr = fetchedAt.toDate().toISOString().slice(0, 10);
-          updateForecastAggregates(park.id, todayStr).catch((err) =>
-            console.error('Forecast aggregation error:', err)
-          );
-        } catch {
-          results[park.id] = [];
+      // Bounded, deadline-capped fan-out instead of a sequential per-park
+      // loop. Each park still goes through refreshPark's read-first cache,
+      // so a warm catalog resolves without touching upstream at all.
+      const outcomes = await refreshParksBoundedWithData(configured.supported, {
+        concurrency: ALL_PARKS_CONCURRENCY,
+        deadlineMs: ALL_PARKS_DEADLINE_MS,
+      });
+
+      for (const parkId of configured.supported) {
+        const outcome = outcomes[parkId];
+        if (outcome?.result) {
+          parkCount += 1;
+          mergeStageTimings(stages, outcome.result.timing);
+          results[parkId] = outcome.result.entries;
+          parkMeta[parkId] = outcome.result.meta;
+          if (outcome.result.meta.stale) isStale = true;
+        } else {
+          // Never success-shaped silence: a park we could not read is
+          // reported with an explicit error and no parkMeta entry, so a
+          // client cannot mistake it for "this park has no attractions".
+          results[parkId] = [];
+          const message = outcome?.error ?? 'Wait-time refresh failed.';
+          errors[parkId] = message;
+          // A supported park can still report the registry-mismatch message
+          // if the catalog and registry disagree mid-flight; that is the
+          // same static condition, not a transient failure.
+          if (message === CATALOG_MISMATCH_ERROR) catalogMismatches.add(parkId);
         }
+      }
+
+      // If every supported park failed there is no honest 200 to return —
+      // the response would be an empty shell that looks successful.
+      if (configured.supported.length > 0 && parkCount === 0) {
+        logRouteTelemetry({
+          mode: 'all-parks',
+          status: 502,
+          parkCount,
+          errorCount: Object.keys(errors).length,
+          routeMs: elapsed(),
+        });
+        return NextResponse.json(
+          {
+            error: 'Wait times are unavailable for every configured park.',
+            errors,
+          },
+          { status: 502, headers: responseHeaders(NO_STORE, timingHeader()) }
+        );
       }
     }
 
+    const errorIds = Object.keys(errors);
+    const hasErrors = errorIds.length > 0;
+    const catalogMismatchCount = catalogMismatches.size;
+    const transientErrorCount = errorIds.filter((id) => !catalogMismatches.has(id)).length;
+    const routeMs = elapsed();
+    logRouteTelemetry({
+      mode: hasParkId ? 'park' : 'all-parks',
+      status: 200,
+      parkCount,
+      errorCount: errorIds.length,
+      catalogMismatchCount,
+      transientErrorCount,
+      stale: isStale,
+      ...stages,
+      routeMs,
+    });
+
     return NextResponse.json(
       {
-        fetchedAt: fetchedAt.toDate().toISOString(),
+        fetchedAt: new Date().toISOString(),
         stale: isStale,
+        parkMeta,
+        ...(hasErrors ? { errors } : {}),
         parks: results,
       },
       {
-        headers: { 'Cache-Control': 'no-store, max-age=0' },
+        headers: responseHeaders(
+          cacheControlFor({
+            stale: isStale,
+            hasTransientErrors: transientErrorCount > 0,
+            hasCatalogMismatch: catalogMismatchCount > 0,
+          }),
+          serverTiming(stages, routeMs, parkCount)
+        ),
       }
     );
   } catch (error) {
     console.error('Wait times API error:', error);
+    const status = error instanceof UpstreamFetchError ? 502 : 500;
+    logRouteTelemetry({ mode: 'error', status, parkCount, routeMs: elapsed() });
     return NextResponse.json(
-      { error: 'Failed to fetch wait times' },
-      { status: 500 }
+      {
+        error:
+          error instanceof UpstreamFetchError
+            ? 'Wait-time provider is temporarily unavailable'
+            : 'Failed to fetch wait times',
+      },
+      { status, headers: responseHeaders(NO_STORE, timingHeader()) }
     );
   }
 }

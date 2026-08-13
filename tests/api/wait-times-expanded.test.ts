@@ -16,11 +16,15 @@ import { NextRequest } from 'next/server';
 // Mocks
 // ---------------------------------------------------------------------------
 
+const mockUpdateForecastAggregates = vi.hoisted(
+  () => vi.fn().mockResolvedValue(undefined),
+);
 const mockBatchSet = vi.fn();
 const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
 const mockBatch = { set: mockBatchSet, commit: mockBatchCommit };
 
 const mockGet = vi.fn();
+const MAGIC_KINGDOM_ID = '75ea578a-adc8-4116-a54d-dccb60765ef9';
 
 // Recursive mock that handles arbitrary .collection().doc() chains
 function createChainableMock() {
@@ -37,7 +41,12 @@ vi.mock('@/lib/firebase/admin', () => ({
   adminDb: {
     batch: () => mockBatch,
     collection: () => createChainableMock(),
+    getAll: (...refs: unknown[]) => Promise.resolve(refs.map(() => ({ exists: false }))),
   },
+}));
+
+vi.mock('@/lib/forecast/aggregation', () => ({
+  updateForecastAggregates: mockUpdateForecastAggregates,
 }));
 
 // Mock global fetch for ThemeParks API
@@ -137,10 +146,42 @@ function createRequest(parkId?: string): NextRequest {
 describe('GET /api/wait-times — expanded data', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGet.mockResolvedValue({ docs: [] });
     mockFetch.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(createMockApiResponse()),
     });
+  });
+
+  describe('Core live-data contract', () => {
+    it('returns successful live data with freshness metadata', async () => {
+      const response = await GET(createRequest('magic-kingdom'));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.stale).toBe(false);
+      expect(data.fetchedAt).toEqual(expect.any(String));
+      expect(data.parks['magic-kingdom']).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            attractionId: 'tron-lightcycle-run',
+            status: 'OPERATING',
+            waitMinutes: 75,
+          }),
+        ]),
+      );
+      expect(mockFetch).toHaveBeenCalledOnce();
+    });
+
+    it('rejects malformed or unknown identifiers before calling upstream', async () => {
+      const response = await GET(createRequest('../../not-a-park'));
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toMatch(/unknown park/i);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
   });
 
   describe('Virtual queue fields', () => {
@@ -315,6 +356,92 @@ describe('GET /api/wait-times — expanded data', () => {
   });
 
   describe('API resilience', () => {
+    it.each([
+      {
+        parkSlug: 'epcot',
+        upstreamFailure: () => Promise.reject(new Error('network unavailable')),
+      },
+      {
+        parkSlug: 'animal-kingdom',
+        upstreamFailure: () => Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ invalid: 'payload' }),
+        }),
+      },
+    ])(
+      'serves persistent Firestore cache on cold start for $parkSlug',
+      async ({ parkSlug, upstreamFailure }) => {
+        const cachedFetchedAt = '2026-08-11T20:00:00.000Z';
+        const olderFetchedAt = '2026-08-11T19:45:00.000Z';
+        mockGet.mockResolvedValueOnce({
+          docs: [
+            {
+              data: () => ({
+                attractionId: `${parkSlug}-older-ride`,
+                attractionName: 'Older Cached Ride',
+                status: 'OPERATING',
+                waitMinutes: 20,
+                fetchedAt: olderFetchedAt,
+              }),
+            },
+            {
+              data: () => ({
+                attractionId: `${parkSlug}-cached-ride`,
+                attractionName: 'Cached Ride',
+                status: 'OPERATING',
+                waitMinutes: 30,
+                fetchedAt: cachedFetchedAt,
+              }),
+            },
+            {
+              data: () => ({
+                attractionId: `${parkSlug}-invalid-ride`,
+                fetchedAt: 'not-a-timestamp',
+              }),
+            },
+          ],
+        });
+        mockFetch.mockImplementationOnce(upstreamFailure);
+
+        const response = await GET(createRequest(parkSlug));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.stale).toBe(true);
+        expect(data.parkMeta[parkSlug]).toEqual(expect.objectContaining({
+          stale: true,
+          source: 'firestore-cache',
+          fetchedAt: cachedFetchedAt,
+        }));
+        expect(data.parks[parkSlug]).toHaveLength(2);
+        expect(data.parks[parkSlug]).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            attractionName: 'Older Cached Ride',
+            fetchedAt: olderFetchedAt,
+          }),
+          expect.objectContaining({
+            attractionName: 'Cached Ride',
+            fetchedAt: cachedFetchedAt,
+          }),
+        ]));
+        expect(mockBatchSet).not.toHaveBeenCalled();
+        expect(mockBatchCommit).not.toHaveBeenCalled();
+        expect(mockUpdateForecastAggregates).not.toHaveBeenCalled();
+      },
+    );
+
+    it('bypasses the framework fetch cache and bounds upstream requests', async () => {
+      await GET(createRequest('magic-kingdom'));
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining(`/entity/${MAGIC_KINGDOM_ID}/live`),
+        expect.objectContaining({
+          cache: 'no-store',
+          signal: expect.any(AbortSignal),
+        })
+      );
+    });
+
     it('serves stale cache on 429 (rate limit) response', async () => {
       // First: populate the in-memory cache with a successful request
       mockFetch.mockResolvedValueOnce({
@@ -336,6 +463,8 @@ describe('GET /api/wait-times — expanded data', () => {
       const data = await response.json();
       expect(data.parks['magic-kingdom']).toBeDefined();
       expect(data.stale).toBe(true);
+      expect(data.parkMeta['magic-kingdom'].source).toBe('memory-cache');
+      expect(data.parkMeta['magic-kingdom'].ageSeconds).toBeGreaterThanOrEqual(0);
     });
 
     it('serves stale cache with staleness indicator on 500 response', async () => {
@@ -358,6 +487,74 @@ describe('GET /api/wait-times — expanded data', () => {
 
       expect(response.status).toBe(200);
       expect(data.stale).toBe(true);
+    });
+
+    it('preserves the original freshness timestamp and does not rewrite stale data', async () => {
+      const freshResponse = await GET(createRequest('magic-kingdom'));
+      const freshData = await freshResponse.json();
+      const writesAfterFreshFetch = mockBatchSet.mock.calls.length;
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+      });
+
+      const staleResponse = await GET(createRequest('magic-kingdom'));
+      const staleData = await staleResponse.json();
+
+      expect(staleData.parkMeta['magic-kingdom'].fetchedAt)
+        .toBe(freshData.parkMeta['magic-kingdom'].fetchedAt);
+      expect(staleData.parks['magic-kingdom'][0].fetchedAt)
+        .toBe(freshData.parks['magic-kingdom'][0].fetchedAt);
+      expect(mockBatchSet).toHaveBeenCalledTimes(writesAfterFreshFetch);
+    });
+
+    it('returns 502 for malformed upstream payloads when no cache exists', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ liveData: 'not-an-array' }),
+      });
+
+      const response = await GET(createRequest('epcot'));
+
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({
+        error: 'Wait-time provider is temporarily unavailable',
+      });
+    });
+  });
+
+  describe('Input and write behavior', () => {
+    it('rejects empty and unknown park identifiers before calling upstream', async () => {
+      const emptyResponse = await GET(
+        new NextRequest('http://localhost:3000/api/wait-times?parkId=', { method: 'GET' })
+      );
+      const unknownResponse = await GET(
+        createRequest('00000000-0000-0000-0000-000000000000')
+      );
+
+      expect(emptyResponse.status).toBe(400);
+      expect(unknownResponse.status).toBe(400);
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockGet).not.toHaveBeenCalled();
+    });
+
+    it('writes fresh wait times to Firestore in the all-parks path', async () => {
+      mockGet.mockResolvedValueOnce({
+        docs: [{
+          id: MAGIC_KINGDOM_ID,
+          data: () => ({ id: MAGIC_KINGDOM_ID, name: 'Magic Kingdom' }),
+        }],
+      });
+
+      const response = await GET(createRequest());
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.parks[MAGIC_KINGDOM_ID]).toHaveLength(2);
+      expect(mockBatchSet).toHaveBeenCalled();
+      expect(mockBatchCommit).toHaveBeenCalled();
     });
   });
 
