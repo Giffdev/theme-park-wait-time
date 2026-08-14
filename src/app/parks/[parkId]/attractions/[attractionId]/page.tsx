@@ -5,8 +5,10 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Clock, TrendingUp, MessageSquarePlus, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
-import { getRecentReports, getConsensusWaitTime, type WaitTimeReport } from '@/lib/firebase/waitTimeReports';
-import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
+import { getConsensusWaitTime } from '@/lib/firebase/waitTimeReports';
+import { getCollection, getDocument, whereConstraint } from '@/lib/firebase/firestore';
+import { selectCurrentParkDocument } from '@/lib/parks/park-document-read';
+import { getParkBySlug } from '@/lib/parks/park-registry';
 import UnifiedLogSheet from '@/components/UnifiedLogSheet';
 import RecentReports from '@/components/parks/RecentReports';
 
@@ -37,18 +39,31 @@ export default function AttractionDetailPage() {
     let cancelled = false;
     async function resolve() {
       try {
-        const [parks, attractions] = await Promise.all([
-          getCollection<{ id: string; name: string; slug: string }>('parks', [whereConstraint('slug', '==', parkSlug)]),
-          getCollection<{ id: string; name: string; slug: string }>('attractions', [whereConstraint('slug', '==', attractionSlug)]),
+        const registryPark = getParkBySlug(parkSlug);
+        const [parkById, attractions] = await Promise.all([
+          registryPark
+            ? getDocument<{ id: string; name: string; slug: string }>('parks', registryPark.id)
+            : Promise.resolve(null),
+          getCollection<{ id: string; name: string; slug: string; parkId: string }>('attractions', [whereConstraint('slug', '==', attractionSlug)]),
         ]);
+        const parks = parkById
+          ? [parkById]
+          : await getCollection<{ id: string; name: string; slug: string }>(
+              'parks',
+              [whereConstraint('slug', '==', parkSlug)]
+            );
         if (cancelled) return;
-        if (parks.length > 0) {
-          setParkUuid(parks[0].id);
-          setParkName(parks[0].name);
+        const park = selectCurrentParkDocument(parks, parkSlug);
+        if (park) {
+          setParkUuid(park.id);
+          setParkName(park.name);
         }
-        if (attractions.length > 0) {
-          setAttractionUuid(attractions[0].id);
-          setAttractionName(attractions[0].name);
+        const attraction = park
+          ? attractions.find((candidate) => candidate.parkId === park.id)
+          : undefined;
+        if (attraction) {
+          setAttractionUuid(attraction.id);
+          setAttractionName(attraction.name);
         }
       } catch {
         // Fall back to slug-derived names
@@ -226,4 +241,3 @@ export default function AttractionDetailPage() {
     </div>
   );
 }
-

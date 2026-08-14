@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import { filterCurrentParkDocuments } from '@/lib/parks/park-document-read';
 
 const API_BASE = 'https://api.themeparks.wiki/v1';
 
@@ -35,8 +36,13 @@ interface ParkHoursResult {
 export async function GET() {
   try {
     const parksSnapshot = await adminDb.collection('parks').get();
-    const parks = parksSnapshot.docs.map(
-      (doc) => doc.data() as { id: string; name: string; slug: string; timezone: string }
+    const parks = filterCurrentParkDocuments(
+      parksSnapshot.docs.map(
+        (doc) => ({
+          ...(doc.data() as { name: string; slug: string; timezone: string }),
+          id: doc.id,
+        })
+      )
     );
 
     // Fetch schedules in parallel for all parks

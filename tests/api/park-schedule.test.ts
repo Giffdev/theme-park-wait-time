@@ -54,8 +54,11 @@ import { getParkOperatingStatus } from '@/lib/parks/park-schedule-check';
 // Fixtures
 // ---------------------------------------------------------------------------
 
+const MAGIC_KINGDOM_UUID = '75ea578a-adc8-4116-a54d-dccb60765ef9';
+const ISLANDS_OF_ADVENTURE_UUID = '267615cc-8943-4c2a-ae2c-5da728ca591f';
+
 const FULL_SCHEDULE_RESPONSE = {
-  id: 'magic-kingdom',
+  id: MAGIC_KINGDOM_UUID,
   name: 'Magic Kingdom',
   timezone: 'America/New_York',
   schedule: [
@@ -111,7 +114,7 @@ function createCachedDoc(schedule: unknown, fetchedAt: Date) {
     data: () => ({
       segments: schedule,
       fetchedAt: fetchedAt.toISOString(),
-      parkId: 'magic-kingdom',
+      parkId: MAGIC_KINGDOM_UUID,
       date: '2026-04-29',
       timezone: 'America/New_York',
     }),
@@ -134,12 +137,12 @@ describe('GET /api/park-schedule', () => {
 
   describe('Happy path', () => {
     it('returns schedule segments for valid parkId + date', async () => {
-      const response = await GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+      const response = await GET(createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-29' }));
       const data = await response.json();
 
       expect(response.status).toBe(200);
       expect(data.segments).toHaveLength(3);
-      expect(data.parkId).toBe('magic-kingdom');
+      expect(data.parkId).toBe(MAGIC_KINGDOM_UUID);
       expect(data.date).toBe('2026-04-29');
       expect(data.hasData).toBe(true);
       expect(mockDocSet).toHaveBeenCalledWith(
@@ -148,7 +151,7 @@ describe('GET /api/park-schedule', () => {
     });
 
     it('returns TICKETED_EVENT segments with correct type and description', async () => {
-      const response = await GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+      const response = await GET(createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-29' }));
       const data = await response.json();
 
       const ticketedEvents = data.segments.filter(
@@ -160,7 +163,7 @@ describe('GET /api/park-schedule', () => {
     });
 
     it('includes purchases array (Lightning Lane pricing) in OPERATING segment', async () => {
-      const response = await GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+      const response = await GET(createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-29' }));
       const data = await response.json();
 
       const operating = data.segments.find(
@@ -186,7 +189,7 @@ describe('GET /api/park-schedule', () => {
         createCachedDoc(FULL_SCHEDULE_RESPONSE.schedule, recentFetch)
       );
 
-      const response = await GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+      const response = await GET(createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-29' }));
 
       expect(response.status).toBe(200);
       // Should NOT have called the external API
@@ -199,7 +202,7 @@ describe('GET /api/park-schedule', () => {
         createCachedDoc(FULL_SCHEDULE_RESPONSE.schedule, oldFetch)
       );
 
-      const response = await GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+      const response = await GET(createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-29' }));
 
       expect(response.status).toBe(200);
       // Should have called the external API for fresh data
@@ -219,7 +222,7 @@ describe('GET /api/park-schedule', () => {
         statusText: 'Internal Server Error',
       });
 
-      const response = await GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+      const response = await GET(createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-29' }));
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -235,7 +238,7 @@ describe('GET /api/park-schedule', () => {
         statusText: 'Internal Server Error',
       });
 
-      const response = await GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+      const response = await GET(createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-29' }));
 
       expect(response.status).toBe(503);
     });
@@ -256,6 +259,33 @@ describe('GET /api/park-schedule', () => {
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error).toMatch(/park/i);
+    });
+
+    it('rejects unknown UUIDs before cache or upstream access', async () => {
+      const response = await GET(
+        createRequest({
+          parkId: '00000000-0000-4000-8000-000000000001',
+          date: '2026-04-29',
+        })
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: expect.stringMatching(/canonical/i) });
+      expect(mockDocGet).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('rejects retired UUIDs rather than silently resolving them', async () => {
+      const response = await GET(
+        createRequest({
+          parkId: 'aa8c2744-b792-4802-8a70-8bba51bc73da',
+          date: '2026-04-29',
+        })
+      );
+
+      expect(response.status).toBe(400);
+      expect(mockDocGet).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
@@ -284,7 +314,7 @@ describe('GET /api/park-schedule', () => {
         json: () => Promise.resolve(overlappingSchedule),
       });
 
-      const response = await GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+      const response = await GET(createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-29' }));
 
       // Should not crash — overlaps happen in real data
       expect(response.status).toBe(200);
@@ -308,7 +338,7 @@ describe('GET /api/park-schedule', () => {
         json: () => Promise.resolve(noPurchases),
       });
 
-      const response = await GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+      const response = await GET(createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-29' }));
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -332,7 +362,7 @@ describe('GET /api/park-schedule', () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
-          id: 'magic-kingdom',
+          id: MAGIC_KINGDOM_UUID,
           name: 'Magic Kingdom',
           timezone: 'America/New_York',
           schedule: [
@@ -353,7 +383,7 @@ describe('GET /api/park-schedule', () => {
       });
 
       const response = await GET(
-        createRequest({ parkId: 'magic-kingdom', date: '2026-04-30' })
+        createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-30' })
       );
       const routeData = await response.json();
       const written = mockDocSet.mock.calls.at(-1)?.[0];
@@ -371,14 +401,14 @@ describe('GET /api/park-schedule', () => {
       });
       mockFetch.mockClear();
 
-      const status = await getParkOperatingStatus('magic-kingdom', '2026-04-30');
+      const status = await getParkOperatingStatus(MAGIC_KINGDOM_UUID, '2026-04-30');
 
       expect(mockFetch).not.toHaveBeenCalled();
       expect(status).toMatchObject({ isOpen: false, hasData: true });
     });
 
     it('serves a crowd-calendar writer document through the route without schema ambiguity', async () => {
-      await getParkOperatingStatus('magic-kingdom', '2026-04-29');
+      await getParkOperatingStatus(MAGIC_KINGDOM_UUID, '2026-04-29');
       const written = mockDocSet.mock.calls.at(-1)?.[0];
 
       expect(written).toMatchObject({ hasData: true });
@@ -390,7 +420,7 @@ describe('GET /api/park-schedule', () => {
       mockFetch.mockClear();
 
       const response = await GET(
-        createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' })
+        createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-29' })
       );
       const routeData = await response.json();
 
@@ -402,7 +432,7 @@ describe('GET /api/park-schedule', () => {
       mockFetch.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
-          id: 'magic-kingdom',
+          id: MAGIC_KINGDOM_UUID,
           name: 'Magic Kingdom',
           timezone: 'America/New_York',
           schedule: [
@@ -423,7 +453,7 @@ describe('GET /api/park-schedule', () => {
       });
 
       const response = await GET(
-        createRequest({ parkId: 'magic-kingdom', date: '2026-05-01' })
+        createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-05-01' })
       );
       const routeData = await response.json();
 
@@ -451,7 +481,7 @@ describe('GET /api/park-schedule', () => {
       // Cache read never resolves — simulates a stalled/hung Firestore call.
       mockDocGet.mockReturnValue(new Promise(() => {}));
 
-      const responsePromise = GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+      const responsePromise = GET(createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-29' }));
 
       // Advance past the cache-read timeout (3s) but well below the route
       // deadline (15s) — the read should be abandoned, not awaited forever.
@@ -471,7 +501,7 @@ describe('GET /api/park-schedule', () => {
       mockDocGet.mockReturnValue(new Promise(() => {}));
       mockFetch.mockReturnValue(new Promise(() => {}));
 
-      const responsePromise = GET(createRequest({ parkId: 'islands-of-adventure', date: '2026-04-29' }));
+      const responsePromise = GET(createRequest({ parkId: ISLANDS_OF_ADVENTURE_UUID, date: '2026-04-29' }));
 
       // Advance past the route-level deadline (15s).
       await vi.advanceTimersByTimeAsync(15_100);
@@ -489,7 +519,7 @@ describe('GET /api/park-schedule', () => {
       // awaited in the response path.
       mockDocSet.mockReturnValue(new Promise(() => {}));
 
-      const response = await GET(createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' }));
+      const response = await GET(createRequest({ parkId: MAGIC_KINGDOM_UUID, date: '2026-04-29' }));
       const data = await response.json();
 
       expect(response.status).toBe(200);

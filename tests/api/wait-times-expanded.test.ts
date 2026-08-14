@@ -25,6 +25,10 @@ const mockBatch = { set: mockBatchSet, commit: mockBatchCommit };
 
 const mockGet = vi.fn();
 const MAGIC_KINGDOM_ID = '75ea578a-adc8-4116-a54d-dccb60765ef9';
+const WORLDS_OF_FUN_ID = 'bb731eae-7bd3-4713-bd7b-89d79b031743';
+const ARLINGTON_ID = 'a96eb7c6-1fd3-4363-84d9-c84e23f886f1';
+const ARLINGTON_ALIAS_ID = '08e5d95c-7c73-4c65-b17a-06fede1801fb';
+const OKC_ID = '3964ae15-a1a8-41a1-aea9-23b456e2911f';
 
 // Recursive mock that handles arbitrary .collection().doc() chains
 function createChainableMock() {
@@ -171,6 +175,137 @@ describe('GET /api/wait-times — expanded data', () => {
         ]),
       );
       expect(mockFetch).toHaveBeenCalledOnce();
+    });
+
+    it('filters a combined live feed to the canonical park attraction directory', async () => {
+      const worldsRide = {
+        id: 'worlds-ride',
+        name: 'Worlds Ride',
+        entityType: 'ATTRACTION',
+        status: 'OPERATING',
+        queue: { STANDBY: { waitTime: 20 } },
+      };
+      const oceansRide = {
+        id: 'oceans-ride',
+        name: 'Oceans Ride',
+        entityType: 'ATTRACTION',
+        status: 'OPERATING',
+        queue: { STANDBY: { waitTime: 10 } },
+      };
+      mockFetch.mockImplementation((url: string | URL | Request) => {
+        const requestUrl = String(url);
+        if (requestUrl.endsWith(`/entity/${WORLDS_OF_FUN_ID}/children`)) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ children: [worldsRide] }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ liveData: [worldsRide, oceansRide] }),
+        });
+      });
+
+      const response = await GET(createRequest('worlds-of-fun'));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.parks['worlds-of-fun'].map((entry: { attractionId: string }) => entry.attractionId))
+        .toEqual(['worlds-ride']);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps canonical live-feed failure blocking even when an alias could succeed', async () => {
+      mockFetch.mockImplementation((url: string | URL | Request) => {
+        if (String(url).endsWith(`/entity/${OKC_ID}/live`)) {
+          return Promise.resolve({ ok: false, status: 503 });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(createMockApiResponse()),
+        });
+      });
+
+      const response = await GET(createRequest('hurricane-harbor-oklahoma-city'));
+
+      expect(response.status).toBe(502);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('serves canonical data when an alias fails and logs only a safe degraded signal', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      mockFetch.mockImplementation((url: string | URL | Request) => {
+        if (String(url).endsWith(`/entity/${ARLINGTON_ALIAS_ID}/live`)) {
+          return Promise.reject(
+            new Error('token=super-secret https://private.example/alias')
+          );
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            liveData: [
+              {
+                id: 'canonical-only',
+                name: 'Canonical Only',
+                status: 'OPERATING',
+                queue: { STANDBY: { waitTime: 15 } },
+              },
+            ],
+          }),
+        });
+      });
+
+      const response = await GET(createRequest('hurricane-harbor-arlington'));
+      const data = await response.json();
+      const warning = warn.mock.calls.flat().join(' ');
+
+      expect(response.status).toBe(200);
+      expect(data.parks['hurricane-harbor-arlington']).toEqual([
+        expect.objectContaining({ attractionId: 'canonical-only' }),
+      ]);
+      expect(warning).toMatch(/alias live feed degraded/i);
+      expect(warning).not.toContain('super-secret');
+      expect(warning).not.toContain('private.example');
+      warn.mockRestore();
+    });
+
+    it('uses first-write-wins so stale alias rows cannot overwrite canonical rows', async () => {
+      const sharedCanonical = {
+        id: 'shared-ride',
+        name: 'Canonical Ride',
+        status: 'OPERATING',
+        queue: { STANDBY: { waitTime: 10 } },
+      };
+      const staleAlias = {
+        ...sharedCanonical,
+        name: 'Stale Alias Ride',
+        queue: { STANDBY: { waitTime: 99 } },
+      };
+      mockFetch.mockImplementation((url: string | URL | Request) =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              liveData: [
+                String(url).endsWith(`/entity/${ARLINGTON_ID}/live`)
+                  ? sharedCanonical
+                  : staleAlias,
+              ],
+            }),
+        })
+      );
+
+      const response = await GET(createRequest('hurricane-harbor-arlington'));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.parks['hurricane-harbor-arlington']).toEqual([
+        expect.objectContaining({
+          attractionId: 'shared-ride',
+          attractionName: 'Canonical Ride',
+          waitMinutes: 10,
+        }),
+      ]);
     });
 
     it('rejects malformed or unknown identifiers before calling upstream', async () => {

@@ -6,8 +6,9 @@ import Link from 'next/link';
 import { RefreshCw, ArrowUpDown, TrendingUp, Clock, AlertCircle, MapPin } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import UnifiedLogSheet from '@/components/UnifiedLogSheet';
-import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
-import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
+import { getCollection, getDocument, whereConstraint } from '@/lib/firebase/firestore';
+import { DESTINATION_FAMILIES, getParkBySlug } from '@/lib/parks/park-registry';
+import { selectCurrentParkDocument } from '@/lib/parks/park-document-read';
 import { getLocationByDestinationId, formatLocation } from '@/lib/parks/park-locations';
 import AttractionRow from '@/components/AttractionRow';
 import AttractionFilterChips, {
@@ -291,8 +292,16 @@ export default function ParkDetailPage() {
     setLoading(true);
     setCoreError(null);
     try {
-      const parkDocs = await getCollection<Park>('parks', [whereConstraint('slug', '==', parkId)]);
-      const parkDoc = parkDocs.length > 0 ? parkDocs[0] : null;
+      const registryPark = getParkBySlug(parkId);
+      let parkDoc = registryPark
+        ? await getDocument<Park>('parks', registryPark.id)
+        : null;
+      if (!parkDoc) {
+        const parkDocs = await getCollection<Park>('parks', [
+          whereConstraint('slug', '==', parkId),
+        ]);
+        parkDoc = selectCurrentParkDocument(parkDocs, parkId) ?? null;
+      }
       if (activeRouteRef.current !== requestedRoute) return null;
       setPark(parkDoc);
       setLoading(false);

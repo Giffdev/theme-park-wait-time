@@ -26,6 +26,7 @@ import {
   type WriteBatch,
 } from 'firebase/firestore';
 import { db } from './config';
+import { filterCurrentParkDocuments } from '../parks/park-document-read';
 
 // ---------------------------------------------------------------------------
 // Generic CRUD helpers
@@ -41,7 +42,11 @@ export async function getDocument<T extends DocumentData>(
 ): Promise<(T & { id: string }) | null> {
   const snap: DocumentSnapshot = await getDoc(doc(db, collectionPath, docId));
   if (!snap.exists()) return null;
-  return { id: snap.id, ...(snap.data() as T) };
+  const document = { ...(snap.data() as T), id: snap.id };
+  if (collectionPath === 'parks') {
+    return filterCurrentParkDocuments([document])[0] ?? null;
+  }
+  return document;
 }
 
 /**
@@ -53,7 +58,13 @@ export async function getCollection<T extends DocumentData>(
 ): Promise<(T & { id: string })[]> {
   const q = query(collection(db, collectionPath), ...constraints);
   const snap: QuerySnapshot = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as T) }));
+  const documents = snap.docs.map((d) => ({ ...(d.data() as T), id: d.id }));
+
+  if (collectionPath === 'parks') {
+    return filterCurrentParkDocuments(documents);
+  }
+
+  return documents;
 }
 
 /**

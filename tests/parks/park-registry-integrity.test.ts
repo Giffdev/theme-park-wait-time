@@ -20,7 +20,12 @@
  * the derived views can't quietly drop or duplicate a park.
  */
 import { describe, it, expect } from 'vitest';
-import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
+import {
+  DESTINATION_FAMILIES,
+  RETIRED_PARK_REPLACEMENTS,
+  getAllParks,
+  getParkLiveDataIds,
+} from '@/lib/parks/park-registry';
 import { PARK_FAMILIES } from '@/lib/constants';
 import { PARK_FAMILY_REGISTRY } from '@/lib/crowd-calendar/park-families';
 
@@ -66,6 +71,43 @@ describe('park-registry.ts — deterministic integrity', () => {
     }
     const duplicates = [...seen.entries()].filter(([, names]) => names.length > 1);
     expect(duplicates).toEqual([]);
+  });
+
+  it('has globally unique family, destination, and park routing identities', () => {
+    const duplicateValues = (values: string[]) => {
+      const counts = new Map<string, number>();
+      for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+      return [...counts.entries()].filter(([, count]) => count > 1).map(([value]) => value);
+    };
+    const destinations = DESTINATION_FAMILIES.flatMap((family) => family.destinations);
+    const parks = destinations.flatMap((destination) => destination.parks);
+
+    expect(duplicateValues(DESTINATION_FAMILIES.map((family) => family.familyId))).toEqual([]);
+    expect(duplicateValues(destinations.map((destination) => destination.id))).toEqual([]);
+    expect(duplicateValues(destinations.map((destination) => destination.slug))).toEqual([]);
+    expect(duplicateValues(parks.map((park) => park.id))).toEqual([]);
+    expect(duplicateValues(parks.map((park) => park.slug))).toEqual([]);
+  });
+
+  it('tracks the complete canonical catalog for supported upstream destinations', () => {
+    expect(DESTINATION_FAMILIES).toHaveLength(9);
+    expect(DESTINATION_FAMILIES.flatMap((family) => family.destinations)).toHaveLength(64);
+    expect(getAllParks()).toHaveLength(96);
+  });
+
+  it('keeps alternate live-feed ids UUID-valid, unique, and outside canonical park identity', () => {
+    const canonicalIds = new Set(getAllParks().map((park) => park.id));
+    const aliasIds = getAllParks().flatMap((park) =>
+      getParkLiveDataIds(park.id).filter((sourceId) => sourceId !== park.id)
+    );
+
+    expect(aliasIds.every((id) => UUID_RE.test(id))).toBe(true);
+    expect(new Set(aliasIds).size).toBe(aliasIds.length);
+    expect(aliasIds.some((id) => canonicalIds.has(id))).toBe(false);
+    expect(RETIRED_PARK_REPLACEMENTS['08e5d95c-7c73-4c65-b17a-06fede1801fb'])
+      .toBe('a96eb7c6-1fd3-4363-84d9-c84e23f886f1');
+    expect(RETIRED_PARK_REPLACEMENTS['aa8c2744-b792-4802-8a70-8bba51bc73da'])
+      .toBe('3964ae15-a1a8-41a1-aea9-23b456e2911f');
   });
 
   it('regression pin: Oceans of Fun resolves to its real, current entity id', () => {

@@ -14,6 +14,7 @@ import {
   isReusableScheduleCache,
   type CachedParkSchedule,
 } from '@/lib/parks/park-schedule-check';
+import { getParkById } from '@/lib/parks/park-registry';
 
 // Bounds the whole request well below Vercel's function `maxDuration` so a
 // stalled stage fails fast with an explicit response instead of the
@@ -213,6 +214,13 @@ export async function GET(request: NextRequest) {
     if (!parkId) {
       return NextResponse.json(
         { error: 'Missing required parameter: parkId' },
+        { status: 400 }
+      );
+    }
+
+    if (!getParkById(parkId)) {
+      return NextResponse.json(
+        { error: 'Unknown or retired parkId. Use a canonical registry UUID.' },
         { status: 400 }
       );
     }

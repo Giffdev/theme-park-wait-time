@@ -62,6 +62,11 @@ vi.mock('lucide-react', () => ({
 
 // Mock park registry and locations
 vi.mock('@/lib/parks/park-registry', () => ({
+  getParkBySlug: (slug: string) => {
+    if (slug === 'magic-kingdom') return { id: 'magic-kingdom', slug };
+    if (slug === 'epcot') return { id: 'epcot', slug };
+    return undefined;
+  },
   DESTINATION_FAMILIES: [{
     familyName: 'Disney Parks',
     destinations: [{
@@ -71,6 +76,11 @@ vi.mock('@/lib/parks/park-registry', () => ({
       parks: [{ id: 'magic-kingdom', name: 'Magic Kingdom' }],
     }],
   }],
+}));
+
+vi.mock('@/lib/parks/park-document-read', () => ({
+  selectCurrentParkDocument: (docs: Array<{ id: string; slug?: string }>, slug: string) =>
+    docs.find((doc) => doc.slug === slug) ?? docs.find((doc) => doc.id === slug),
 }));
 
 vi.mock('@/lib/parks/park-locations', () => ({

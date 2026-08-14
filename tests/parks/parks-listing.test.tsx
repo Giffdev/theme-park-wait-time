@@ -30,7 +30,13 @@ vi.mock('@/lib/firebase/config', () => ({
 // Mock Firestore
 const mockGetCollection = vi.fn();
 vi.mock('@/lib/firebase/firestore', () => ({
-  getCollection: (...args: unknown[]) => mockGetCollection(...args),
+  getCollection: async (...args: unknown[]) => {
+    const docs = await mockGetCollection(...args);
+    if (args[0] !== 'parks') return docs;
+    return docs.filter((doc: { id: string }) =>
+      doc.id !== '951987f7-3387-4221-8368-2859469aebcd'
+    );
+  },
   getDocument: vi.fn(),
   whereConstraint: vi.fn(),
 }));
@@ -154,6 +160,34 @@ describe('Parks Listing Page', () => {
 
       const skeletons = container.querySelectorAll('.animate-pulse');
       expect(skeletons.length).toBe(0);
+    });
+
+    it('removes a retired Oceans of Fun document before rendering park cards', async () => {
+      mockGetCollection.mockReset();
+      mockGetCollection
+        .mockResolvedValueOnce([
+          {
+            id: '951987f7-3387-4221-8368-2859469aebcd',
+            name: 'Oceans of Fun',
+            slug: 'oceans-of-fun',
+            destinationName: 'Worlds of Fun',
+            destinationId: 'wof',
+          },
+          {
+            id: 'b5a89552-3381-47ad-88cc-ab0087019c8b',
+            name: 'Oceans of Fun',
+            slug: 'oceans-of-fun',
+            destinationName: 'Worlds of Fun',
+            destinationId: 'wof',
+          },
+        ])
+        .mockResolvedValue([]);
+
+      render(<ParksPage />);
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('park-card-Oceans of Fun')).toHaveLength(1);
+      });
     });
   });
 

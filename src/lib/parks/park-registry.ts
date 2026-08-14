@@ -7,9 +7,20 @@
  */
 
 export interface ParkEntry {
+  /** Canonical ThemeParks.wiki entity UUID used for metadata, children, and schedules. */
   id: string;
   name: string;
+  /** Stable, globally unique application routing identity. */
   slug: string;
+  /**
+   * ThemeParks.wiki occasionally splits one physical park across a current
+   * catalog entity and legacy live-feed entities. These ids are data-source
+   * aliases only; they must never become separate park cards or Firestore
+   * park documents.
+   */
+  liveDataIds?: string[];
+  /** Restrict a combined upstream live feed to this park's `/children` UUIDs. */
+  filterLiveDataToChildren?: boolean;
 }
 
 export interface DestinationEntry {
@@ -158,6 +169,7 @@ const SIX_FLAGS_MAGIC_MOUNTAIN: DestinationEntry = {
   slug: 'six-flags-magic-mountain',
   parks: [
     { id: 'c6073ab0-83aa-4e25-8d60-12c8f25684bc', name: 'Six Flags Magic Mountain', slug: 'magic-mountain' },
+    { id: 'a3c83af5-27dc-4c09-8fe2-6af778161e45', name: 'Hurricane Harbor Los Angeles', slug: 'hurricane-harbor-los-angeles' },
   ],
 };
 
@@ -167,6 +179,7 @@ const SIX_FLAGS_GREAT_ADVENTURE: DestinationEntry = {
   slug: 'six-flags-great-adventure',
   parks: [
     { id: '556f0126-8082-4b66-aeee-1e3593fed188', name: 'Six Flags Great Adventure', slug: 'great-adventure' },
+    { id: '0b04c685-0dac-4922-b5f9-d3f41a0f02e1', name: 'Hurricane Harbor New Jersey', slug: 'hurricane-harbor-new-jersey' },
   ],
 };
 
@@ -176,6 +189,7 @@ const SIX_FLAGS_GREAT_AMERICA: DestinationEntry = {
   slug: 'six-flags-great-america-dest',
   parks: [
     { id: '15805a4d-4023-4702-b9f2-3d3cab2e0c1e', name: 'Six Flags Great America', slug: 'six-flags-great-america' },
+    { id: '044296af-10af-4868-a1f0-8fb2b7478d96', name: 'Hurricane Harbor Chicago', slug: 'hurricane-harbor-chicago' },
   ],
 };
 
@@ -185,6 +199,15 @@ const SIX_FLAGS_OVER_TEXAS: DestinationEntry = {
   slug: 'six-flags-over-texas',
   parks: [
     { id: '4535960b-45fb-49fb-a38a-59cf602a0a9c', name: 'Six Flags Over Texas', slug: 'over-texas' },
+    {
+      id: 'a96eb7c6-1fd3-4363-84d9-c84e23f886f1',
+      name: 'Hurricane Harbor Arlington',
+      slug: 'hurricane-harbor-arlington',
+      liveDataIds: [
+        'a96eb7c6-1fd3-4363-84d9-c84e23f886f1',
+        '08e5d95c-7c73-4c65-b17a-06fede1801fb',
+      ],
+    },
   ],
 };
 
@@ -230,6 +253,7 @@ const SIX_FLAGS_ST_LOUIS: DestinationEntry = {
   slug: 'six-flags-st-louis',
   parks: [
     { id: '815e6367-9bbe-449e-a639-a093e216188f', name: 'Six Flags St. Louis', slug: 'sf-st-louis' },
+    { id: '732d5299-cc15-49c3-ab8f-937c7290d0a2', name: 'Hurricane Harbor St. Louis', slug: 'hurricane-harbor-st-louis' },
   ],
 };
 
@@ -266,6 +290,15 @@ const SIX_FLAGS_FRONTIER_CITY: DestinationEntry = {
   slug: 'six-flags-frontier-city',
   parks: [
     { id: '589627eb-fe16-4373-a2db-08d73805fb1f', name: 'Six Flags Frontier City', slug: 'frontier-city' },
+    {
+      id: '3964ae15-a1a8-41a1-aea9-23b456e2911f',
+      name: 'Hurricane Harbor Oklahoma City',
+      slug: 'hurricane-harbor-oklahoma-city',
+      liveDataIds: [
+        '3964ae15-a1a8-41a1-aea9-23b456e2911f',
+        'aa8c2744-b792-4802-8a70-8bba51bc73da',
+      ],
+    },
   ],
 };
 
@@ -295,6 +328,7 @@ const CEDAR_POINT: DestinationEntry = {
   slug: 'cedar-point-dest',
   parks: [
     { id: 'c8299e1a-0098-4677-8ead-dd0da204f8dc', name: 'Cedar Point', slug: 'cedar-point' },
+    { id: '5d4442cf-0db1-4406-942b-a7052e743e99', name: 'Cedar Point Shores', slug: 'cedar-point-shores' },
   ],
 };
 
@@ -339,7 +373,13 @@ const KNOTTS_BERRY_FARM: DestinationEntry = {
   name: "Knott's Berry Farm",
   slug: 'knotts-berry-farm-dest',
   parks: [
-    { id: '0a6123bb-1e8c-4b18-a2d3-2696cf2451f5', name: "Knott's Berry Farm", slug: 'knotts-berry-farm' },
+    {
+      id: '0a6123bb-1e8c-4b18-a2d3-2696cf2451f5',
+      name: "Knott's Berry Farm",
+      slug: 'knotts-berry-farm',
+      filterLiveDataToChildren: true,
+    },
+    { id: '153c584b-6957-4b26-9965-f2aaa10ab558', name: "Knott's Soak City", slug: 'knotts-soak-city' },
   ],
 };
 
@@ -367,6 +407,7 @@ const VALLEYFAIR: DestinationEntry = {
   slug: 'valleyfair-dest',
   parks: [
     { id: '1989dca9-c8d3-43b8-b0dd-e5575f692b95', name: 'Valleyfair', slug: 'valleyfair' },
+    { id: 'e12150a4-be4b-4048-9522-12364650f870', name: 'Superior Shores Waterpark', slug: 'superior-shores-waterpark' },
   ],
 };
 
@@ -376,6 +417,7 @@ const MICHIGANS_ADVENTURE: DestinationEntry = {
   slug: 'michigans-adventure-dest',
   parks: [
     { id: 'e9805d65-edad-4700-8942-946e6a2b4784', name: "Michigan's Adventure", slug: 'michigans-adventure' },
+    { id: '245f9457-8e64-457b-800a-0850e6364d93', name: 'WildWater Adventure', slug: 'wildwater-adventure' },
   ],
 };
 
@@ -384,7 +426,12 @@ const WORLDS_OF_FUN: DestinationEntry = {
   name: 'Worlds of Fun',
   slug: 'worlds-of-fun-dest',
   parks: [
-    { id: 'bb731eae-7bd3-4713-bd7b-89d79b031743', name: 'Worlds of Fun', slug: 'worlds-of-fun' },
+    {
+      id: 'bb731eae-7bd3-4713-bd7b-89d79b031743',
+      name: 'Worlds of Fun',
+      slug: 'worlds-of-fun',
+      filterLiveDataToChildren: true,
+    },
     { id: 'b5a89552-3381-47ad-88cc-ab0087019c8b', name: 'Oceans of Fun', slug: 'oceans-of-fun' },
   ],
 };
@@ -398,6 +445,7 @@ const SEAWORLD_ORLANDO: DestinationEntry = {
   parks: [
     { id: '27d64dee-d85e-48dc-ad6d-8077445cd946', name: 'SeaWorld Orlando', slug: 'seaworld-orlando' },
     { id: '9e2867f8-68eb-454f-b367-0ed0fd72d72a', name: 'Aquatica Orlando', slug: 'aquatica-orlando' },
+    { id: '91f5c7f3-373b-42e1-9f24-f769e4a3f7da', name: 'Discovery Cove Orlando', slug: 'discovery-cove-orlando' },
   ],
 };
 
@@ -416,6 +464,7 @@ const SEAWORLD_SAN_ANTONIO: DestinationEntry = {
   slug: 'seaworld-san-antonio-dest',
   parks: [
     { id: 'dd0e159a-4e4b-48e5-8949-353794ef2ecb', name: 'SeaWorld San Antonio', slug: 'seaworld-san-antonio' },
+    { id: 'e7bed04c-62b1-47eb-8aed-54ba77dc2c41', name: 'Aquatica San Antonio', slug: 'aquatica-san-antonio' },
   ],
 };
 
@@ -425,6 +474,7 @@ const BUSCH_GARDENS_TAMPA: DestinationEntry = {
   slug: 'busch-gardens-tampa-dest',
   parks: [
     { id: 'fc40c99a-be0a-42f4-a483-1e939db275c2', name: 'Busch Gardens Tampa Bay', slug: 'busch-gardens-tampa' },
+    { id: '7d6c4a8b-f12b-4735-827c-26235198aed2', name: 'Adventure Island Tampa', slug: 'adventure-island-tampa' },
   ],
 };
 
@@ -434,6 +484,7 @@ const BUSCH_GARDENS_WILLIAMSBURG: DestinationEntry = {
   slug: 'busch-gardens-williamsburg-dest',
   parks: [
     { id: '98f634cd-c388-439c-b309-960f9475b84d', name: 'Busch Gardens Williamsburg', slug: 'busch-gardens-williamsburg' },
+    { id: '16d97cc2-0029-45a7-846f-5f8bf5b5aca8', name: 'Water Country USA', slug: 'water-country-usa' },
   ],
 };
 
@@ -491,8 +542,14 @@ const EUROPA_PARK: DestinationEntry = {
   name: 'Europa-Park',
   slug: 'europa-park-dest',
   parks: [
-    { id: '639738d3-9574-4f60-ab5b-4c392901320b', name: 'Europa-Park', slug: 'europa-park' },
+    {
+      id: '639738d3-9574-4f60-ab5b-4c392901320b',
+      name: 'Europa-Park',
+      slug: 'europa-park',
+      filterLiveDataToChildren: true,
+    },
     { id: '58392c29-d79d-49e4-9c35-0100d417d24e', name: 'Rulantica', slug: 'rulantica' },
+    { id: '1e5d9bac-1ef7-4f8f-b0a3-28cc6ff860f5', name: 'Traumatica', slug: 'traumatica' },
   ],
 };
 
@@ -539,6 +596,7 @@ const PORTAVENTURA: DestinationEntry = {
   parks: [
     { id: '32608bdc-b3fa-478e-a8c0-9dde197a4212', name: 'PortAventura Park', slug: 'portaventura-park' },
     { id: 'd06d91b8-7702-42c3-a8af-7d0161d471bf', name: 'Ferrari Land', slug: 'ferrari-land' },
+    { id: '91c92c4c-e079-4488-8c99-385bc81bd5d7', name: 'Caribe Aquatic Park', slug: 'caribe-aquatic-park' },
   ],
 };
 
@@ -624,6 +682,7 @@ const EVERLAND: DestinationEntry = {
   slug: 'everland-dest',
   parks: [
     { id: 'b4dd937f-a79d-4b82-922f-e8ab0fbf5b5b', name: 'Everland', slug: 'everland' },
+    { id: 'de3955e7-e3b7-4b85-884b-2d0fb2c1d71c', name: 'Caribbean Bay', slug: 'caribbean-bay' },
   ],
 };
 
@@ -777,13 +836,49 @@ export function getAllParks(): ParkEntry[] {
   );
 }
 
+/**
+ * Upstream park identities that have been replaced by a current entity.
+ *
+ * Firestore seeding is additive (`set(..., { merge: true })`), so a document
+ * written under an older entity id survives after the upstream catalog moves
+ * the park to a new id. Read paths must exclude these documents until the
+ * explicitly-approved production reconciliation removes them.
+ */
+export const RETIRED_PARK_REPLACEMENTS: Readonly<Record<string, string>> = {
+  // Former locally-fabricated Oceans of Fun virtual park.
+  '951987f7-3387-4221-8368-2859469aebcd': 'b5a89552-3381-47ad-88cc-ab0087019c8b',
+  // Legacy Hurricane Harbor Arlington entity; retained only as a live-feed alias.
+  '08e5d95c-7c73-4c65-b17a-06fede1801fb': 'a96eb7c6-1fd3-4363-84d9-c84e23f886f1',
+  // Former Hurricane Harbor Oklahoma City entity, replaced upstream.
+  'aa8c2744-b792-4802-8a70-8bba51bc73da': '3964ae15-a1a8-41a1-aea9-23b456e2911f',
+};
+
+export function isRetiredParkId(id: string): boolean {
+  return Object.prototype.hasOwnProperty.call(RETIRED_PARK_REPLACEMENTS, id);
+}
+
+export function resolveCurrentParkId(id: string): string {
+  return RETIRED_PARK_REPLACEMENTS[id] ?? id;
+}
+
 /** Find a park by slug */
-export function getParkBySlug(slug: string): (ParkEntry & { destinationName: string; destinationId: string }) | undefined {
+export function getParkBySlug(slug: string): (ParkEntry & {
+  destinationName: string;
+  destinationId: string;
+  familyId: string;
+  familyName: string;
+}) | undefined {
   for (const family of DESTINATION_FAMILIES) {
     for (const dest of family.destinations) {
       const park = dest.parks.find((p) => p.slug === slug);
       if (park) {
-        return { ...park, destinationName: dest.name, destinationId: dest.id };
+        return {
+          ...park,
+          destinationName: dest.name,
+          destinationId: dest.id,
+          familyId: family.familyId,
+          familyName: family.familyName,
+        };
       }
     }
   }
@@ -791,16 +886,33 @@ export function getParkBySlug(slug: string): (ParkEntry & { destinationName: str
 }
 
 /** Find a park by UUID */
-export function getParkById(id: string): (ParkEntry & { destinationName: string; destinationId: string }) | undefined {
+export function getParkById(id: string): (ParkEntry & {
+  destinationName: string;
+  destinationId: string;
+  familyId: string;
+  familyName: string;
+}) | undefined {
   for (const family of DESTINATION_FAMILIES) {
     for (const dest of family.destinations) {
       const park = dest.parks.find((p) => p.id === id);
       if (park) {
-        return { ...park, destinationName: dest.name, destinationId: dest.id };
+        return {
+          ...park,
+          destinationName: dest.name,
+          destinationId: dest.id,
+          familyId: family.familyId,
+          familyName: family.familyName,
+        };
       }
     }
   }
   return undefined;
+}
+
+/** Resolve every upstream live-feed entity that belongs to a canonical park. */
+export function getParkLiveDataIds(id: string): string[] {
+  const park = getParkById(id);
+  return park?.liveDataIds ? [...park.liveDataIds] : park ? [park.id] : [];
 }
 
 /** Get all destinations in a family */

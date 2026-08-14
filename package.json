@@ -15,6 +15,11 @@
     "test:e2e:ui": "playwright test --ui",
     "type-check": "tsc --noEmit",
     "seed:parks": "npx tsx scripts/seed-parks.ts",
+    "reconcile:park-catalog": "npx tsx scripts/reconcile-park-catalog.ts",
+    "audit:parks": "npx tsx scripts/audit-park-catalog.ts",
+    "verify:catalog-child-baseline": "npx tsx scripts/generate-catalog-child-baseline.ts --verify",
+    "check:catalog-child-baseline-live": "npx tsx scripts/generate-catalog-child-baseline.ts --check-live",
+    "generate:catalog-child-baseline": "npx tsx scripts/generate-catalog-child-baseline.ts",
     "fetch:wait-times": "npx tsx scripts/fetch-wait-times.ts",
     "enrich-types": "npx tsx scripts/enrich-attraction-types.ts",
     "sync:all-parks": "npx tsx scripts/sync-all-parks.ts"

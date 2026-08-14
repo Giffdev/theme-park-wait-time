@@ -19,17 +19,14 @@
  *
  * Safety model (deliberately conservative — this operates on production
  * data):
- *   • Dry-run by default. Deleting requires BOTH `--apply` and `--yes`.
+ *   • Read-only. This park-only checker never deletes documents.
  *   • Only documents that are (a) unknown to `park-registry.ts`, (b) inside a
  *     destination we actively seed, and (c) shadowing the slug of a
- *     registry park that already has its own document are ever proposed for
- *     deletion. Anything else is reported for human review and never
- *     touched, so an intentionally-added extra park cannot be deleted.
- *   • Idempotent: running it again after a successful apply produces an
- *     empty retire plan.
- *   • Park documents only. Deletes are shallow and nothing else keyed by the
- *     retired park id is touched; the residual data is *reported* (see
- *     `ORPHANED_PARK_DATA_PATHS`) rather than recursively deleted.
+ *     registry park that already has its own document are ever proposed as
+ *     review-only retirement evidence. Anything else is reported for human
+ *     review and never touched.
+ *   • Park documents only. Potential residual data is *reported* (see
+ *     `ORPHANED_PARK_DATA_PATHS`) for a future tombstone/rules design.
  *
  * Output contract: stdout carries the report only (in `--json` mode, exactly
  * one parseable JSON document). Every notice, progress line and error goes to
@@ -38,15 +35,18 @@
  * Usage:
  *   npx tsx scripts/reconcile-parks.ts             # dry run (read-only)
  *   npx tsx scripts/reconcile-parks.ts --json      # dry run, machine-readable
- *   npx tsx scripts/reconcile-parks.ts --apply --yes   # deletes retire-plan docs
+ *   npx tsx scripts/reconcile-parks.ts --apply --yes   # refused; use full reconciler
  *
- * Exit codes: 0 on success (including a clean dry run), 1 if `--apply` was
- * requested without `--yes`, or if any planned delete failed.
+ * Exit codes: 0 on a successful read-only run, 1 for every apply request.
  */
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { adminDb } from '../src/lib/firebase/admin';
-import { DESTINATION_FAMILIES, getParkById } from '../src/lib/parks/park-registry';
+import {
+  DESTINATION_FAMILIES,
+  RETIRED_PARK_REPLACEMENTS,
+  getParkById,
+} from '../src/lib/parks/park-registry';
 import { SEED_DESTINATION_IDS } from './seed-parks';
 
 /** A `parks` document reduced to just the fields reconciliation reasons about. */
@@ -85,7 +85,7 @@ export interface MissingCanonicalSlug {
 }
 
 export interface ReconcilePlan {
-  /** Safe to delete: registry-retired duplicates shadowing a canonical park. */
+  /** Retire candidates for the full reconciler; this script never deletes. */
   retire: ReconcileFinding[];
   /** Needs a human decision; never deleted by this tool. */
   review: ReconcileFinding[];
@@ -171,6 +171,21 @@ export function planParkReconciliation(
       continue;
     }
 
+    const replacementParkId = RETIRED_PARK_REPLACEMENTS[effectiveId(doc)];
+    const replacementDoc = replacementParkId
+      ? docs.find((candidate) => effectiveId(candidate) === replacementParkId)
+      : undefined;
+    if (replacementDoc) {
+      retire.push({
+        ...base,
+        action: 'retire',
+        reason:
+          `Evidence-backed retired identity: current document ${replacementDoc.docId} replaced ` +
+          `${doc.docId}${doc.slug ? ` and serves slug "${doc.slug}"` : ''}.`,
+      });
+      continue;
+    }
+
     if (!doc.destinationId || !seedDestinationIds.has(doc.destinationId)) {
       review.push({
         ...base,
@@ -222,13 +237,10 @@ export function planParkReconciliation(
 }
 
 /**
- * Park-id-keyed data that a `parks/{id}` document delete does NOT remove.
+ * Park-id-keyed data a future explicit tombstone/rules migration must handle.
  *
- * Firestore deletes are shallow: removing a document leaves its
- * subcollections in place, and nothing keyed by the same park id in other
- * collections is touched either. Operators need to know that retiring a
- * duplicate park document narrows the slug query and nothing else — the
- * retired id's residual data stays exactly where it is.
+ * Firestore deletes are shallow, so this review inventory keeps residual
+ * paths visible without exposing any executable cleanup.
  *
  * Deliberately reported, not deleted: broadening this tool into recursive
  * cleanup would make a targeted, reviewable fix into an unbounded
@@ -245,17 +257,20 @@ export const ORPHANED_PARK_DATA_PATHS: readonly string[] = [
   'forecastAggregates/{parkId}/byDayOfWeek/*',
   'parkSchedules/{parkId}/daily/*',
   'crowdsourcedWaitTimes/{parkId}/reports/* and /aggregates/*',
+  'users/*/rideLogs/* where parkId == {parkId}',
+  'users/*/diningLogs/* where parkId == {parkId}',
+  'users/*/activeTimer/* where parkId == {parkId}',
+  'users/*/trips/* and /days/* referencing {parkId}',
+  'crowdReports/* and waitTimeReports/* referencing {parkId} or its attractions',
 ];
 
 function orphanNoticeLines(): string[] {
   return [
     '',
-    '-- deletion scope (park documents only) --',
-    '  A `parks/{id}` delete is shallow. The following park-id-keyed data is NOT',
-    '  removed and is left intentionally untouched for separate, explicit review:',
+    '-- future tombstone/rules migration scope (review only) --',
+    '  Automatic deletion is disabled. A future explicit migration must account for:',
     ...ORPHANED_PARK_DATA_PATHS.map((path) => `    • ${path}`),
-    '  Retiring the duplicate only removes it from unordered `where("slug", "==", ...)`',
-    '  resolution; the retired id keeps whatever data it already had.',
+    '  Public read filtering already removes retired identities from visible slug resolution.',
   ];
 }
 
@@ -279,7 +294,7 @@ export function formatPlan(plan: ReconcilePlan): string {
   }
 
   if (plan.retire.length > 0) {
-    lines.push('\n-- retire candidates (deleted only with --apply --yes) --');
+    lines.push('\n-- retire candidates (reviewed only; this script cannot delete) --');
     for (const finding of plan.retire) {
       lines.push(`  ${finding.docId} [${finding.slug ?? 'no-slug'}] ${finding.name ?? ''}`);
       lines.push(`      ${finding.reason}`);
@@ -306,20 +321,19 @@ export function formatPlan(plan: ReconcilePlan): string {
   return lines.join('\n');
 }
 
-/** Result of an `--apply --yes` run. */
-export interface ApplyResult {
-  attempted: number;
-  deleted: string[];
-  failed: Array<{ docId: string; error: string }>;
-}
-
 export interface ReconcileJsonReport extends ReconcilePlan {
   orphanedCollections: readonly string[];
-  applied: ApplyResult | null;
+  automaticDeletionEnabled: false;
+  applied: null;
 }
 
-export function buildJsonReport(plan: ReconcilePlan, applied: ApplyResult | null): ReconcileJsonReport {
-  return { ...plan, orphanedCollections: ORPHANED_PARK_DATA_PATHS, applied };
+export function buildJsonReport(plan: ReconcilePlan): ReconcileJsonReport {
+  return {
+    ...plan,
+    orphanedCollections: ORPHANED_PARK_DATA_PATHS,
+    automaticDeletionEnabled: false,
+    applied: null,
+  };
 }
 
 /**
@@ -337,49 +351,9 @@ const consoleIo: ReconcileIo = {
   err: (line) => console.error(line),
 };
 
-/**
- * Deletes the retire plan one document at a time.
- *
- * Per-document error isolation is the point: a single failed delete
- * (permissions, contention, a doc removed by someone else mid-run) must not
- * abandon the remaining planned deletes, and must not be reported as
- * success. Failures are collected and surfaced with explicit counts; the
- * caller turns any failure into a non-zero exit. Re-running is safe — a
- * document deleted by a previous run is simply no longer in the plan.
- */
-export async function applyRetirePlan(
-  plan: ReconcilePlan,
-  deleteDoc: (docId: string) => Promise<void>,
-  io: ReconcileIo = consoleIo
-): Promise<ApplyResult> {
-  const result: ApplyResult = { attempted: plan.retire.length, deleted: [], failed: [] };
-
-  for (const finding of plan.retire) {
-    try {
-      await deleteDoc(finding.docId);
-      result.deleted.push(finding.docId);
-      io.err(`  ✓ deleted ${finding.docId} [${finding.slug ?? 'no-slug'}]`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      result.failed.push({ docId: finding.docId, error: message });
-      io.err(`  ✗ FAILED to delete ${finding.docId} [${finding.slug ?? 'no-slug'}]: ${message}`);
-    }
-  }
-
-  io.err(
-    `\nDeleted ${result.deleted.length} of ${result.attempted} planned document(s); ` +
-      `${result.failed.length} failed.`
-  );
-  if (result.failed.length > 0) {
-    io.err('Re-run the tool to retry the failures — the plan is recomputed from live data.');
-  }
-  return result;
-}
-
 export interface RunReconcileOptions {
   argv: string[];
   docs: ParkDocRecord[];
-  deleteDoc?: (docId: string) => Promise<void>;
   io?: ReconcileIo;
 }
 
@@ -391,11 +365,9 @@ export async function runReconcileCli(options: RunReconcileOptions): Promise<num
   const io = options.io ?? consoleIo;
   const args = new Set(options.argv);
   const apply = args.has('--apply');
-  const confirmed = args.has('--yes');
   const asJson = args.has('--json');
 
   const plan = planParkReconciliation(options.docs);
-  let applied: ApplyResult | null = null;
   let exitCode = 0;
 
   // Text mode prints the plan up front; JSON mode emits exactly one document
@@ -405,24 +377,18 @@ export async function runReconcileCli(options: RunReconcileOptions): Promise<num
   if (!apply) {
     io.err(
       '\nDry run only — no documents were modified. ' +
-        'Re-run with `--apply --yes` to delete the retire candidates above.'
+        'This park-only checker cannot delete. Review `npm run reconcile:park-catalog -- --json`; ' +
+        'the full reconciler also keeps retirement/reference evidence review-only.'
     );
-  } else if (!confirmed) {
-    io.err('\nRefusing to delete: `--apply` requires an explicit `--yes` confirmation.');
-    exitCode = 1;
-  } else if (plan.retire.length === 0) {
-    io.err('\nNothing to delete — the collection is already reconciled.');
-  } else if (!options.deleteDoc) {
-    io.err('\nRefusing to delete: no delete implementation was provided.');
-    exitCode = 1;
   } else {
-    io.err('\nApplying retire plan — park documents only; deletes are shallow.');
-    for (const line of orphanNoticeLines()) io.err(line);
-    applied = await applyRetirePlan(plan, options.deleteDoc, io);
-    if (applied.failed.length > 0) exitCode = 1;
+    io.err(
+      '\nRefusing to delete: automatic catalog deletion is disabled. Run ' +
+        '`npm run reconcile:park-catalog -- --json` for review-only evidence.'
+    );
+    exitCode = 1;
   }
 
-  if (asJson) io.out(JSON.stringify(buildJsonReport(plan, applied), null, 2));
+  if (asJson) io.out(JSON.stringify(buildJsonReport(plan), null, 2));
 
   return exitCode;
 }
@@ -447,7 +413,6 @@ async function main(): Promise<void> {
   process.exitCode = await runReconcileCli({
     argv: process.argv.slice(2),
     docs: await readParkDocs(),
-    deleteDoc: (docId) => adminDb.collection('parks').doc(docId).delete().then(() => undefined),
   });
 }
 

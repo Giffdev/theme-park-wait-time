@@ -3,12 +3,13 @@ import { after } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { updateForecastAggregates } from '@/lib/forecast/aggregation';
 import { resolveForecast } from '@/lib/forecast/blender';
-import { getParkById } from '@/lib/parks/park-registry';
+import { getParkById, getParkLiveDataIds } from '@/lib/parks/park-registry';
 import type { ForecastAggregate, ForecastMeta } from '@/types/queue';
 
 const API_BASE = 'https://api.themeparks.wiki/v1';
 const UPSTREAM_TIMEOUT_MS = 10_000;
 const BATCH_SIZE = 499;
+const CHILD_MEMBERSHIP_TTL_MS = 6 * 60 * 60 * 1000;
 
 // Read-first single-doc Firestore cache: a park is considered "fresh enough
 // to skip upstream entirely" within this window. Deliberately short relative
@@ -171,6 +172,7 @@ export class UnsupportedParkError extends Error {}
 export class RefreshDeadlineError extends Error {}
 
 const parkDataCache: Record<string, CachedParkData> = {};
+const childMembershipCache: Record<string, { ids: Set<string>; fetchedAt: number }> = {};
 
 // In-flight refreshPark promises, keyed by parkId *and refresh mode*.
 // Concurrent requests for the same park in the same mode (e.g. multiple
@@ -333,18 +335,85 @@ function validLiveEntries(payload: unknown): LiveEntry[] {
   return liveData;
 }
 
+async function fetchCanonicalChildIds(parkId: string): Promise<Set<string>> {
+  const cached = childMembershipCache[parkId];
+  if (cached && Date.now() - cached.fetchedAt < CHILD_MEMBERSHIP_TTL_MS) {
+    return cached.ids;
+  }
+
+  const res = await fetch(`${API_BASE}/entity/${parkId}/children`, {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new UpstreamFetchError(`ThemeParks children API error ${res.status}`);
+  }
+  const payload = await res.json() as { children?: unknown };
+  if (!Array.isArray(payload.children)) {
+    throw new UpstreamFetchError('ThemeParks API returned an invalid children payload');
+  }
+  const ids = new Set(
+    payload.children
+      .filter(
+        (entry): entry is { id: string } =>
+          !!entry &&
+          typeof entry === 'object' &&
+          typeof (entry as { id?: unknown }).id === 'string'
+      )
+      .map((entry) => entry.id)
+  );
+  childMembershipCache[parkId] = { ids, fetchedAt: Date.now() };
+  return ids;
+}
+
 async function fetchLiveDataForPark(parkId: string): Promise<LiveDataResult> {
   try {
-    const res = await fetch(`${API_BASE}/entity/${parkId}/live`, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
-
-    if (!res.ok) {
-      throw new UpstreamFetchError(`ThemeParks API error ${res.status}`);
+    const park = getParkById(parkId);
+    const sourceIds = getParkLiveDataIds(parkId);
+    if (sourceIds.length === 0) {
+      throw new UnsupportedParkError(`Park ${parkId} is not in the canonical registry`);
     }
 
-    const liveData = validLiveEntries(await res.json());
+    const fetchSource = async (sourceId: string): Promise<LiveEntry[]> => {
+      const res = await fetch(`${API_BASE}/entity/${sourceId}/live`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        throw new UpstreamFetchError(`ThemeParks API error ${res.status}`);
+      }
+      return validLiveEntries(await res.json());
+    };
+    const [canonicalPayload, canonicalChildIds] = await Promise.all([
+      fetchSource(sourceIds[0]),
+      park?.filterLiveDataToChildren
+        ? fetchCanonicalChildIds(parkId)
+        : Promise.resolve<Set<string> | null>(null),
+    ]);
+    const aliasResults = await Promise.allSettled(
+      sourceIds.slice(1).map(async (sourceId) => ({
+        sourceId,
+        payload: await fetchSource(sourceId),
+      }))
+    );
+    const mergedById = new Map(canonicalPayload.map((entry) => [entry.id, entry]));
+    for (const [index, result] of aliasResults.entries()) {
+      if (result.status === 'rejected') {
+        console.warn(
+          `ThemeParks alias live feed degraded (source ${sourceIds[index + 1]}) for ` +
+            `canonical park ${parkId}; ` +
+            'continuing with available canonical/alias data.'
+        );
+        continue;
+      }
+      for (const entry of result.value.payload) {
+        if (!mergedById.has(entry.id)) mergedById.set(entry.id, entry);
+      }
+    }
+    const mergedLiveData = [...mergedById.values()];
+    const liveData = canonicalChildIds
+      ? mergedLiveData.filter((entry) => canonicalChildIds.has(entry.id))
+      : mergedLiveData;
     const fetchedAt = new Date().toISOString();
     parkDataCache[parkId] = { liveData, fetchedAt };
 

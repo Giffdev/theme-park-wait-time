@@ -12,13 +12,10 @@
  * rendered "Park details unavailable".
  *
  * These tests pin:
- *  - every configured seed destination id resolves to a real park-registry.ts
- *    destination (typo/parity safety net for future additions),
- *  - Alton Towers specifically is present in the active seed configuration
- *    (regression pin for this bug),
- *  - the id-based matcher correctly resolves registry destinations against
- *    upstream API fixtures, including the Worlds of Fun virtual-split
- *    override, without hitting the network or Firestore.
+ *  - every canonical registry destination is in the seed input,
+ *  - every canonical park must exist in the same upstream destination before
+ *    any writes begin, and
+ *  - upstream-only parks cannot silently become Firestore park documents.
  */
 import { describe, it, expect, vi } from 'vitest';
 
@@ -74,6 +71,7 @@ describe('scripts/seed-parks.ts — registry/seed parity', () => {
     for (const id of SEED_DESTINATION_IDS) {
       expect(registryIds.has(id)).toBe(true);
     }
+    expect(new Set(SEED_DESTINATION_IDS)).toEqual(registryIds);
   });
 
   it('resolves Alton Towers from an upstream API fixture with no special-case config', () => {
@@ -86,10 +84,11 @@ describe('scripts/seed-parks.ts — registry/seed parity', () => {
     expect(matched[0].destination.parks).toEqual([
       { id: '0d8ea921-37b1-4a9a-b8ef-5b45afea847b', name: 'Alton Towers' },
     ]);
-    expect(matched[0].config).toEqual({});
+    expect(matched[0].registryDestination.name).toBe('Alton Towers');
+    expect(matched[0].familyId).toBe('european');
   });
 
-  it('seeds both Worlds of Fun and Oceans of Fun directly as real, independent parks (no virtual split)', () => {
+  it('seeds both Worlds of Fun and Oceans of Fun directly as canonical independent parks', () => {
     // ThemeParks Wiki now reports Oceans of Fun as its own standalone entity
     // (b5a89552-3381-47ad-88cc-ab0087019c8b, matching park-registry.ts) rather
     // than only as attractions nested under Worlds of Fun, so the destination
@@ -108,14 +107,12 @@ describe('scripts/seed-parks.ts — registry/seed parity', () => {
     ];
 
     const matched = resolveSeedDestinations(apiDestinations, [WORLDS_OF_FUN_DESTINATION_ID]);
-
     expect(matched).toHaveLength(1);
-    expect(matched[0].config.parkFilter).toEqual([
+    expect(matched[0].registryDestination.parks.map((park) => park.id)).toEqual([
       WORLDS_OF_FUN_PARK_ID,
       'b5a89552-3381-47ad-88cc-ab0087019c8b',
     ]);
-    expect(matched[0].config.timezoneOverride).toBe('America/Chicago');
-    expect(matched[0].config.virtualSplit).toBeUndefined();
+    expect(matched[0].familyId).toBe('cedar-fair');
   });
 
   it('throws when a configured seed id is not a real park-registry.ts destination (typo safety)', () => {
@@ -127,31 +124,46 @@ describe('scripts/seed-parks.ts — registry/seed parity', () => {
     );
   });
 
-  it('skips (rather than throws) a registry-valid destination that is temporarily absent upstream', () => {
-    // Alton Towers is a real registry destination but not present in this
-    // API fixture — should be skipped gracefully, not treated as a typo.
-    const matched = resolveSeedDestinations([], [ALTON_TOWERS_DESTINATION_ID]);
-    expect(matched).toEqual([]);
+  it('fails closed when a registry-valid destination is absent upstream', () => {
+    expect(() => resolveSeedDestinations([], [ALTON_TOWERS_DESTINATION_ID])).toThrow(
+      /seed aborted before any writes/i
+    );
   });
 
-  it('resolves every currently configured seed destination against real upstream data without throwing', async () => {
-    // Exercises the full active SEED_DESTINATION_IDS list (Orlando + Worlds of
-    // Fun + Alton Towers) against real ThemeParks Wiki id/name pairs, so a
-    // future edit to SEED_DESTINATION_IDS that drifts from the registry is
-    // caught here rather than at seed-run time in production.
-    const apiDestinations: Destination[] = [
-      { id: 'e957da41-3552-4cf6-b636-5babc5cbc4e5', name: "Walt Disney World® Resort", slug: 'waltdisneyworldresort', parks: [] },
-      { id: '89db5d43-c434-4097-b71f-f6869f495a22', name: 'Universal Orlando Resort', slug: 'universalresort_orlando', parks: [] },
-      { id: '643e837e-b244-4663-8d3a-148c26ecba9c', name: 'SeaWorld Parks and Resorts Orlando', slug: 'seaworldorlandoresort', parks: [] },
-      { id: WORLDS_OF_FUN_DESTINATION_ID, name: 'Worlds of Fun', slug: 'enchantedparks_worldsoffun', parks: [] },
-      { id: ALTON_TOWERS_DESTINATION_ID, name: 'Alton Towers Resort', slug: 'altontowersresort', parks: [] },
-    ];
+  it('resolves every configured seed destination from a complete registry-shaped upstream catalog', () => {
+    const apiDestinations: Destination[] = DESTINATION_FAMILIES.flatMap((family) =>
+      family.destinations.map((destination) => ({
+        id: destination.id,
+        name: destination.name,
+        slug: destination.slug,
+        parks: destination.parks.map((park) => ({ id: park.id, name: park.name })),
+      }))
+    );
 
     const matched = resolveSeedDestinations(apiDestinations);
 
     expect(matched.map((m) => m.destination.id).sort()).toEqual(
       [...SEED_DESTINATION_IDS].sort()
     );
+  });
+
+  it('fails closed when a canonical park is missing from its upstream destination', () => {
+    const destination = apiDestinationFixture({ parks: [] });
+    expect(() => resolveSeedDestinations([destination], [ALTON_TOWERS_DESTINATION_ID])).toThrow(
+      /missing upstream park\(s\).*Alton Towers/i
+    );
+  });
+
+  it('keeps upstream-only parks out of the canonical seed plan', () => {
+    const destination = apiDestinationFixture({
+      parks: [
+        { id: '0d8ea921-37b1-4a9a-b8ef-5b45afea847b', name: 'Alton Towers' },
+        { id: '00000000-0000-4000-8000-000000000001', name: 'Unexpected Park' },
+      ],
+    });
+
+    const [matched] = resolveSeedDestinations([destination], [ALTON_TOWERS_DESTINATION_ID]);
+    expect(matched.registryDestination.parks.map((park) => park.name)).toEqual(['Alton Towers']);
   });
 });
 

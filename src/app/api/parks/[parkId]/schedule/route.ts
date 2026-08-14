@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import { selectCurrentParkDocument } from '@/lib/parks/park-document-read';
+import { getParkBySlug } from '@/lib/parks/park-registry';
 
 const API_BASE = 'https://api.themeparks.wiki/v1';
 
@@ -24,19 +26,33 @@ export async function GET(_request: Request, { params }: Props) {
   const { parkId: slug } = await params;
 
   try {
-    // Look up park by slug in Firestore
-    const parksRef = adminDb.collection('parks');
-    const snapshot = await parksRef.where('slug', '==', slug).limit(1).get();
+    const registryPark = getParkBySlug(slug);
+    const directSnapshot = registryPark
+      ? await adminDb.collection('parks').doc(registryPark.id).get()
+      : null;
+    let selectedPark = directSnapshot?.exists
+      ? selectCurrentParkDocument(
+          [{ ...directSnapshot.data(), id: directSnapshot.id }],
+          slug
+        )
+      : undefined;
+    if (!selectedPark) {
+      const snapshot = await adminDb.collection('parks').where('slug', '==', slug).get();
+      selectedPark = selectCurrentParkDocument(
+        snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id })),
+        slug
+      );
+    }
 
-    if (snapshot.empty) {
+    if (!selectedPark) {
       return NextResponse.json(
         { error: 'Park not found', slug },
         { status: 404 }
       );
     }
 
-    const parkDoc = snapshot.docs[0].data() as { id: string; name: string; timezone: string };
-    const wikiId = parkDoc.id;
+    const parkDoc = selectedPark as { id: string; name: string; timezone: string };
+    const wikiId = selectedPark.id;
     const timezone = parkDoc.timezone;
 
     // Fetch schedule from ThemeParks Wiki API
