@@ -313,6 +313,25 @@ describe('useAutoRefresh', () => {
     expect(result.current.lastRefreshedAt).not.toBeNull();
   });
 
+  it('forceRefresh propagates errors so manual refresh UI can report them', async () => {
+    const failure = new Error('Manual refresh failed');
+    const onRefresh = vi.fn().mockRejectedValue(failure);
+
+    const { result } = renderHook(() =>
+      useAutoRefresh({
+        key: 'test-force-error',
+        staleness: 2 * 60 * 1000,
+        onRefresh,
+        enabled: true,
+      })
+    );
+
+    await expect(act(async () => {
+      await result.current.forceRefresh();
+    })).rejects.toBe(failure);
+    expect(result.current.lastRefreshError).toBeNull();
+  });
+
   it('forceRefresh respects enabled flag (does not fire when disabled)', async () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined);
 
@@ -443,6 +462,33 @@ describe('useAutoRefresh', () => {
       });
 
       expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-evaluates arrival staleness when the data key changes on client navigation', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      let rerender!: ReturnType<typeof renderHook>['rerender'];
+      await act(async () => {
+        ({ rerender } = renderHook(
+          ({ dataKey }: { dataKey: string }) =>
+            useAutoRefresh({
+              key: dataKey,
+              staleness: 2 * 60 * 1000,
+              onRefresh,
+              enabled: true,
+              initialDataAge: 5 * 60 * 1000,
+            }),
+          { initialProps: { dataKey: 'park-a' } },
+        ));
+      });
+
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        rerender({ dataKey: 'park-b' });
+      });
+
+      expect(onRefresh).toHaveBeenCalledTimes(2);
     });
 
     it('respects enabled=false — no arrival refresh fires while disabled', async () => {

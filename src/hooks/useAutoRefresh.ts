@@ -34,12 +34,12 @@ export interface UseAutoRefreshReturn {
   lastRefreshedAt: number | null;
   /**
    * The error from the most recent background refresh attempt, or null if the
-   * last attempt succeeded (or none has run yet). Cached/last-known data is
+   * last refresh succeeded (or none has run yet). Cached/last-known data is
    * never cleared on failure — this is purely a signal so the UI can show a
    * "may be out of date" indicator alongside the existing data.
    */
   lastRefreshError: unknown;
-  /** Manually trigger a refresh (resets staleness timer) */
+  /** Manually trigger a refresh; rejects on failure and resets staleness on success. */
   forceRefresh: () => Promise<void>;
 }
 
@@ -62,39 +62,73 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
   const [lastRefreshError, setLastRefreshError] = useState<unknown>(null);
 
-  const inFlightRef = useRef(false);
+  const inFlightRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  const activeKeyRef = useRef(key);
   const lastRefreshedAtRef = useRef<number | null>(null);
   const initialCheckDoneRef = useRef(false);
   const initialDataAgeRef = useRef(initialDataAge);
   initialDataAgeRef.current = initialDataAge;
 
   const doRefresh = useCallback(
-    async (background: boolean) => {
-      // Respect in-flight — never double-fire
-      if (inFlightRef.current) return;
-      if (!enabled) return;
-
-      inFlightRef.current = true;
-      if (background) setIsBackgroundRefreshing(true);
-
-      try {
-        await onRefresh();
-        const now = Date.now();
-        lastRefreshedAtRef.current = now;
-        setLastRefreshedAt(now);
-        setLastRefreshError(null);
-      } catch (error) {
-        // Background refresh errors never throw to the caller and never clear
-        // last-known data — only surfaced via `lastRefreshError` for the UI.
-        console.error(`[useAutoRefresh:${key}] refresh failed:`, error);
-        setLastRefreshError(error);
-      } finally {
-        inFlightRef.current = false;
-        if (background) setIsBackgroundRefreshing(false);
+    (background: boolean, propagateError = false): Promise<void> => {
+      const existing = inFlightRef.current;
+      if (existing?.key === key) {
+        return propagateError ? existing.promise : existing.promise.catch(() => {});
       }
+      if (!enabled) return Promise.resolve();
+
+      const refreshKey = key;
+      if (background && activeKeyRef.current === refreshKey) {
+        setIsBackgroundRefreshing(true);
+      }
+
+      const flight = {
+        key: refreshKey,
+        promise: Promise.resolve(),
+      };
+      flight.promise = (async () => {
+        try {
+          await onRefresh();
+          if (activeKeyRef.current !== refreshKey) return;
+          const now = Date.now();
+          lastRefreshedAtRef.current = now;
+          setLastRefreshedAt(now);
+          setLastRefreshError(null);
+        } catch (error) {
+          if (background) {
+            console.error(`[useAutoRefresh:${refreshKey}] refresh failed:`, error);
+          }
+          if (background && activeKeyRef.current === refreshKey) {
+            setLastRefreshError(error);
+          }
+          throw error;
+        } finally {
+          if (inFlightRef.current === flight) {
+            inFlightRef.current = null;
+          }
+          if (background && activeKeyRef.current === refreshKey) {
+            setIsBackgroundRefreshing(false);
+          }
+        }
+      })();
+
+      inFlightRef.current = flight;
+      return propagateError ? flight.promise : flight.promise.catch(() => {});
     },
     [key, onRefresh, enabled]
   );
+
+  // A client-side route/data-key change can reuse the same mounted hook
+  // instance. Treat the new key as a fresh arrival while allowing an older
+  // key's in-flight promise to finish without mutating the new key's state.
+  useEffect(() => {
+    activeKeyRef.current = key;
+    initialCheckDoneRef.current = false;
+    lastRefreshedAtRef.current = null;
+    setLastRefreshedAt(null);
+    setLastRefreshError(null);
+    setIsBackgroundRefreshing(false);
+  }, [key]);
 
   // On initial arrival: if the data already on screen is stale, refresh once,
   // non-blockingly, without waiting for a hidden→visible transition.
@@ -144,7 +178,7 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
   );
 
   const forceRefresh = useCallback(async () => {
-    await doRefresh(false);
+    await doRefresh(false, true);
   }, [doRefresh]);
 
   return { isBackgroundRefreshing, lastRefreshedAt, lastRefreshError, forceRefresh };

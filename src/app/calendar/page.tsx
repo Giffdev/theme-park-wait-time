@@ -213,6 +213,25 @@ export default function CalendarPage() {
 
   const qualityDescription = data && hasVerifiableQuality(data) ? describeQuality(data) : null;
 
+  const startSelectionChange = useCallback(() => {
+    requestIdRef.current += 1;
+    setLoading(true);
+    setDataError(null);
+    setData(null);
+    setFutureData([]);
+  }, []);
+
+  const handleFamilyChange = useCallback((familyId: string) => {
+    if (familyId === selectedFamilyId) return;
+    startSelectionChange();
+    setSelectedFamilyId(familyId);
+  }, [selectedFamilyId, startSelectionChange]);
+
+  const changeMonth = useCallback((offsetDelta: number) => {
+    startSelectionChange();
+    setMonthOffset((offset) => offset + offsetDelta);
+  }, [startSelectionChange]);
+
   // Toggle a park on/off
   const togglePark = (parkId: string) => {
     setEnabledParks((prev) => {
@@ -265,7 +284,7 @@ export default function CalendarPage() {
 
       {/* Park family selector */}
       <div className="mb-4">
-        <FamilySelector selectedFamilyId={selectedFamilyId} onFamilyChange={setSelectedFamilyId} />
+        <FamilySelector selectedFamilyId={selectedFamilyId} onFamilyChange={handleFamilyChange} />
       </div>
 
       {/* Park toggle chips */}
@@ -336,7 +355,7 @@ export default function CalendarPage() {
       {/* Month navigation */}
       <div className="mb-3 flex items-center justify-between">
         <button
-          onClick={() => setMonthOffset((o) => o - 1)}
+          onClick={() => changeMonth(-1)}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-primary-600 hover:bg-primary-50"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -344,7 +363,7 @@ export default function CalendarPage() {
         </button>
         <h2 className="text-base font-semibold text-primary-800 sm:text-lg">{monthLabel}</h2>
         <button
-          onClick={() => setMonthOffset((o) => o + 1)}
+          onClick={() => changeMonth(1)}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-primary-600 hover:bg-primary-50"
         >
           <span className="hidden sm:inline">Next</span>
@@ -353,9 +372,28 @@ export default function CalendarPage() {
       </div>
 
       {loading ? (
-        <div className="overflow-hidden rounded-xl border border-primary-200 bg-white p-4 shadow-sm" role="status">
-          <p className="sr-only">Loading crowd estimates</p>
-          <div className="grid grid-cols-7 gap-1">
+        <div
+          className="overflow-hidden rounded-xl border border-primary-200 bg-white p-4 shadow-sm"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          aria-busy="true"
+        >
+          <div className="mb-4 flex items-start gap-3 rounded-lg bg-primary-50 px-4 py-3">
+            <div
+              className="mt-0.5 h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600"
+              aria-hidden="true"
+            />
+            <div>
+              <p className="text-sm font-semibold text-primary-800">
+                Loading {currentFamily.name} crowd calendar
+              </p>
+              <p className="mt-0.5 text-xs text-primary-500">
+                Fetching verified crowd estimates for {monthLabel}. Multi-park resorts may take a little longer.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-7 gap-1" aria-hidden="true">
             {Array.from({ length: 35 }, (_, index) => (
               <div key={index} className="h-16 animate-pulse rounded bg-primary-50 sm:h-20" />
             ))}
@@ -419,7 +457,7 @@ export default function CalendarPage() {
                 key={fm.month}
                 month={fm.month}
                 days={fm.days}
-                onClick={() => setMonthOffset((o) => o + i + 1)}
+                onClick={() => changeMonth(i + 1)}
               />
             ))}
           </div>

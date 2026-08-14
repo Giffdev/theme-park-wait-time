@@ -21,11 +21,13 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+const mockUseParams = vi.fn(() => ({ parkId: 'magic-kingdom' }));
+
 // Mock next/navigation
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
-  useParams: () => ({ parkId: 'magic-kingdom' }),
-  usePathname: () => '/parks/magic-kingdom',
+  useParams: () => mockUseParams(),
+  usePathname: () => `/parks/${mockUseParams().parkId}`,
 }));
 
 // Mock Firebase config
@@ -93,6 +95,18 @@ const mockPark = {
   destinationId: 'wdw',
 };
 
+const mockEpcot = {
+  id: 'epcot',
+  name: 'EPCOT',
+  slug: 'epcot',
+  destinationName: 'Walt Disney World',
+  destinationId: 'wdw',
+};
+
+const mockEpcotAttractions = [
+  { id: 'spaceship-earth', name: 'Spaceship Earth', parkId: 'epcot', parkName: 'EPCOT', entityType: 'ATTRACTION', slug: 'spaceship-earth' },
+];
+
 const mockAttractions = [
   { id: 'space-mountain', name: 'Space Mountain', parkId: 'magic-kingdom', parkName: 'Magic Kingdom', entityType: 'ATTRACTION', slug: 'space-mountain' },
   { id: 'haunted-mansion', name: 'Haunted Mansion', parkId: 'magic-kingdom', parkName: 'Magic Kingdom', entityType: 'ATTRACTION', slug: 'haunted-mansion' },
@@ -107,11 +121,18 @@ const mockWaitTimes = [
   { id: 'wt-4', attractionId: 'jungle-cruise', attractionName: 'Jungle Cruise', status: 'OPERATING', waitMinutes: 35, lastUpdated: '2026-04-29T09:00:00Z', fetchedAt: '2026-04-29T09:05:00Z', forecast: [{ time: '10:00', wait: 35 }] },
 ];
 
+const mockEpcotWaitTimes = [
+  { id: 'wt-epcot-1', attractionId: 'spaceship-earth', attractionName: 'Spaceship Earth', status: 'OPERATING', waitMinutes: 15, lastUpdated: '2026-04-29T09:00:00Z', fetchedAt: '2026-04-29T09:05:00Z', forecast: [{ time: '10:00', wait: 15 }] },
+];
+
 describe('Park Detail Page', () => {
   let ParkDetailPage: React.ComponentType;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockGetCollection.mockReset();
+    mockFetch.mockReset();
+    mockUseParams.mockReturnValue({ parkId: 'magic-kingdom' });
     mockGetCollection.mockImplementation((collectionPath: string) => {
       if (collectionPath === 'parks') return Promise.resolve([mockPark]);
       if (collectionPath === 'attractions') return Promise.resolve(mockAttractions);
@@ -287,6 +308,54 @@ describe('Park Detail Page', () => {
       });
     });
 
+    it('renders a manual refresh response before deferred persistence completes', async () => {
+      const user = userEvent.setup();
+      const freshWaitTimes = mockWaitTimes.map((entry) => ({
+        ...entry,
+        fetchedAt: new Date(Date.now() - 30 * 1000).toISOString(),
+      }));
+      const upstreamWaitTimes = freshWaitTimes.map((entry) => ({
+        ...entry,
+        waitMinutes: entry.attractionId === 'space-mountain' ? 12 : entry.waitMinutes,
+        fetchedAt: new Date().toISOString(),
+      }));
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') return Promise.resolve([mockPark]);
+        if (collectionPath === 'attractions') return Promise.resolve(mockAttractions);
+        if (collectionPath === 'waitTimes/magic-kingdom/current') return Promise.resolve(freshWaitTimes);
+        return Promise.resolve([]);
+      });
+
+      render(<ParkDetailPage />);
+      await screen.findByRole('button', {
+        name: /Space Mountain, operating, 60 minute wait/i,
+      });
+
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/wait-times?parkId=magic-kingdom') {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              parks: { 'magic-kingdom': upstreamWaitTimes },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockSchedule),
+        });
+      });
+
+      await user.click(screen.getByRole('button', { name: /Refresh Wait Times/i }));
+
+      expect(await screen.findByRole('button', {
+        name: /Space Mountain, operating, 12 minute wait/i,
+      })).toBeInTheDocument();
+      expect(mockGetCollection.mock.calls.filter(
+        (call) => call[0] === 'waitTimes/magic-kingdom/current'
+      )).toHaveLength(1);
+    });
+
     it('shows "Refreshing..." during refresh', async () => {
       const user = userEvent.setup();
 
@@ -437,24 +506,118 @@ describe('Park Detail Page', () => {
         ...w,
         fetchedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(), // 10 min old — past the 2 min threshold
       }));
+      const refreshedWaitTimes = mockWaitTimes.map((w) => ({
+        ...w,
+        fetchedAt: new Date().toISOString(),
+      }));
       mockGetCollection
         .mockResolvedValueOnce([mockPark])
         .mockResolvedValueOnce(mockAttractions)
-        .mockResolvedValueOnce(staleWaitTimes);
+        .mockResolvedValueOnce(staleWaitTimes)
+        .mockResolvedValueOnce(refreshedWaitTimes);
 
       render(<ParkDetailPage />);
 
       await screen.findByRole('button', { name: /Space Mountain, operating, 60 minute wait/i });
 
-      // A background refresh should fire automatically on arrival (without a
-      // manual click and without a hidden→visible transition), re-querying
-      // wait times through the same getCollection path used for a normal refresh.
       await waitFor(() => {
-        const waitTimesCalls = mockGetCollection.mock.calls.filter(
-          (call) => call[0] === 'waitTimes/magic-kingdom/current'
-        );
-        expect(waitTimesCalls.length).toBeGreaterThanOrEqual(2);
+        expect(mockFetch).toHaveBeenCalledWith('/api/wait-times?parkId=magic-kingdom', {
+          cache: 'no-store',
+          signal: expect.any(AbortSignal),
+        });
       });
+      expect(await screen.findByText(/Wait-time feed · Captured just now/i)).toBeInTheDocument();
+    });
+
+    it('uses the fresh upstream response when deferred persistence has not updated Firestore yet', async () => {
+      const staleWaitTimes = mockWaitTimes.map((w) => ({
+        ...w,
+        fetchedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      }));
+      const upstreamWaitTimes = mockWaitTimes.map((w) => ({
+        ...w,
+        waitMinutes: w.attractionId === 'space-mountain' ? 12 : w.waitMinutes,
+        fetchedAt: new Date().toISOString(),
+      }));
+
+      mockGetCollection
+        .mockResolvedValueOnce([mockPark])
+        .mockResolvedValueOnce(mockAttractions)
+        .mockResolvedValueOnce(staleWaitTimes)
+        .mockResolvedValueOnce(staleWaitTimes);
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/wait-times?parkId=magic-kingdom') {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              fetchedAt: new Date().toISOString(),
+              stale: false,
+              parkMeta: {},
+              parks: { 'magic-kingdom': upstreamWaitTimes },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockSchedule),
+        });
+      });
+
+      render(<ParkDetailPage />);
+
+      expect(await screen.findByRole('button', {
+        name: /Space Mountain, operating, 12 minute wait/i,
+      })).toBeInTheDocument();
+      expect(screen.getByText(/Wait-time feed · Captured just now/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Stale snapshot/i)).not.toBeInTheDocument();
+    });
+
+    it('applies a UUID-keyed API payload when the route slug differs from the park document ID', async () => {
+      const parkUuid = '75ea578a-adc8-4116-a54d-dccb60765ef9';
+      const uuidPark = { ...mockPark, id: parkUuid };
+      const staleWaitTimes = mockWaitTimes.map((w) => ({
+        ...w,
+        fetchedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      }));
+      const upstreamWaitTimes = mockWaitTimes.map((w) => ({
+        ...w,
+        waitMinutes: w.attractionId === 'space-mountain' ? 12 : w.waitMinutes,
+        fetchedAt: new Date().toISOString(),
+      }));
+
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') return Promise.resolve([uuidPark]);
+        if (collectionPath === 'attractions') return Promise.resolve(mockAttractions);
+        if (collectionPath === `waitTimes/${parkUuid}/current`) return Promise.resolve(staleWaitTimes);
+        return Promise.resolve([]);
+      });
+      mockFetch.mockImplementation((url: string) => {
+        if (url === `/api/wait-times?parkId=${parkUuid}`) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              parks: { [parkUuid]: upstreamWaitTimes },
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockSchedule),
+        });
+      });
+
+      render(<ParkDetailPage />);
+
+      expect(await screen.findByRole('button', {
+        name: /Space Mountain, operating, 12 minute wait/i,
+      })).toBeInTheDocument();
+      expect(mockFetch).toHaveBeenCalledWith(`/api/wait-times?parkId=${parkUuid}`, {
+        cache: 'no-store',
+        signal: expect.any(AbortSignal),
+      });
+      expect(mockGetCollection.mock.calls.filter(
+        (call) => call[0] === `waitTimes/${parkUuid}/current`,
+      )).toHaveLength(1);
     });
 
     it('does not auto-refresh on arrival when the cached wait-time snapshot is already fresh', async () => {
@@ -477,6 +640,156 @@ describe('Park Detail Page', () => {
         (call) => call[0] === 'waitTimes/magic-kingdom/current'
       );
       expect(waitTimesCalls.length).toBe(1);
+      expect(mockFetch.mock.calls.some(
+        (call) => call[0] === '/api/wait-times?parkId=magic-kingdom'
+      )).toBe(false);
+    });
+
+    it('keeps the stale snapshot visible and reports an automatic refresh failure', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const staleWaitTimes = mockWaitTimes.map((w) => ({
+        ...w,
+        fetchedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      }));
+      mockGetCollection
+        .mockResolvedValueOnce([mockPark])
+        .mockResolvedValueOnce(mockAttractions)
+        .mockResolvedValueOnce(staleWaitTimes);
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/wait-times?parkId=magic-kingdom') {
+          return Promise.resolve({ ok: false, status: 503 });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockSchedule),
+        });
+      });
+
+      render(<ParkDetailPage />);
+
+      expect(await screen.findByText(
+        'Background refresh failed — showing the last known snapshot.',
+      )).toBeInTheDocument();
+      expect(screen.getByRole('button', {
+        name: /Space Mountain, operating, 60 minute wait/i,
+      })).toBeInTheDocument();
+      expect(screen.getAllByText(/Stale snapshot/i).length).toBeGreaterThan(0);
+      consoleSpy.mockRestore();
+    });
+
+    it('re-evaluates arrival freshness and refreshes the new park after client-side route changes', async () => {
+      const freshMagicKingdom = mockWaitTimes.map((w) => ({
+        ...w,
+        fetchedAt: new Date(Date.now() - 30 * 1000).toISOString(),
+      }));
+      const staleEpcot = mockEpcotWaitTimes.map((w) => ({
+        ...w,
+        fetchedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      }));
+      const refreshedEpcot = mockEpcotWaitTimes.map((w) => ({
+        ...w,
+        fetchedAt: new Date().toISOString(),
+      }));
+
+      mockGetCollection.mockImplementation((collectionPath: string, constraints?: unknown[][]) => {
+        if (collectionPath === 'parks') {
+          const slug = constraints?.[0]?.[2];
+          return Promise.resolve([slug === 'epcot' ? mockEpcot : mockPark]);
+        }
+        if (collectionPath === 'attractions') {
+          const parkUuid = constraints?.[0]?.[2];
+          return Promise.resolve(parkUuid === 'epcot' ? mockEpcotAttractions : mockAttractions);
+        }
+        if (collectionPath === 'waitTimes/magic-kingdom/current') {
+          return Promise.resolve(freshMagicKingdom);
+        }
+        if (collectionPath === 'waitTimes/epcot/current') {
+          const epcotReads = mockGetCollection.mock.calls.filter(
+            (call) => call[0] === 'waitTimes/epcot/current'
+          ).length;
+          return Promise.resolve(epcotReads === 1 ? staleEpcot : refreshedEpcot);
+        }
+        return Promise.resolve([]);
+      });
+
+      const { rerender } = render(<ParkDetailPage />);
+      expect(await screen.findByRole('heading', { name: 'Magic Kingdom' })).toBeInTheDocument();
+
+      mockUseParams.mockReturnValue({ parkId: 'epcot' });
+      rerender(<ParkDetailPage />);
+
+      expect(await screen.findByRole('heading', { name: 'EPCOT' })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith('/api/wait-times?parkId=epcot', {
+          cache: 'no-store',
+          signal: expect.any(AbortSignal),
+        });
+      });
+      expect(await screen.findByText(/Wait-time feed · Captured just now/i)).toBeInTheDocument();
+      expect(mockFetch.mock.calls.some(
+        (call) => call[0] === '/api/wait-times?parkId=magic-kingdom'
+      )).toBe(false);
+    });
+
+    it('deduplicates a manual refresh that overlaps the automatic stale-arrival refresh', async () => {
+      const user = userEvent.setup();
+      const staleWaitTimes = mockWaitTimes.map((w) => ({
+        ...w,
+        fetchedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      }));
+      const refreshedWaitTimes = mockWaitTimes.map((w) => ({
+        ...w,
+        fetchedAt: new Date().toISOString(),
+      }));
+      let resolveSourceRefresh!: (value: {
+        ok: boolean;
+        json: () => Promise<{
+          parks: Record<string, typeof mockWaitTimes>;
+        }>;
+      }) => void;
+      const sourceRefresh = new Promise<{
+        ok: boolean;
+        json: () => Promise<{
+          parks: Record<string, typeof mockWaitTimes>;
+        }>;
+      }>((resolve) => {
+        resolveSourceRefresh = resolve;
+      });
+
+      mockGetCollection
+        .mockResolvedValueOnce([mockPark])
+        .mockResolvedValueOnce(mockAttractions)
+        .mockResolvedValueOnce(staleWaitTimes)
+        .mockResolvedValueOnce(refreshedWaitTimes);
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/wait-times?parkId=magic-kingdom') return sourceRefresh;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(mockSchedule),
+        });
+      });
+
+      render(<ParkDetailPage />);
+
+      expect(await screen.findByText('Refreshing wait times…')).toBeInTheDocument();
+      await user.click(screen.getByText('Refresh Wait Times'));
+
+      expect(mockFetch.mock.calls.filter(
+        (call) => call[0] === '/api/wait-times?parkId=magic-kingdom'
+      )).toHaveLength(1);
+      expect(screen.getByText('Refreshing...')).toBeInTheDocument();
+
+      resolveSourceRefresh({
+        ok: true,
+        json: async () => ({
+          parks: { 'magic-kingdom': refreshedWaitTimes },
+        }),
+      });
+
+      expect(await screen.findByText(/Wait-time feed · Captured just now/i)).toBeInTheDocument();
+      expect(mockFetch.mock.calls.filter(
+        (call) => call[0] === '/api/wait-times?parkId=magic-kingdom'
+      )).toHaveLength(1);
     });
   });
 

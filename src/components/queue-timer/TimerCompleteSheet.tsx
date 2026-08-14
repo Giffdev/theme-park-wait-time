@@ -1,9 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { Star, X } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
-import { createRideLog, submitCrowdReport } from '@/lib/services/ride-log-service';
+import {
+  createRideLog,
+  RideLogSaveError,
+  RIDE_LOG_SAVE_TIMEOUT_MS,
+  submitCrowdReport,
+} from '@/lib/services/ride-log-service';
 
 interface TimerCompleteSheetProps {
   elapsedMinutes: number;
@@ -11,7 +21,35 @@ interface TimerCompleteSheetProps {
   parkId: string;
   attractionId: string;
   parkName: string;
-  onClose: () => void;
+  onClose: () => void | Promise<void>;
+}
+
+const CLOSE_TIMEOUT_MS = 3_000;
+const FOCUSABLE_SELECTOR = [
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'a[href]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function createRequestId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `ride-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function withCloseTimeout(close: () => void | Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Close timed out')), CLOSE_TIMEOUT_MS);
+  });
+
+  return Promise.race([Promise.resolve().then(close), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 /**
@@ -30,47 +68,222 @@ export default function TimerCompleteSheet({
   const [rating, setRating] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [saveConfirmed, setSaveConfirmed] = useState(false);
+  const [commandFrozen, setCommandFrozen] = useState(false);
+  const [error, setError] = useState('');
+  const savingRef = useRef(false);
+  const saveConfirmedRef = useRef(false);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreActionFocusRef = useRef(false);
+  const saveCommandRef = useRef<{
+    userId: string;
+    data: Parameters<typeof createRideLog>[1];
+    requestId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    closeButtonRef.current?.focus();
+
+    return () => {
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (saving || !restoreActionFocusRef.current) return;
+
+    restoreActionFocusRef.current = false;
+    const action = saveButtonRef.current ?? closeButtonRef.current;
+    if (action && !action.disabled) {
+      action.focus({ preventScroll: true });
+    }
+  }, [saving]);
+
+  const closeAfterSave = async () => {
+    try {
+      await withCloseTimeout(onClose);
+    } catch {
+      setError('Ride saved, but this sheet could not close. Try Close again; your ride will not be duplicated.');
+    }
+  };
+
+  const submitReportAfterConfirmedSave = () => {
+    void submitCrowdReport({
+      parkId,
+      attractionId,
+      waitTimeMinutes: elapsedMinutes,
+    }).catch((reportError) => {
+      console.warn('[TimerCompleteSheet] Ride saved; crowd report failed:', reportError);
+    });
+  };
+
+  const focusSheetForPendingSave = () => {
+    restoreActionFocusRef.current = true;
+    sheetRef.current?.focus({ preventScroll: true });
+  };
 
   const handleSave = async (skipExtras = false) => {
-    if (!user) return;
+    if (savingRef.current) {
+      sheetRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (saveConfirmedRef.current) {
+      focusSheetForPendingSave();
+      savingRef.current = true;
+      setSaving(true);
+      setError('');
+      try {
+        await closeAfterSave();
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
+      }
+      return;
+    }
+    if (!user) {
+      setError('Your session expired. Sign in again before saving this ride.');
+      return;
+    }
+
+    focusSheetForPendingSave();
+    savingRef.current = true;
     setSaving(true);
+    setError('');
+    if (!saveCommandRef.current) {
+      saveCommandRef.current = {
+        userId: user.uid,
+        data: {
+          parkId,
+          attractionId,
+          parkName,
+          attractionName,
+          rodeAt: new Date(),
+          waitTimeMinutes: elapsedMinutes,
+          attractionClosed: false,
+          source: 'timer',
+          rating: skipExtras ? null : rating,
+          notes: skipExtras ? '' : notes,
+        },
+        requestId: createRequestId(),
+      };
+      setCommandFrozen(true);
+    }
+    const command = saveCommandRef.current;
+
     try {
-      await createRideLog(user.uid, {
-        parkId,
-        attractionId,
-        parkName,
-        attractionName,
-        rodeAt: new Date(),
-        waitTimeMinutes: elapsedMinutes,
-        attractionClosed: false,
-        source: 'timer',
-        rating: skipExtras ? null : rating,
-        notes: skipExtras ? '' : notes,
+      await createRideLog(command.userId, command.data, undefined, {
+        requestId: command.requestId,
+        timeoutMs: RIDE_LOG_SAVE_TIMEOUT_MS,
+        waitForTripStats: true,
       });
 
-      // Submit crowd report (fire and forget)
-      submitCrowdReport({
-        parkId,
-        attractionId,
-        waitTimeMinutes: elapsedMinutes,
-      });
+      saveConfirmedRef.current = true;
+      setSaveConfirmed(true);
+      submitReportAfterConfirmedSave();
 
-      onClose();
+      await closeAfterSave();
+    } catch (saveError) {
+      if (
+        saveError instanceof RideLogSaveError
+        && saveError.code === 'post-write-refresh-failed'
+        && saveError.savedLogId
+      ) {
+        saveConfirmedRef.current = true;
+        setSaveConfirmed(true);
+        setError(saveError.message);
+        submitReportAfterConfirmedSave();
+      } else {
+        setError(
+          saveError instanceof RideLogSaveError
+            ? saveError.message
+            : 'The ride could not be saved. Check your connection and try again.',
+        );
+      }
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
+  const getFocusableElements = (): HTMLElement[] => (
+    Array.from(sheetRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? [])
+      .filter((element) => element.getAttribute('aria-hidden') !== 'true')
+  );
+
+  const handleDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (savingRef.current) {
+        sheetRef.current?.focus({ preventScroll: true });
+        return;
+      }
+      void handleSave(true);
+      return;
+    }
+
+    if (event.key !== 'Tab') return;
+    const focusable = getFocusableElements();
+    if (focusable.length === 0) {
+      event.preventDefault();
+      sheetRef.current?.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const activeElement = document.activeElement;
+    if (event.shiftKey && (activeElement === first || !sheetRef.current?.contains(activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center">
+    <div
+      className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center"
+    >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => handleSave(true)} />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={saving ? undefined : () => handleSave(true)}
+      />
 
       {/* Sheet */}
-      <div className="relative w-full max-w-md animate-slide-up rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl">
+      <div
+        ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="timer-complete-title"
+        aria-busy={saving}
+        tabIndex={-1}
+        onKeyDown={handleDialogKeyDown}
+        className="relative w-full max-w-md animate-slide-up rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl"
+      >
         {/* Close button */}
         <button
+          ref={closeButtonRef}
+          type="button"
           onClick={() => handleSave(true)}
+          disabled={saving}
+          aria-label={
+            saveConfirmed
+              ? 'Close ride completion dialog'
+              : commandFrozen && !saving
+                ? 'Retry saving ride and close'
+                : 'Save ride without rating or notes and close'
+          }
           className="absolute right-4 top-4 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
         >
           <X className="h-5 w-5" />
@@ -79,7 +292,7 @@ export default function TimerCompleteSheet({
         {/* Celebration header */}
         <div className="mb-6 text-center">
           <div className="mb-2 text-4xl">🎢</div>
-          <h2 className="text-xl font-bold text-primary-900">
+          <h2 id="timer-complete-title" className="text-xl font-bold text-primary-900">
             You waited {elapsedMinutes} minute{elapsedMinutes !== 1 ? 's' : ''}!
           </h2>
           <p className="mt-1 text-sm text-primary-500">for {attractionName}</p>
@@ -94,7 +307,11 @@ export default function TimerCompleteSheet({
             {[1, 2, 3, 4, 5].map((star) => (
               <button
                 key={star}
+                type="button"
                 onClick={() => setRating(star === rating ? null : star)}
+                disabled={saving || saveConfirmed || commandFrozen}
+                aria-label={`Rate ${star} out of 5 stars`}
+                aria-pressed={rating === star}
                 className="transition-transform hover:scale-110 active:scale-95"
               >
                 <Star
@@ -118,27 +335,57 @@ export default function TimerCompleteSheet({
             id="ride-notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
+            disabled={saving || saveConfirmed || commandFrozen}
             placeholder="How was it? Front row? Any tips?"
             className="w-full resize-none rounded-xl border border-primary-200 px-4 py-3 text-sm placeholder:text-primary-300 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
             rows={3}
           />
         </div>
 
+        <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+          {saving ? (saveConfirmed ? 'Closing saved ride dialog.' : 'Saving ride.') : saveConfirmed ? 'Ride saved.' : ''}
+        </div>
+
+        {error && (
+          <div
+            role={saveConfirmed ? undefined : 'alert'}
+            aria-live={saveConfirmed ? 'polite' : 'assertive'}
+            className={`mb-4 rounded-xl px-4 py-3 text-sm ${
+              saveConfirmed ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'
+            }`}
+          >
+            {error}
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex gap-3">
+          {!saveConfirmed && (
+            <button
+              type="button"
+              onClick={() => handleSave(true)}
+              disabled={saving || commandFrozen}
+              className="flex-1 rounded-xl border border-primary-200 px-4 py-3 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 disabled:opacity-50"
+            >
+              Skip
+            </button>
+          )}
           <button
-            onClick={() => handleSave(true)}
-            disabled={saving}
-            className="flex-1 rounded-xl border border-primary-200 px-4 py-3 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 disabled:opacity-50"
-          >
-            Skip
-          </button>
-          <button
+            ref={saveButtonRef}
+            type="button"
             onClick={() => handleSave(false)}
             disabled={saving}
             className="flex-1 rounded-xl bg-gradient-to-r from-primary-600 to-primary-700 px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg active:scale-[0.98] disabled:opacity-50"
           >
-            {saving ? 'Saving...' : 'Save 🎉'}
+            {
+              saving
+                ? (saveConfirmed ? 'Closing...' : 'Saving...')
+                : saveConfirmed
+                  ? 'Close'
+                  : commandFrozen
+                    ? 'Retry Save'
+                    : 'Save 🎉'
+            }
           </button>
         </div>
       </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { RefreshCw, ArrowUpDown, TrendingUp, Clock, AlertCircle, MapPin } from 'lucide-react';
@@ -51,6 +51,39 @@ interface WaitTimeEntry {
   forecast?: ForecastEntry[] | null;
   forecastMeta?: ForecastMeta | null;
   operatingHours?: OperatingHoursEntry[] | null;
+}
+
+function waitTimesFromApiPayload(payload: unknown, parkUuid: string): WaitTimeEntry[] | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const parks = (payload as { parks?: unknown }).parks;
+  if (!parks || typeof parks !== 'object') return null;
+
+  const entries = (parks as Record<string, unknown>)[parkUuid];
+  if (!Array.isArray(entries)) return null;
+
+  return entries.map((value) => {
+    if (!value || typeof value !== 'object') {
+      throw new Error('Server returned invalid wait-time data.');
+    }
+
+    const entry = value as Record<string, unknown>;
+    if (
+      typeof entry.attractionId !== 'string'
+      || typeof entry.attractionName !== 'string'
+      || typeof entry.status !== 'string'
+      || (entry.waitMinutes !== null && typeof entry.waitMinutes !== 'number')
+      || (entry.lastUpdated !== null && typeof entry.lastUpdated !== 'string')
+      || typeof entry.fetchedAt !== 'string'
+      || !Number.isFinite(Date.parse(entry.fetchedAt))
+    ) {
+      throw new Error('Server returned invalid wait-time data.');
+    }
+
+    return {
+      ...entry,
+      id: typeof entry.id === 'string' ? entry.id : entry.attractionId,
+    } as unknown as WaitTimeEntry;
+  });
 }
 
 interface ParkScheduleData {
@@ -191,6 +224,9 @@ export default function ParkDetailPage() {
   const [schedule, setSchedule] = useState<ParkScheduleData | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [quickLogOpen, setQuickLogOpen] = useState(false);
+  const activeRouteRef = useRef(parkId);
+  const refreshRequestsRef = useRef(new Map<string, Promise<void>>());
+  activeRouteRef.current = parkId;
 
   // Tick every 30s so relative time stays fresh
   useEffect(() => {
@@ -245,15 +281,234 @@ export default function ParkDetailPage() {
     return activeOperatingSegment ? 'open' : 'closed';
   }, [schedule, now]);
 
-  // Auto-refresh wait times on arrival (if the cached snapshot is already
-  // stale) and when the user returns to the tab after 2+ minutes
-  const { isBackgroundRefreshing, lastRefreshError: waitTimesRefreshError } = useAutoRefresh({
-    key: `park-wait-times-${parkId}`,
-    staleness: 2 * 60 * 1000, // 2 minutes
-    onRefresh: async () => {
-      await fetchWaitTimes(park);
+  // Phase 1: Load park info + attraction list (instant render)
+  // Phase 1a: Resolve the park document only. Kept separate from attractions so
+  // a park that exists but has an unseeded/inaccessible attraction directory
+  // still renders as a found park instead of a blanket "unavailable" error.
+  const fetchPark = useCallback(async () => {
+    if (!parkId) return null;
+    const requestedRoute = parkId;
+    setLoading(true);
+    setCoreError(null);
+    try {
+      const parkDocs = await getCollection<Park>('parks', [whereConstraint('slug', '==', parkId)]);
+      const parkDoc = parkDocs.length > 0 ? parkDocs[0] : null;
+      if (activeRouteRef.current !== requestedRoute) return null;
+      setPark(parkDoc);
+      setLoading(false);
+      return parkDoc;
+    } catch (error) {
+      console.error('Failed to fetch park core data:', error);
+      if (activeRouteRef.current !== requestedRoute) return null;
+      setCoreError('We couldn’t load this park. Check your connection and try again.');
+      setLoading(false);
+      return null;
+    }
+  }, [parkId]);
+
+  // Phase 1b: Load the attraction directory for a resolved park. Failures here
+  // are classified independently — a genuine backend failure must never be
+  // hidden or silently presented as an empty (invented) attraction list.
+  const fetchAttractions = useCallback(async (parkUuid: string, requestedRoute = parkId) => {
+    if (activeRouteRef.current === requestedRoute) {
+      setAttractionsLoading(true);
+      setAttractionsIssue(null);
+    }
+    try {
+      const attractionDocs = await getCollection<Attraction>('attractions', [whereConstraint('parkId', '==', parkUuid)]);
+      if (activeRouteRef.current !== requestedRoute) return attractionDocs;
+      setAttractions(attractionDocs);
+      return attractionDocs;
+    } catch (error) {
+      console.error('Failed to fetch attractions:', error);
+      if (activeRouteRef.current !== requestedRoute) return null;
+      setAttractions([]);
+      setAttractionsIssue(describeAttractionsError(error));
+      return null;
+    } finally {
+      if (activeRouteRef.current === requestedRoute) {
+        setAttractionsLoading(false);
+      }
+    }
+  }, [parkId]);
+
+  // Phase 2: Load wait times only. This is intentionally decoupled from the
+  // schedule fetch (see `fetchSchedule` below) — a hung or failed
+  // `/api/park-schedule` call must never block this from resolving or
+  // `waitTimesLoading` from settling.
+  const fetchWaitTimes = useCallback(async (
+    parkDoc?: Park | null,
+    options?: {
+      requestedRoute?: string;
+      showLoading?: boolean;
+      throwOnError?: boolean;
     },
-    enabled: !!park && !refreshing,
+  ) => {
+    const targetPark = parkDoc || park;
+    if (!targetPark) return null;
+    const requestedRoute = options?.requestedRoute ?? parkId;
+    const showLoading = options?.showLoading ?? true;
+    if (activeRouteRef.current === requestedRoute) {
+      if (showLoading) setWaitTimesLoading(true);
+      setWaitTimesIssue(null);
+    }
+    try {
+      const parkUuid = targetPark.id;
+      const waitDocs = await getCollection<WaitTimeEntry>(`waitTimes/${parkUuid}/current`);
+      if (activeRouteRef.current !== requestedRoute) return waitDocs;
+      setWaitTimes(waitDocs);
+      return waitDocs;
+    } catch (error) {
+      console.error('Failed to fetch wait times:', error);
+      if (activeRouteRef.current !== requestedRoute) return null;
+      setWaitTimesIssue(describeWaitTimesError(error));
+      if (options?.throwOnError) throw error;
+      return null;
+    } finally {
+      if (showLoading && activeRouteRef.current === requestedRoute) {
+        setWaitTimesLoading(false);
+      }
+    }
+  }, [park, parkId]);
+
+  // Schedule (park hours) is supplemental metadata fetched independently of
+  // wait times, bounded by its own timeout so a backend hang can never
+  // cascade into the wait-time UI. Last-known schedule is preserved on
+  // failure; a distinct `scheduleIssue` drives a retryable UI state instead
+  // of an indefinite loading skeleton.
+  const fetchSchedule = useCallback(async (parkUuid: string, requestedRoute = parkId) => {
+    if (activeRouteRef.current === requestedRoute) {
+      setScheduleLoading(true);
+      setScheduleIssue(null);
+    }
+    try {
+      const res = await fetch(`/api/park-schedule?parkId=${parkUuid}`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
+      const scheduleData = await res.json();
+      if (activeRouteRef.current !== requestedRoute) return scheduleData;
+      setSchedule(scheduleData);
+      return scheduleData;
+    } catch (error) {
+      console.error('Failed to fetch park schedule:', error);
+      if (activeRouteRef.current !== requestedRoute) return null;
+      setScheduleIssue(describeScheduleError(error));
+      return null;
+    } finally {
+      if (activeRouteRef.current === requestedRoute) {
+        setScheduleLoading(false);
+      }
+    }
+  }, [parkId]);
+
+  const refreshWaitTimesFromSource = useCallback((targetPark: Park, requestedRoute = parkId) => {
+    const existing = refreshRequestsRef.current.get(targetPark.id);
+    if (existing) return existing;
+
+    const refreshPromise: Promise<void> = (async () => {
+      const res = await fetch(`/api/wait-times?parkId=${targetPark.id}`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
+
+      const payload = await res.json();
+      if (activeRouteRef.current !== requestedRoute) return;
+
+      const upstreamWaitTimes = waitTimesFromApiPayload(payload, targetPark.id);
+      if (upstreamWaitTimes !== null) {
+        setWaitTimes(upstreamWaitTimes);
+        setWaitTimesIssue(null);
+        return;
+      }
+
+      // Backward-compatible fallback for an older API response that did not
+      // include park entries. Current responses are applied directly because
+      // persistence is intentionally deferred and may not be readable yet.
+      await fetchWaitTimes(targetPark, {
+        requestedRoute,
+        showLoading: false,
+        throwOnError: true,
+      });
+    })().finally(() => {
+      if (refreshRequestsRef.current.get(targetPark.id) === refreshPromise) {
+        refreshRequestsRef.current.delete(targetPark.id);
+      }
+    });
+
+    refreshRequestsRef.current.set(targetPark.id, refreshPromise);
+    return refreshPromise;
+  }, [fetchWaitTimes, parkId]);
+
+  useEffect(() => {
+    const requestedRoute = parkId;
+
+    async function initLoad() {
+      // Phase 1a: resolve the park doc itself
+      const parkDoc = await fetchPark();
+      if (!parkDoc) return;
+
+      // Schedule is fired independently (not awaited alongside attractions/wait
+      // times) — a hung or slow `/api/park-schedule` response must never delay
+      // or block wait-time rendering.
+      fetchSchedule(parkDoc.id, requestedRoute);
+
+      // Phase 1b + Phase 2: attractions and wait times load independently so a
+      // failure in one never masks or blocks the other.
+      const [, waitDocs] = await Promise.all([
+        fetchAttractions(parkDoc.id, requestedRoute),
+        fetchWaitTimes(parkDoc, { requestedRoute }),
+      ]);
+
+      // Phase 3: background forecast refresh (fire-and-forget, never blocks UI)
+      if (activeRouteRef.current === requestedRoute && waitDocs && waitDocs.length > 0) {
+        const hasForecast = waitDocs.some((w) => w.forecast && w.forecast.length > 0);
+        if (!hasForecast) {
+          refreshWaitTimesFromSource(parkDoc, requestedRoute).catch(() => { /* Non-critical */ });
+        }
+      }
+    }
+
+    setPark(null);
+    setAttractions([]);
+    setWaitTimes([]);
+    setLoading(true);
+    setCoreError(null);
+    setAttractionsIssue(null);
+    setAttractionsLoading(false);
+    setWaitTimesLoading(true);
+    setWaitTimesIssue(null);
+    setSchedule(null);
+    setScheduleLoading(true);
+    setScheduleIssue(null);
+    setRefreshing(false);
+    setRefreshError(null);
+    initLoad();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parkId]);
+
+  const isCurrentPark = park?.slug === parkId;
+
+  // Auto-refresh wait times from the upstream source on arrival (if the
+  // cached snapshot is stale) and when the user returns after 2+ minutes.
+  const {
+    isBackgroundRefreshing,
+    lastRefreshError: waitTimesRefreshError,
+    forceRefresh: forceWaitTimesRefresh,
+  } = useAutoRefresh({
+    key: `park-wait-times-${parkId}`,
+    staleness: 2 * 60 * 1000,
+    onRefresh: async () => {
+      if (!park || !isCurrentPark) return;
+      await refreshWaitTimesFromSource(park, parkId);
+    },
+    enabled: Boolean(park && isCurrentPark && !refreshing),
     initialDataAge: waitTimesLoading
       ? null
       : dataFreshness
@@ -266,154 +521,24 @@ export default function ParkDetailPage() {
   // hang never blocks this either.
   useAutoRefresh({
     key: `park-schedule-${parkId}`,
-    staleness: 30 * 60 * 1000, // 30 minutes
+    staleness: 30 * 60 * 1000,
     onRefresh: async () => {
-      if (!park) return;
-      await fetchSchedule(park.id);
+      if (!park || !isCurrentPark) return;
+      await fetchSchedule(park.id, parkId);
     },
-    enabled: !!park && !refreshing,
+    enabled: Boolean(park && isCurrentPark && !refreshing),
   });
 
-  // Phase 1: Load park info + attraction list (instant render)
-  // Phase 1a: Resolve the park document only. Kept separate from attractions so
-  // a park that exists but has an unseeded/inaccessible attraction directory
-  // still renders as a found park instead of a blanket "unavailable" error.
-  const fetchPark = useCallback(async () => {
-    if (!parkId) return null;
-    setLoading(true);
-    setCoreError(null);
-    try {
-      const parkDocs = await getCollection<Park>('parks', [whereConstraint('slug', '==', parkId)]);
-      const parkDoc = parkDocs.length > 0 ? parkDocs[0] : null;
-      setPark(parkDoc);
-      setLoading(false);
-      return parkDoc;
-    } catch (error) {
-      console.error('Failed to fetch park core data:', error);
-      setCoreError('We couldn’t load this park. Check your connection and try again.');
-      setLoading(false);
-      return null;
-    }
-  }, [parkId]);
-
-  // Phase 1b: Load the attraction directory for a resolved park. Failures here
-  // are classified independently — a genuine backend failure must never be
-  // hidden or silently presented as an empty (invented) attraction list.
-  const fetchAttractions = useCallback(async (parkUuid: string) => {
-    setAttractionsLoading(true);
-    setAttractionsIssue(null);
-    try {
-      const attractionDocs = await getCollection<Attraction>('attractions', [whereConstraint('parkId', '==', parkUuid)]);
-      setAttractions(attractionDocs);
-      return attractionDocs;
-    } catch (error) {
-      console.error('Failed to fetch attractions:', error);
-      setAttractions([]);
-      setAttractionsIssue(describeAttractionsError(error));
-      return null;
-    } finally {
-      setAttractionsLoading(false);
-    }
-  }, []);
-
-  // Phase 2: Load wait times only. This is intentionally decoupled from the
-  // schedule fetch (see `fetchSchedule` below) — a hung or failed
-  // `/api/park-schedule` call must never block this from resolving or
-  // `waitTimesLoading` from settling.
-  const fetchWaitTimes = useCallback(async (parkDoc?: Park | null) => {
-    const targetPark = parkDoc || park;
-    if (!targetPark) return null;
-    setWaitTimesLoading(true);
-    setWaitTimesIssue(null);
-    try {
-      const parkUuid = targetPark.id;
-      const waitDocs = await getCollection<WaitTimeEntry>(`waitTimes/${parkUuid}/current`);
-      setWaitTimes(waitDocs);
-      return waitDocs;
-    } catch (error) {
-      console.error('Failed to fetch wait times:', error);
-      setWaitTimesIssue(describeWaitTimesError(error));
-      return null;
-    } finally {
-      setWaitTimesLoading(false);
-    }
-  }, [park]);
-
-  // Schedule (park hours) is supplemental metadata fetched independently of
-  // wait times, bounded by its own timeout so a backend hang can never
-  // cascade into the wait-time UI. Last-known schedule is preserved on
-  // failure; a distinct `scheduleIssue` drives a retryable UI state instead
-  // of an indefinite loading skeleton.
-  const fetchSchedule = useCallback(async (parkUuid: string) => {
-    setScheduleLoading(true);
-    setScheduleIssue(null);
-    try {
-      const res = await fetch(`/api/park-schedule?parkId=${parkUuid}`, {
-        cache: 'no-store',
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}`);
-      }
-      const scheduleData = await res.json();
-      setSchedule(scheduleData);
-      return scheduleData;
-    } catch (error) {
-      console.error('Failed to fetch park schedule:', error);
-      setScheduleIssue(describeScheduleError(error));
-      return null;
-    } finally {
-      setScheduleLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    async function initLoad() {
-      // Phase 1a: resolve the park doc itself
-      const parkDoc = await fetchPark();
-      if (!parkDoc) return;
-
-      // Schedule is fired independently (not awaited alongside attractions/wait
-      // times) — a hung or slow `/api/park-schedule` response must never delay
-      // or block wait-time rendering.
-      fetchSchedule(parkDoc.id);
-
-      // Phase 1b + Phase 2: attractions and wait times load independently so a
-      // failure in one never masks or blocks the other.
-      const [, waitDocs] = await Promise.all([
-        fetchAttractions(parkDoc.id),
-        fetchWaitTimes(parkDoc),
-      ]);
-
-      // Phase 3: background forecast refresh (fire-and-forget, never blocks UI)
-      if (waitDocs && waitDocs.length > 0) {
-        const hasForecast = waitDocs.some((w) => w.forecast && w.forecast.length > 0);
-        if (!hasForecast) {
-          fetch(`/api/wait-times?parkId=${parkDoc.id}`)
-            .then(() => fetchWaitTimes(parkDoc))
-            .catch(() => { /* Non-critical */ });
-        }
-      }
-    }
-    initLoad();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parkId]);
-
   const handleRefresh = async () => {
-    if (!park) return;
+    if (!park || !isCurrentPark) return;
+    const requestedRoute = parkId;
     setRefreshing(true);
     setRefreshError(null);
     try {
-      const res = await fetch(`/api/wait-times?parkId=${park.id}`, {
-        cache: 'no-store',
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}`);
-      }
-      await fetchWaitTimes(park);
+      await forceWaitTimesRefresh();
     } catch (error) {
       console.error('Refresh failed:', error);
+      if (activeRouteRef.current !== requestedRoute) return;
       const message =
         error instanceof DOMException && error.name === 'TimeoutError'
           ? 'Refresh timed out — try again later.'
@@ -422,7 +547,9 @@ export default function ParkDetailPage() {
             : 'Refresh failed — please try again.';
       setRefreshError(message);
     } finally {
-      setRefreshing(false);
+      if (activeRouteRef.current === requestedRoute) {
+        setRefreshing(false);
+      }
     }
   };
 
@@ -509,7 +636,7 @@ export default function ParkDetailPage() {
     ? Math.max(...operatingWithWaits.map((a) => a.waitMinutes || 0))
     : 0;
 
-  if (loading) {
+  if (loading || (park !== null && !isCurrentPark)) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-10 pb-24 sm:px-6 md:pb-10 lg:px-8">
         {/* Breadcrumb skeleton */}
@@ -665,6 +792,11 @@ export default function ParkDetailPage() {
           {waitTimesLoading && !refreshing && (
             <span className="animate-pulse text-xs text-primary-400" role="status">Loading wait times…</span>
           )}
+          {isBackgroundRefreshing && !refreshing && (
+            <span className="animate-pulse text-xs text-primary-500" role="status">
+              Refreshing wait times…
+            </span>
+          )}
           {!refreshError && waitTimesRefreshError != null && (
             <span className="text-xs text-amber-600">Background refresh failed — showing the last known snapshot.</span>
           )}
@@ -674,7 +806,9 @@ export default function ParkDetailPage() {
       <div id="wait-time-feed-status" className="sr-only" aria-live="polite" aria-atomic="true">
         {refreshing
           ? 'Refreshing wait times'
-          : waitTimesLoading
+          : isBackgroundRefreshing
+            ? 'Refreshing wait times in the background'
+            : waitTimesLoading
             ? 'Loading wait times'
             : waitTimesIssue
               ? waitTimesIssue.title
