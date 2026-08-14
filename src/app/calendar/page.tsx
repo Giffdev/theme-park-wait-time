@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -117,6 +117,7 @@ export default function CalendarPage() {
   const [futureData, setFutureData] = useState<FamilyCrowdMonth[]>([]);
   const [loading, setLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
   const currentFamily = PARK_FAMILIES.find((f) => f.id === selectedFamilyId) ?? PARK_FAMILIES[0];
 
@@ -160,6 +161,7 @@ export default function CalendarPage() {
   }, [selectedFamilyId]);
 
   const fetchData = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setDataError(null);
     setData(null);
@@ -167,18 +169,21 @@ export default function CalendarPage() {
 
     try {
       const current = await readVerifiedMonth(monthStr);
+      if (requestId !== requestIdRef.current) return;
       setData(current);
 
       const futureResults = await Promise.allSettled([
         readVerifiedMonth(futureMonthStr1),
         readVerifiedMonth(futureMonthStr2),
       ]);
+      if (requestId !== requestIdRef.current) return;
       setFutureData(
         futureResults
           .filter((result): result is PromiseFulfilledResult<FamilyCrowdMonth> => result.status === 'fulfilled')
           .map((result) => result.value)
       );
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
       const message = error instanceof Error ? error.message : '';
       setDataError(
         message.includes('coverage metadata')
@@ -186,7 +191,9 @@ export default function CalendarPage() {
           : 'The crowd data service could not be reached. No fallback crowd levels are being substituted.'
       );
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [monthStr, futureMonthStr1, futureMonthStr2, readVerifiedMonth]);
 

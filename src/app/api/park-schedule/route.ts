@@ -9,6 +9,11 @@ import {
   SCHEDULE_CACHE_READ_TIMEOUT_MS,
   SCHEDULE_UPSTREAM_TIMEOUT_MS,
 } from '@/lib/parks/schedule-timing';
+import {
+  getScheduleCoverage,
+  isReusableScheduleCache,
+  type CachedParkSchedule,
+} from '@/lib/parks/park-schedule-check';
 
 // Bounds the whole request well below Vercel's function `maxDuration` so a
 // stalled stage fails fast with an explicit response instead of the
@@ -43,24 +48,22 @@ interface ScheduleApiResponse {
   schedule: ScheduleEntry[];
 }
 
-interface ParkDaySchedule {
-  parkId: string;
-  date: string;
-  timezone: string;
-  segments: Array<{
-    type: 'OPERATING' | 'TICKETED_EVENT' | 'EXTRA_HOURS';
-    description: string | null;
-    openingTime: string;
-    closingTime: string;
-    purchases?: Array<{
-      name: string;
-      type: string;
-      price: { amount: number; currency: string; formatted: string };
-      available: boolean;
-    }>;
+interface ParkDaySegment {
+  type: 'OPERATING' | 'TICKETED_EVENT' | 'EXTRA_HOURS';
+  description: string | null;
+  openingTime: string;
+  closingTime: string;
+  purchases?: Array<{
+    name: string;
+    type: string;
+    price: { amount: number; currency: string; formatted: string };
+    available: boolean;
   }>;
-  fetchedAt: string;
-  stale?: boolean;
+}
+
+interface ParkDaySchedule extends CachedParkSchedule<ParkDaySegment> {
+  timezone: string;
+  hasData: boolean;
 }
 
 function getTodayDate(): string {
@@ -102,8 +105,9 @@ function transformSchedule(
       ? { purchases: entry.purchases }
       : {}),
   }));
+  const { hasData } = getScheduleCoverage(date, timezone, entries);
 
-  return { parkId, date, timezone, segments, fetchedAt };
+  return { parkId, date, timezone, segments, hasData, fetchedAt };
 }
 
 async function fetchScheduleFromApi(parkId: string): Promise<ScheduleApiResponse> {
@@ -126,6 +130,17 @@ function isCacheFresh(fetchedAt: string): boolean {
   return Date.now() - fetchedTime < CACHE_TTL_MS;
 }
 
+function normalizeCachedSchedule(
+  data: CachedParkSchedule<ParkDaySegment>
+): ParkDaySchedule | null {
+  if (!data.timezone || !isReusableScheduleCache(data)) return null;
+  return {
+    ...data,
+    timezone: data.timezone,
+    hasData: data.hasData ?? true,
+  };
+}
+
 async function handleSchedule(parkId: string, date: string): Promise<NextResponse> {
   // Check Firestore cache. Bounded: a stalled read degrades to a cache miss
   // (`cached` stays `null`) rather than hanging the whole request.
@@ -137,11 +152,12 @@ async function handleSchedule(parkId: string, date: string): Promise<NextRespons
 
   const cached = await withTimeout(cacheRef.get(), SCHEDULE_CACHE_READ_TIMEOUT_MS);
 
-  if (cached?.exists) {
-    const cachedData = cached.data() as ParkDaySchedule;
-    if (isCacheFresh(cachedData.fetchedAt)) {
-      return NextResponse.json(cachedData);
-    }
+  const cachedData = cached?.exists
+    ? normalizeCachedSchedule(cached.data() as CachedParkSchedule<ParkDaySegment>)
+    : null;
+
+  if (cachedData && isCacheFresh(cachedData.fetchedAt)) {
+    return NextResponse.json(cachedData);
   }
 
   // Fetch fresh data from ThemeParks Wiki
@@ -154,9 +170,8 @@ async function handleSchedule(parkId: string, date: string): Promise<NextRespons
 
     // On 429 or 5xx, return stale cache if available
     if (status === 429 || status >= 500) {
-      if (cached?.exists) {
-        const staleData = cached.data() as ParkDaySchedule;
-        return NextResponse.json({ ...staleData, stale: true });
+      if (cachedData) {
+        return NextResponse.json({ ...cachedData, stale: true });
       }
       return NextResponse.json(
         { error: 'Park schedule data is temporarily unavailable. Please try again later.' },
@@ -178,11 +193,13 @@ async function handleSchedule(parkId: string, date: string): Promise<NextRespons
 
   // Cache in Firestore, deferred via `after()` (request-lifecycle
   // scheduling) so a slow/cold write can never block the response.
-  scheduleBackgroundWrite(
-    cacheRef.set(schedule).catch((err) => {
-      console.warn(`Failed to cache park schedule for ${parkId}/${date}:`, (err as Error).message);
-    })
-  );
+  if (schedule.hasData) {
+    scheduleBackgroundWrite(
+      cacheRef.set(schedule).catch((err) => {
+        console.warn(`Failed to cache park schedule for ${parkId}/${date}:`, (err as Error).message);
+      })
+    );
+  }
 
   return NextResponse.json(schedule);
 }

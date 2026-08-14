@@ -48,12 +48,16 @@ vi.stubGlobal('fetch', mockFetch);
 
 // Import AFTER mocks
 import { GET } from '@/app/api/park-schedule/route';
+import { getParkOperatingStatus } from '@/lib/parks/park-schedule-check';
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
 const FULL_SCHEDULE_RESPONSE = {
+  id: 'magic-kingdom',
+  name: 'Magic Kingdom',
+  timezone: 'America/New_York',
   schedule: [
     {
       date: '2026-04-29',
@@ -109,6 +113,7 @@ function createCachedDoc(schedule: unknown, fetchedAt: Date) {
       fetchedAt: fetchedAt.toISOString(),
       parkId: 'magic-kingdom',
       date: '2026-04-29',
+      timezone: 'America/New_York',
     }),
   };
 }
@@ -136,6 +141,10 @@ describe('GET /api/park-schedule', () => {
       expect(data.segments).toHaveLength(3);
       expect(data.parkId).toBe('magic-kingdom');
       expect(data.date).toBe('2026-04-29');
+      expect(data.hasData).toBe(true);
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({ hasData: true })
+      );
     });
 
     it('returns TICKETED_EVENT segments with correct type and description', async () => {
@@ -306,6 +315,120 @@ describe('GET /api/park-schedule', () => {
       const operating = data.segments[0];
       // purchases should be null/undefined/empty, not crash
       expect(operating.purchases === undefined || operating.purchases === null || Array.isArray(operating.purchases)).toBe(true);
+    });
+  });
+
+  describe('Shared cache schema', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-04-29T16:00:00.000Z'));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('writes confirmed closures with hasData so the crowd-calendar reader can reuse them', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          id: 'magic-kingdom',
+          name: 'Magic Kingdom',
+          timezone: 'America/New_York',
+          schedule: [
+            {
+              date: '2026-04-29',
+              type: 'OPERATING',
+              openingTime: '2026-04-29T09:00:00-04:00',
+              closingTime: '2026-04-29T22:00:00-04:00',
+            },
+            {
+              date: '2026-05-01',
+              type: 'OPERATING',
+              openingTime: '2026-05-01T09:00:00-04:00',
+              closingTime: '2026-05-01T22:00:00-04:00',
+            },
+          ],
+        }),
+      });
+
+      const response = await GET(
+        createRequest({ parkId: 'magic-kingdom', date: '2026-04-30' })
+      );
+      const routeData = await response.json();
+      const written = mockDocSet.mock.calls.at(-1)?.[0];
+
+      expect(routeData).toMatchObject({
+        date: '2026-04-30',
+        segments: [],
+        hasData: true,
+      });
+      expect(written).toMatchObject({ segments: [], hasData: true });
+
+      mockDocGet.mockResolvedValue({
+        exists: true,
+        data: () => written,
+      });
+      mockFetch.mockClear();
+
+      const status = await getParkOperatingStatus('magic-kingdom', '2026-04-30');
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(status).toMatchObject({ isOpen: false, hasData: true });
+    });
+
+    it('serves a crowd-calendar writer document through the route without schema ambiguity', async () => {
+      await getParkOperatingStatus('magic-kingdom', '2026-04-29');
+      const written = mockDocSet.mock.calls.at(-1)?.[0];
+
+      expect(written).toMatchObject({ hasData: true });
+
+      mockDocGet.mockResolvedValue({
+        exists: true,
+        data: () => written,
+      });
+      mockFetch.mockClear();
+
+      const response = await GET(
+        createRequest({ parkId: 'magic-kingdom', date: '2026-04-29' })
+      );
+      const routeData = await response.json();
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(routeData).toMatchObject({ hasData: true });
+    });
+
+    it('does not persist a temporary beyond-horizon NO_DATA response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          id: 'magic-kingdom',
+          name: 'Magic Kingdom',
+          timezone: 'America/New_York',
+          schedule: [
+            {
+              date: '2026-04-29',
+              type: 'OPERATING',
+              openingTime: '2026-04-29T09:00:00-04:00',
+              closingTime: '2026-04-29T22:00:00-04:00',
+            },
+            {
+              date: '2026-04-30',
+              type: 'OPERATING',
+              openingTime: '2026-04-30T09:00:00-04:00',
+              closingTime: '2026-04-30T22:00:00-04:00',
+            },
+          ],
+        }),
+      });
+
+      const response = await GET(
+        createRequest({ parkId: 'magic-kingdom', date: '2026-05-01' })
+      );
+      const routeData = await response.json();
+
+      expect(routeData).toMatchObject({ hasData: false, segments: [] });
+      expect(mockDocSet).not.toHaveBeenCalled();
     });
   });
 

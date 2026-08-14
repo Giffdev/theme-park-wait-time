@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 /**
@@ -45,11 +45,24 @@ vi.mock('@/hooks/useAutoRefresh', () => ({
 }));
 
 vi.mock('@/components/crowd-calendar/FamilySelector', () => ({
-  FamilySelector: () => <div>Family Selector</div>,
+  FamilySelector: ({ onFamilyChange }: { onFamilyChange: (familyId: string) => void }) => (
+    <div>
+      <button onClick={() => onFamilyChange('worlds-of-fun')}>Choose Worlds of Fun</button>
+      <button onClick={() => onFamilyChange('seaworld-orlando')}>Choose SeaWorld Orlando</button>
+    </div>
+  ),
 }));
 
 vi.mock('@/components/crowd-calendar/MiniMonth', () => ({
-  MiniMonth: () => <div data-testid="mini-month" />,
+  MiniMonth: ({
+    month,
+    days,
+  }: {
+    month: string;
+    days: Array<{ parks: Array<{ parkName: string }> }>;
+  }) => (
+    <div data-testid="mini-month">{days[0]?.parks[0]?.parkName}:{month}</div>
+  ),
 }));
 
 // Two single-park families mirroring the real registry shape: a slug that
@@ -57,11 +70,19 @@ vi.mock('@/components/crowd-calendar/MiniMonth', () => ({
 // a differently-named family (SeaWorld Orlando) — canonical UUIDs match the
 // real `park-registry.ts` entries.
 const WORLDS_OF_FUN_UUID = 'bb731eae-7bd3-4713-bd7b-89d79b031743';
+const OCEANS_OF_FUN_UUID = 'b5a89552-3381-47ad-88cc-ab0087019c8b';
 const SEAWORLD_ORLANDO_UUID = '27d64dee-d85e-48dc-ad6d-8077445cd946';
 
 vi.mock('@/lib/constants', () => ({
   PARK_FAMILIES: [
-    { id: 'worlds-of-fun', name: 'Worlds of Fun', parks: [{ id: 'worlds-of-fun', name: 'Worlds of Fun' }] },
+    {
+      id: 'worlds-of-fun',
+      name: 'Worlds of Fun',
+      parks: [
+        { id: 'worlds-of-fun', name: 'Worlds of Fun' },
+        { id: 'oceans-of-fun', name: 'Oceans of Fun' },
+      ],
+    },
     { id: 'seaworld-orlando', name: 'SeaWorld Orlando', parks: [{ id: 'seaworld-orlando', name: 'SeaWorld Orlando' }] },
   ],
   CROWD_LEVEL_COLORS: {
@@ -72,6 +93,7 @@ vi.mock('@/lib/constants', () => ({
   },
   resolveScheduleParkId: (slug: string) => {
     if (slug === 'worlds-of-fun') return WORLDS_OF_FUN_UUID;
+    if (slug === 'oceans-of-fun') return OCEANS_OF_FUN_UUID;
     if (slug === 'seaworld-orlando') return SEAWORLD_ORLANDO_UUID;
     return null;
   },
@@ -120,11 +142,53 @@ function crowdMonthResponse(
   };
 }
 
+function worldsFamilyMonthResponse(month: string) {
+  return {
+    familyId: 'worlds-of-fun',
+    familyName: 'Worlds of Fun',
+    month,
+    parks: [
+      { id: WORLDS_OF_FUN_UUID, name: 'Worlds of Fun' },
+      { id: OCEANS_OF_FUN_UUID, name: 'Oceans of Fun' },
+    ],
+    days: [{
+      date: `${month}-01`,
+      aggregateCrowdLevel: 2 as const,
+      parks: [
+        {
+          parkId: WORLDS_OF_FUN_UUID,
+          parkName: 'Worlds of Fun',
+          status: 'OPEN' as const,
+          crowdLevel: 2 as const,
+          avgWaitMinutes: 25,
+        },
+        {
+          parkId: OCEANS_OF_FUN_UUID,
+          parkName: 'Oceans of Fun',
+          status: 'OPEN' as const,
+          crowdLevel: 2 as const,
+          avgWaitMinutes: 20,
+        },
+      ],
+    }],
+    bestPlan: null,
+    dataQuality: DATA_QUALITY,
+  };
+}
+
 function mockFetchWith(build: (month: string) => ReturnType<typeof crowdMonthResponse>) {
   mockFetch.mockImplementation((url: string) => Promise.resolve({
     ok: true,
     json: async () => build(new URL(url, 'http://localhost').searchParams.get('month') ?? currentMonth()),
   }));
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 describe('Crowd Calendar identity boundary', () => {
@@ -148,6 +212,18 @@ describe('Crowd Calendar identity boundary', () => {
       'href',
       '/parks/worlds-of-fun',
     );
+  });
+
+  it('renders both Worlds of Fun parks in the current month, not only future previews', async () => {
+    mockFetchWith((month) => worldsFamilyMonthResponse(month));
+
+    render(<CalendarPage />);
+
+    expect((await screen.findAllByTitle(/Worlds of Fun: Moderate/i)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByTitle(/Oceans of Fun: Moderate/i)).length).toBeGreaterThan(0);
+    expect(screen.getByText(
+      new Date().toLocaleString('default', { month: 'long', year: 'numeric' })
+    )).toBeInTheDocument();
   });
 
   it('renders and filters SeaWorld Orlando when the API returns canonical UUID-keyed parkIds', async () => {
@@ -192,5 +268,110 @@ describe('Crowd Calendar identity boundary', () => {
     render(<CalendarPage />);
 
     expect((await screen.findAllByTitle('Worlds of Fun: No Data')).length).toBeGreaterThan(0);
+  });
+
+  it('ignores an older family response that finishes after the selected family loads', async () => {
+    const delayedWorldsResponse = deferred<{
+      ok: boolean;
+      json: () => Promise<ReturnType<typeof crowdMonthResponse>>;
+    }>();
+    let worldsRequestCount = 0;
+
+    mockFetch.mockImplementation((url: string) => {
+      const params = new URL(url, 'http://localhost').searchParams;
+      const familyId = params.get('familyId');
+      const month = params.get('month') ?? currentMonth();
+
+      if (familyId === 'worlds-of-fun' && worldsRequestCount++ === 0) {
+        return delayedWorldsResponse.promise;
+      }
+
+      const isSeaWorld = familyId === 'seaworld-orlando';
+      return Promise.resolve({
+        ok: true,
+        json: async () => crowdMonthResponse(
+          familyId ?? 'worlds-of-fun',
+          isSeaWorld ? SEAWORLD_ORLANDO_UUID : WORLDS_OF_FUN_UUID,
+          isSeaWorld ? 'SeaWorld Orlando' : 'Worlds of Fun',
+          month,
+        ),
+      });
+    });
+
+    render(<CalendarPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Choose SeaWorld Orlando' }));
+
+    expect((await screen.findAllByTitle(/SeaWorld Orlando: Moderate/i)).length).toBeGreaterThan(0);
+
+    await act(async () => {
+      delayedWorldsResponse.resolve({
+        ok: true,
+        json: async () => crowdMonthResponse(
+          'worlds-of-fun',
+          WORLDS_OF_FUN_UUID,
+          'Worlds of Fun',
+          currentMonth(),
+        ),
+      });
+      await delayedWorldsResponse.promise;
+    });
+
+    expect(worldsRequestCount).toBe(1);
+    expect((await screen.findAllByTitle(/SeaWorld Orlando: Moderate/i)).length).toBeGreaterThan(0);
+    expect(screen.queryByTitle(/Worlds of Fun: Moderate/i)).not.toBeInTheDocument();
+  });
+
+  it('ignores older future-month responses after a different family finishes loading', async () => {
+    const delayedWorldsFuture = deferred<{
+      ok: boolean;
+      json: () => Promise<ReturnType<typeof worldsFamilyMonthResponse>>;
+    }>();
+    const nextMonth = (() => {
+      const date = new Date();
+      date.setMonth(date.getMonth() + 1);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    })();
+
+    mockFetch.mockImplementation((url: string) => {
+      const params = new URL(url, 'http://localhost').searchParams;
+      const familyId = params.get('familyId') ?? 'worlds-of-fun';
+      const month = params.get('month') ?? currentMonth();
+
+      if (familyId === 'worlds-of-fun' && month === nextMonth) {
+        return delayedWorldsFuture.promise;
+      }
+
+      const isSeaWorld = familyId === 'seaworld-orlando';
+      return Promise.resolve({
+        ok: true,
+        json: async () => isSeaWorld
+          ? crowdMonthResponse(
+              familyId,
+              SEAWORLD_ORLANDO_UUID,
+              'SeaWorld Orlando',
+              month,
+            )
+          : worldsFamilyMonthResponse(month),
+      });
+    });
+
+    render(<CalendarPage />);
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose SeaWorld Orlando' }));
+    expect((await screen.findAllByTitle(/SeaWorld Orlando: Moderate/i)).length).toBeGreaterThan(0);
+    expect(await screen.findAllByText(/^SeaWorld Orlando:\d{4}-\d{2}$/)).toHaveLength(2);
+
+    await act(async () => {
+      delayedWorldsFuture.resolve({
+        ok: true,
+        json: async () => worldsFamilyMonthResponse(nextMonth),
+      });
+      await delayedWorldsFuture.promise;
+    });
+
+    const previews = screen.getAllByTestId('mini-month');
+    expect(previews).toHaveLength(2);
+    expect(previews.every((preview) => preview.textContent?.startsWith('SeaWorld Orlando:'))).toBe(true);
   });
 });

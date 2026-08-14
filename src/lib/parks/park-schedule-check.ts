@@ -62,14 +62,17 @@ export function getLocalDateString(date: Date, timeZone: string): string {
   }
 }
 
-interface CachedScheduleDoc {
+export interface CachedParkSchedule<TSegment = ScheduleSegment> {
   parkId: string;
   date: string;
   timezone?: string;
-  segments: ScheduleSegment[];
+  segments: TSegment[];
+  hasData?: boolean;
   fetchedAt: string;
   stale?: boolean;
 }
+
+type CachedScheduleDoc = CachedParkSchedule<ScheduleSegment>;
 
 interface WikiScheduleEntry {
   date: string;
@@ -88,6 +91,62 @@ interface WikiScheduleResponse {
 
 function isScheduleStale(fetchedAt: string): boolean {
   return Date.now() - new Date(fetchedAt).getTime() > SCHEDULE_TTL_MS;
+}
+
+export function isReusableScheduleCache(
+  data: Pick<CachedParkSchedule<unknown>, 'hasData' | 'segments'>
+): boolean {
+  // Empty legacy cache entries are ambiguous: older code wrote an empty
+  // segment list both for a confirmed closed day and for dates outside the
+  // upstream schedule's rolling coverage window. Refetch those entries so
+  // confirmed coverage can be rewritten with an explicit hasData value.
+  if (data.hasData === undefined) return data.segments.length > 0;
+
+  // The shared document does not distinguish a permanent historical miss
+  // from a temporary beyond-horizon miss. Both writers therefore skip
+  // hasData:false writes, and readers refetch any older negative documents.
+  return data.hasData;
+}
+
+function cachedOperatingStatus(data: CachedScheduleDoc): ParkOperatingStatus | null {
+  if (!isReusableScheduleCache(data)) return null;
+
+  const hasData = data.hasData ?? true;
+  const operatingSegments = data.segments.filter((s) => s.type === 'OPERATING');
+  return {
+    isOpen: hasData && operatingSegments.length > 0,
+    hasData,
+    segments: data.segments,
+    timezone: data.timezone,
+  };
+}
+
+export function getScheduleCoverage(
+  date: string,
+  timezone: string,
+  schedule: Array<{ date: string }>
+): { hasData: boolean; shouldCache: boolean } {
+  if (schedule.some((entry) => entry.date === date)) {
+    return { hasData: true, shouldCache: true };
+  }
+
+  if (schedule.length === 0) {
+    return { hasData: false, shouldCache: false };
+  }
+
+  // ThemeParks.wiki schedules are a rolling present/future window, not a
+  // historical month archive. A missing date is a confirmed closed day only
+  // between the park-local current date and the last published schedule date.
+  // Dates before today or beyond the published horizon are unknown. Unknown
+  // dates are deliberately not cached because a future date can enter the
+  // published horizon well before the normal 24-hour positive-cache TTL.
+  const coverageStart = getLocalDateString(new Date(), timezone);
+  const coverageEnd = schedule.reduce(
+    (latest, entry) => (entry.date > latest ? entry.date : latest),
+    schedule[0].date
+  );
+  const hasData = date >= coverageStart && date <= coverageEnd;
+  return { hasData, shouldCache: hasData };
 }
 
 /**
@@ -114,13 +173,8 @@ export async function getParkOperatingStatus(
     if (cached?.exists) {
       const data = cached.data() as CachedScheduleDoc;
       if (!isScheduleStale(data.fetchedAt)) {
-        const operatingSegments = data.segments.filter((s) => s.type === 'OPERATING');
-        return {
-          isOpen: operatingSegments.length > 0,
-          hasData: true,
-          segments: data.segments,
-          timezone: data.timezone,
-        };
+        const cachedStatus = cachedOperatingStatus(data);
+        if (cachedStatus) return cachedStatus;
       }
     }
 
@@ -135,13 +189,8 @@ export async function getParkOperatingStatus(
       // If API fails but we have stale cache, use it
       if (cached?.exists) {
         const data = cached.data() as CachedScheduleDoc;
-        const operatingSegments = data.segments.filter((s) => s.type === 'OPERATING');
-        return {
-          isOpen: operatingSegments.length > 0,
-          hasData: true,
-          segments: data.segments,
-          timezone: data.timezone,
-        };
+        const cachedStatus = cachedOperatingStatus(data);
+        if (cachedStatus) return cachedStatus;
       }
       return { isOpen: false, hasData: false };
     }
@@ -155,6 +204,12 @@ export async function getParkOperatingStatus(
       openingTime: entry.openingTime,
       closingTime: entry.closingTime,
     }));
+    const coverage = getScheduleCoverage(
+      date,
+      apiData.timezone,
+      apiData.schedule || []
+    );
+    const hasData = coverage.hasData;
 
     // Cache in Firestore. Deferred via `after()` (request-lifecycle
     // scheduling) so a slow/cold write can never block the response — the
@@ -164,18 +219,21 @@ export async function getParkOperatingStatus(
       date,
       timezone: apiData.timezone,
       segments,
+      hasData,
       fetchedAt: new Date().toISOString(),
     };
-    scheduleBackgroundWrite(
-      cacheRef.set(cacheDoc).catch((err) => {
-        console.warn(`Failed to cache schedule for ${parkId}/${date}:`, err.message);
-      })
-    );
+    if (coverage.shouldCache) {
+      scheduleBackgroundWrite(
+        cacheRef.set(cacheDoc).catch((err) => {
+          console.warn(`Failed to cache schedule for ${parkId}/${date}:`, err.message);
+        })
+      );
+    }
 
     const operatingSegments = segments.filter((s) => s.type === 'OPERATING');
     return {
-      isOpen: operatingSegments.length > 0,
-      hasData: true,
+      isOpen: hasData && operatingSegments.length > 0,
+      hasData,
       segments,
       timezone: apiData.timezone,
     };
@@ -218,14 +276,11 @@ export async function batchGetParkOperatingStatus(
           if (cached?.exists) {
             const data = cached.data() as CachedScheduleDoc;
             if (!isScheduleStale(data.fetchedAt)) {
-              const operatingSegments = data.segments.filter((s) => s.type === 'OPERATING');
-              parkMap.set(date, {
-                isOpen: operatingSegments.length > 0,
-                hasData: true,
-                segments: data.segments,
-                timezone: data.timezone,
-              });
-              return;
+              const cachedStatus = cachedOperatingStatus(data);
+              if (cachedStatus) {
+                parkMap.set(date, cachedStatus);
+                return;
+              }
             }
           }
           uncachedDates.push(date);
@@ -253,10 +308,16 @@ export async function batchGetParkOperatingStatus(
                 closingTime: entry.closingTime,
               }));
 
+              const coverage = getScheduleCoverage(
+                date,
+                apiData.timezone,
+                apiData.schedule || []
+              );
+              const hasData = coverage.hasData;
               const operatingSegments = segments.filter((s) => s.type === 'OPERATING');
               parkMap.set(date, {
-                isOpen: operatingSegments.length > 0,
-                hasData: true,
+                isOpen: hasData && operatingSegments.length > 0,
+                hasData,
                 segments,
                 timezone: apiData.timezone,
               });
@@ -268,17 +329,20 @@ export async function batchGetParkOperatingStatus(
                 .doc(parkId)
                 .collection('daily')
                 .doc(date);
-              scheduleBackgroundWrite(
-                cacheRef
-                  .set({
-                    parkId,
-                    date,
-                    timezone: apiData.timezone,
-                    segments,
-                    fetchedAt,
-                  } as CachedScheduleDoc)
-                  .catch(() => {})
-              );
+              if (coverage.shouldCache) {
+                scheduleBackgroundWrite(
+                  cacheRef
+                    .set({
+                      parkId,
+                      date,
+                      timezone: apiData.timezone,
+                      segments,
+                      hasData,
+                      fetchedAt,
+                    } as CachedScheduleDoc)
+                    .catch(() => {})
+                );
+              }
             }
           } else {
             // API failed — mark uncached dates as NO_DATA
