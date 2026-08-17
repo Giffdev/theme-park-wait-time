@@ -1,127 +1,150 @@
 # Skill: Vercel Deployment & Git Push
 
 ## When to use
-When shipping code changes to production. Vercel auto-deploys on push to `master` — no manual CLI commands needed.
+When an approved, reviewed commit must be pushed and released to production.
+
+## Deployment contract
+D48 is authoritative:
+
+- This repository has no Vercel Git integration.
+- A Git push does not deploy.
+- Deploy exactly the reviewed commit from a clean detached worktree pinned to its SHA.
+- Never deploy from the dirty development checkout.
+- A release is complete only after the deployment and production alias are verified and live smoke checks pass.
 
 ## Prerequisites
-- Git remote `origin` configured to `https://github.com/Giffdev/theme-park-wait-time.git`
-- Branch: `master` (tracking `origin/master`)
-- GitHub CLI authenticated as `Giffdev` account
-- Vercel project: `giffdevs-projects/theme-park-wait-times` (region: `iad1`)
+- Git remote `origin`: `https://github.com/Giffdev/theme-park-wait-time.git`
+- Release branch: `master` (tracking `origin/master`)
+- GitHub CLI authenticated as `Giffdev`
+- Vercel scope/project: `giffdevs-projects/theme-park-wait-times`
+- Production URL: https://theme-park-wait-times.vercel.app
 
-## Deployment Flow
+## Safe deployment flow
 
-### Step 1: Verify Git Remote
-```bash
+### 1. Identify and verify the reviewed commit
+```powershell
+$sha = git rev-parse HEAD
+git show --stat --oneline $sha
+git status --short
+```
+
+Do not proceed until `$sha` is the reviewed commit. The development checkout may contain unrelated changes; those changes must not enter the deployment.
+
+### 2. Push the reviewed commit
+Verify the remote and account, then push the reviewed branch:
+
+```powershell
 git remote -v
-# Output should show:
-# origin  https://github.com/Giffdev/theme-park-wait-time.git (fetch)
-# origin  https://github.com/Giffdev/theme-park-wait-time.git (push)
-```
-
-If remote is missing:
-```bash
-git remote add origin https://github.com/Giffdev/theme-park-wait-time.git
-```
-
-### Step 2: Switch GitHub Account (if needed)
-By default, `gh` uses `devsin_microsoft`. For this repo, use `Giffdev`:
-```bash
-gh auth switch --user Giffdev
-```
-
-To verify active account:
-```bash
 gh auth status
-```
-
-### Step 3: Make and Commit Changes
-```bash
-# Make code changes
-git add .
-git commit -m "Your descriptive commit message"
-```
-
-### Step 4: Push to Git
-```bash
-# Push to master (upstream already set after clone/initial push)
+gh auth switch --user Giffdev  # only if needed
 git push origin master
-# Or just:
-git push
+git rev-parse origin/master
 ```
 
-Vercel automatically detects the push and starts building + deploying.
+Confirm `origin/master` resolves to `$sha`. This publishes source control only; it does not deploy.
 
-### Step 5: Verify Deployment
-```bash
-# Show recent deploys with status
-npx vercel ls
+### 3. Create a clean detached worktree at the exact SHA
+Run from the repository root:
+
+```powershell
+$repoRoot = (Get-Location).Path
+$shortSha = $sha.Substring(0, 12)
+$deployWorktree = Join-Path (Split-Path $repoRoot -Parent) "theme-park-wait-times-deploy-$shortSha"
+git worktree add --detach $deployWorktree $sha
+git -C $deployWorktree status --short
+git -C $deployWorktree rev-parse HEAD
 ```
 
-**Live URL:** https://theme-park-wait-times.vercel.app
+The status output must be empty and the reported SHA must equal `$sha`.
+
+### 4. Link and deploy from the detached worktree
+```powershell
+Set-Location $deployWorktree
+npx vercel link --yes --scope giffdevs-projects --project theme-park-wait-times
+git status --short
+$deploymentOutput = npx vercel deploy --prod --yes --scope giffdevs-projects
+if ($LASTEXITCODE -ne 0) { throw "Vercel production deployment failed." }
+$deploymentUrl = ($deploymentOutput | Select-Object -Last 1).Trim()
+if ([string]::IsNullOrWhiteSpace($deploymentUrl)) { throw "Vercel did not return a deployment URL." }
+
+$newDeploymentJson = npx vercel inspect $deploymentUrl --format=json --scope giffdevs-projects
+if ($LASTEXITCODE -ne 0) { throw "Could not inspect the new deployment." }
+$newDeploymentId = ($newDeploymentJson | ConvertFrom-Json).id
+if ([string]::IsNullOrWhiteSpace($newDeploymentId)) { throw "The new deployment has no inspectable deployment ID." }
+```
+
+The link metadata is local deployment configuration, not source. Confirm `git status --short` remains empty before deploying. Preserve `$deploymentUrl` and `$newDeploymentId` as release evidence.
+
+### 5. Verify deployment, alias, and production
+```powershell
+$productionAlias = "https://theme-park-wait-times.vercel.app"
+$aliasDeploymentJson = npx vercel inspect $productionAlias --format=json --scope giffdevs-projects
+if ($LASTEXITCODE -ne 0) { throw "Could not inspect the production alias." }
+$aliasDeploymentId = ($aliasDeploymentJson | ConvertFrom-Json).id
+if ([string]::IsNullOrWhiteSpace($aliasDeploymentId)) { throw "The production alias has no inspectable deployment ID." }
+if ($aliasDeploymentId -ne $newDeploymentId) {
+    throw "Production alias mismatch: expected $newDeploymentId, resolved $aliasDeploymentId."
+}
+
+Invoke-WebRequest -Uri "https://theme-park-wait-times.vercel.app" -Method Head
+```
+
+Verify:
+
+1. The new deployment inspection reports `Ready` and production-targeted.
+2. The production alias inspection resolves to exactly `$newDeploymentId`.
+3. The release-specific smoke-test paths and APIs return the expected status and behavior.
+4. The live behavior corresponds to the reviewed SHA, not merely to a successful build.
+
+### 6. Clean up the worktree
+Return to the repository root before removal:
+
+```powershell
+Set-Location $repoRoot
+git worktree remove $deployWorktree
+git worktree prune
+git worktree list
+```
+
+If deployment or smoke tests fail, preserve the deployment ID and evidence, return to the repository root, and remove the detached worktree after investigation.
 
 ## Troubleshooting
 
 ### Git remote is missing
-**Symptom:** `git remote -v` shows empty output
-
-**Fix:**
-```bash
+```powershell
 git remote add origin https://github.com/Giffdev/theme-park-wait-time.git
-git push origin master
 ```
 
-### ⛔ `npx vercel --prod` hangs — DO NOT USE
-**Symptom:** CLI deploy freezes after "Uploading..." and never completes (waited 4+ minutes multiple times).
+Re-verify the remote before pushing. Do not use an empty commit as a deployment trigger; no Git webhook is connected.
 
-**Root cause:** Unknown — possibly auth token, network, or Vercel CLI bug in this environment.
+### Vercel CLI appears stuck after upload
+Spinner rendering can make terminal capture appear frozen. Allow the command time to finish, inspect the deployment in another shell with `npx vercel ls --prod --scope giffdevs-projects`, and capture the eventual deployment ID or error. Do not replace the CLI deployment with a Git push.
 
-**Rule:** NEVER use `npx vercel --prod` or `npx vercel` for deploys. ALWAYS use `git push origin master` to trigger Vercel's GitHub webhook. This is the only reliable deploy method for this project.
-
-### Deploy not triggered after push
-**Symptom:** `git push` succeeded but `npx vercel ls` shows no new deploy, or live site still shows old code.
-
-**Fix — empty commit to re-trigger the webhook:**
-```bash
-git commit --allow-empty -m "chore: trigger Vercel deploy"
-git push origin master
-```
-Wait ~60 seconds, then verify:
-```bash
-npx vercel ls --prod 2>&1 | Select-Object -First 10
-```
-
-### Deploy shows old code
-**Symptom:** Live site hasn't updated despite pushing
-
-**Check:**
-1. Verify commits reached remote: `git log --oneline origin/master -3`
-2. Check if Vercel picked up the push: `npx vercel ls --prod` (look for a deploy within the last few minutes)
-3. If no recent deploy, use the empty-commit trick above
-4. Check Vercel dashboard: https://vercel.com/giffdevs-projects/theme-park-wait-times
-5. Ensure you pushed to `master` branch: `git branch -vv`
+### Deployment shows old code
+1. Compare `$sha`, `origin/master`, and the detached worktree's `HEAD`.
+2. Confirm the CLI command ran inside the detached worktree.
+3. Confirm the deployment is `Ready`, production-targeted, and assigned the production alias.
+4. Inspect the deployment in the Vercel dashboard: https://vercel.com/giffdevs-projects/theme-park-wait-times
+5. Repeat release-specific live smoke checks.
 
 ### API returns 500 or stale data
-**Symptom:** `fetchedAt` timestamp in API response is old, or `/api/wait-times` errors
+1. Check whether upstream wait-time data is current.
+2. Check Firestore reads/writes and permissions.
+3. Verify dynamic rendering and cache headers on affected API routes.
+4. Distinguish Vercel edge, browser, and Next.js server caching before attributing stale data to deployment.
 
-**Debug:**
-1. Check if the web scraper is running correctly (verify parks data is current)
-2. Check Firestore writes — may have permission issues or data validation errors
-3. Verify `force-dynamic` is set on the API route to bypass caching layers
-4. Check browser cache with `Cache-Control: no-store` header
-
-## Key Gotchas
-
-- **No manual CLI deploy needed** — `npx vercel --prod` is slow and unnecessary. Just push to git.
-- **Account context matters** — pushing requires `Giffdev` account auth, not `devsin_microsoft`
-- **Triple-layer caching** — Vercel edge cache + browser HTTP cache + Next.js server cache. Ensure `force-dynamic` and cache headers are set on API routes.
-- **Region is `iad1`** — US East (Virginia). Minimizes latency to Firebase in `us-east1`.
+## Key gotchas
+- Push and deploy are separate required steps.
+- The deployment source must be the clean detached worktree at the reviewed SHA.
+- Account and project scope matter: use `Giffdev` and `giffdevs-projects/theme-park-wait-times`.
+- Region is `iad1`.
+- Production verification must include both deployment/alias state and release-specific live behavior.
 
 ## Confidence
-**Medium** — Confirmed in one session (2026-05-01), process validated end-to-end. Tested successful push → auto-deploy → live verification.
+**High** — D48 is the canonical team requirement, and the clean exact-commit worktree flow has been used successfully for production.
 
 ## Domain
 Deployment & DevOps
 
 ## Applies To
-All agents who need to ship changes to production.
+All agents who ship approved changes to production.

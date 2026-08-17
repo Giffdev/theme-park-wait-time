@@ -230,3 +230,107 @@ Queried the ThemeParks Wiki `/v1/destinations` endpoint and discovered 103 desti
 - Slugs are URL-safe, hand-tuned for popular parks (e.g., "magic-kingdom" not "magic-kingdom-park")
 - Families group parks for UI navigation (dropdown menus, filters, comparison views)
 
+## 2026-08-11 Cross-Agent Learnings — Chunk
+
+**Competitive Position Is Strongest in Data Provenance**
+Competitors (thrill-data.com, etc.) serve deterministic mocks without labels or serve data without freshness timestamps. Our transparent coverage metadata (`dataQuality: { source, coveredDays, totalDays }`) and stale-data labeling are differentiators. Starting with a small park set and proving out the data quality story builds user trust before scaling.
+
+**API Stability and Fallback Coverage Are Connected**
+ThemeParks.wiki is excellent (75+ parks, 300 req/min), but fallbacks matter. Having multiple sources and documented fallback behavior (deterministic mock with explicit disclosure) makes the product more resilient. Users need to know when they're reading live data vs estimates vs historical averages.
+
+**Product Positioning Requires Proving Out Small First**
+Starting with 6 Orlando parks (WDW + Universal) revealed data-trust issues early and built confidence in the architecture before expanding to 100+ parks. This constraint-driven approach prevented shipping with hidden synthetic data.
+
+
+### 2026-08-12 — Crowd Calendar False-CLOSED Audit (Read-Only, Documentation Only)
+
+User reported Worlds of Fun showing CLOSED in August when actually open. Ran a full read-only audit (no code changes — Data owns the fix) against the live ThemeParks Wiki API and both family registries. Wrote findings to `docs/crowd-calendar-data-audit.md` and `.squad/decisions/inbox/chunk-crowd-calendar-audit-findings.md`.
+
+**Confirmed the design review's root cause, plus two new defects it didn't cover:**
+- Fallback `PARK_FAMILIES` (`src/lib/constants.ts`) uses park **slugs**; ThemeParks Wiki requires UUIDs — confirmed live (`entity/worlds-of-fun/schedule` → 404, `entity/{UUID}/schedule` → 200).
+- Both call sites in `src/app/api/crowd-calendar/route.ts` (`computeFamilyCrowdDays` AND `generatePlaceholderData`) collapse `hasData:false` into `status:'CLOSED'` instead of `NO_DATA` — this happens on the **real-data path too**, not just the fallback.
+- **New:** 11 entity UUIDs in `src/lib/parks/park-registry.ts` are malformed (one duplicated hex digit, 37 chars instead of 36) — Universal Studios Florida, Epic Universe, Volcano Bay, Universal Studios Beijing/Singapore, Six Flags Magic Mountain/Great America/Discovery Kingdom/Frontier City, SeaWorld Orlando, Aquatica Orlando. All confirmed 404 live; 6 of 11 correct values verified via `/v1/destinations`.
+- **New:** Oceans of Fun's registry ID (`951987f7-...`) isn't a typo — it's a stale/decommissioned entity. Correct current ID confirmed live via the Worlds of Fun destination's `/children` endpoint: `b5a89552-3381-47ad-88cc-ab0087019c8b`.
+- **Test gap:** `tests/api/crowd-calendar-quality.test.ts` mocks `batchGetParkOperatingStatus` with an empty `Map()`, which doesn't exercise the actual `{isOpen:false, hasData:false}` shape that causes the real bug.
+- Confirmed legitimate seasonal/gap closures are handled correctly today (Worlds of Fun's post-Labor-Day weekday shutdown, Oceans of Fun's Aug weekday reduced hours) — the API succeeds with no OPERATING segment, so `hasData:true` is already correct there; only *failed* lookups get miscategorized.
+- Verified date/timezone normalization is sound for the schedule path (code keys off the API's own `date` field, not a UTC-derived parse) — no bug found there. Flagged a separate, lower-severity issue: `computeFamilyCrowdDays`'s "prefer live forecast for today" check uses UTC `toISOString().slice(0,10)` against park-local timestamps, which can silently miss live data near a park's local midnight.
+
+**Blast radius:** 9 of the registry's park families carry at least one park exposed to false CLOSED (not just Worlds of Fun) — this is bigger than the original design review scope and should inform Data's fix.
+
+
+### 2026-08-13 — Independent Revision Under Reviewer Lockout (Release Artifact Rework)
+
+PR Reviewer rejected the accumulated release artifact. Authored the revision independently (no contact with the original authors) across my ownership: `next.config.ts`, `scripts/seed-parks.ts` neighbourhood, `src/app/api/wait-times/route.ts`, `src/lib/wait-times/refresh.ts`, config/regression tests, `.gitignore`.
+
+**What changed and why:**
+- **IoA redirect deferred (blocker 1).** The `permanent: true` redirect from `/parks/universal-islands-of-adventure` to `/parks/islands-of-adventure` was removed. Read-only reconcile dry-run against live Firestore confirms the canonical doc does not exist: 8 seeded registry parks (incl. Magic Kingdom, Hollywood Studios, Animal Kingdom, IoA, Epic Universe, Volcano Bay) have **no** document carrying their registry slug. The listing links by the slug stored on each Firestore doc, so the redirect would have 308'd every IoA link to a URL with no document — and a 308 outlives the data fix. Alias retained as data (`LEGACY_PARK_SLUG_ALIASES`), enabled only via `ENABLE_CANONICAL_PARK_SLUG_REDIRECTS=true`, and always `permanent: false`.
+- **`scripts/reconcile-parks.ts` (blocker 2).** Dry-run-by-default cleanup/parity tool; deletes only with `--apply --yes`. Only registry-unknown docs inside a seeded destination that shadow a canonical park's slug are retire-eligible. Live dry run: exactly **1** retire candidate — the retired virtual Oceans of Fun doc `951987f7-3387-4221-8368-2859469aebcd`, shadowing `oceans-of-fun` which canonical `b5a89552-3381-47ad-88cc-ab0087019c8b` already serves. The other 3 duplicate slugs (Hurricane Harbor Arlington/Oklahoma City, Disneyland Park) have no canonical doc and are correctly left for human review. No production mutation performed.
+- **Catalog mismatch ≠ transient error (blocker 3).** `/api/wait-times` all-parks branch now tracks registry-unmatched catalog docs separately from runtime failures. Errors stay in the JSON body verbatim; only *transient* errors force `no-store`. Static mismatch alone now yields the degraded CDN window, so edge coalescing can finally engage on the listing path.
+- **`vercel.json` cache-policy guard (blocker 4).** New filesystem-derived test asserting every API route except `/api/wait-times` is covered by an explicit `no-store` rule, and that nothing forces `no-store` onto wait-times.
+- **Forced-refresh coalescing identity (blocker 5).** `refreshPark` in-flight key is now mode-scoped (`forced:`/`public:`). Cron's forced refresh can no longer adopt a public request's promise and silently report success without an upstream fetch or maintenance run.
+- **`.gitignore` + EOF whitespace (blockers 6, 7).**
+
+**Validation:** targeted tests, full suite (64 files / 665 tests pass), `tsc --noEmit` clean, `next build` clean, `eslint` clean (pre-existing warnings only), `git diff --check` clean. `npm run test:rules` could not run — local port 8080 is occupied by another process; no rules/client-query surface changed in this revision.
+
+**Not self-approved.** Ready for a fresh pre-push review.
+
+---
+
+
+## 2026-08-13 — Post-review revision (independent author, reviewer lockout maintained)
+
+Applied the PR Reviewer's 7 required post-ready changes. Original authors
+(Data/Mouth/Mikey) remained locked out; no contact, no co-authorship.
+
+1. Untracked 7 `spark-*.png` + `playwright-report/index.html` via `git rm --cached`
+   so the new ignore rules take effect. All local files verified preserved on disk.
+2. `scripts/reconcile-parks.ts --json` now emits exactly one parseable JSON
+   document on stdout; every notice/progress/error line moved to stderr behind a
+   `ReconcileIo` sink. Verified against live production data (read-only).
+3. `applyRetirePlan` isolates per-document failures in a try/catch, attempts every
+   planned delete, and returns `{attempted, deleted[], failed[]}`. Partial failure
+   exits 1; `--apply` without `--yes` exits 1; empty plan exits 0.
+4. `ORPHANED_PARK_DATA_PATHS` (10 park-id-keyed paths) is stated in retire text
+   output, apply output, and the JSON report. Nothing extra is deleted.
+5. `docs/parks-duplicate-slug-followups.md` records the 3 review-only duplicate
+   slug pairs and why they must not be auto-remediated.
+6. Root-anchored `/.mcp.json` and suffix-scoped `*.local-backup` ignore entries.
+7. Validation: 21/21 reconcile tests, full suite 675 passed / 58 todo (64 files),
+   tsc clean, build clean, lint clean (pre-existing warnings only),
+   `git diff --check` clean on all in-scope files.
+
+No commit, push, deploy, or production mutation. Not self-approved — awaiting
+independent lightweight review.
+
+---
+
+
+## 2026-08-13 — Release shipped (approved by PR Reviewer)
+
+- Commit `93c8c598631bde46029ab2c24a09f87d501aa868` on master, 90 files,
+  +15158/-1304, including all 9 generated-artifact deletions
+  (`deploy-output.txt`, `playwright-report/index.html`, 7x `spark-*.png`).
+- Staged with explicit pathspecs only. Fail-closed audit confirmed no
+  `.squad/**`, `.github/**`, `.copilot/**`, `.mcp.json`, `*.local-backup`,
+  secret or log path was staged. Those remain unstaged and preserved.
+- Pushed `249ed96..93c8c59 master -> master`; confirmed on origin/master.
+- No Vercel Git integration on this project, so production was deployed from a
+  detached `git worktree` pinned to 93c8c59 with a zero-entry `git status` —
+  the committed tree, never the dirty worktree. Worktree removed afterwards.
+- Deployment `dpl_DDLbyCw1UgzB3B76oZ3enyPXrS3M` — Ready, production, aliased to
+  https://theme-park-wait-times.vercel.app.
+- Verified live: IoA legacy URL 200 with no redirect; IoA/Magic Kingdom/Alton
+  Towers all return real attraction data; all-parks CDN cache now engages
+  (X-Vercel-Cache HIT/STALE, 217ms warm vs ~12s cold); Worlds of Fun August
+  calendar is schedule-grounded (8 OPEN days, CLOSED days match empty upstream
+  schedule segments); /api/park-schedule bounded at 151-274 bytes; cron 401
+  unauthenticated with daily `0 12 * * *` retained; every non-wait-times API
+  route still `no-store, max-age=0`.
+- Still blocked pending separate approval: `reconcile-parks.ts --apply --yes`
+  (deletes `parks/951987f7-3387-4221-8368-2859469aebcd`) and any production
+  seed. No Firestore mutation was performed.
+
+
+## 2026-08-14 — Crowd-calendar rolling-window audit
+
+Audited the ThemeParks.wiki schedule surface read-only and confirmed it is a rolling present/future feed, not a historical month archive. That clarified why pre-horizon dates must remain `NO_DATA` instead of being replayed as closures, and why the current release needed both the schedule-window fix and the shared coverage contract. The audit also kept the blast radius honest: malformed registry ids and the stale Oceans of Fun id had to be repaired alongside the status logic.
