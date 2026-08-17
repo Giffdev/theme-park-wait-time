@@ -704,6 +704,34 @@ Production upsert reconciliation completed successfully for exact manifest `0039
 
 State-bound, additive convergence makes retries auditable and idempotent without promoting unsupported parks or risking removal of live or user-linked data.
 
+---
+
+### D66: Add a Firestore Reliability Specialist After Reviewer Deadlock
+
+**By:** Devin Sinha (approval); Squad Coordinator (recorded)
+**Date:** 2026-08-17
+**Status:** Implemented
+
+#### Decision
+
+After successive reviewer rejections locked every existing eligible implementation
+agent out of the ride-logging artifact, Devin explicitly approved adding a new
+specialist to finish the bounded Firestore consensus transaction. The Coordinator
+added Andy as Firestore Reliability Engineer within the existing Goonies casting
+universe and routed only the remaining transaction-bound blocker to him.
+
+#### Rationale
+
+Reviewer lockout prohibited reusing the prior authors, while the user chose to
+continue rather than pause the unshipped fix. A narrowly scoped specialist
+resolved the deadlock without weakening the reviewer protocol.
+
+#### Impact
+
+- Andy owns bounded Firestore transactions, contention, and aggregation reliability.
+- The existing team universe remains unchanged and within capacity.
+- The ride-logging release was independently approved after Andy's revision.
+
 ## Governance
 
 - All meaningful changes require team consensus

@@ -16,6 +16,7 @@
 | Mouth | Frontend Dev | `.squad/agents/mouth/charter.md` | ⚛️ Active |
 | Brand | UX Reviewer | `.squad/agents/brand/charter.md` | 🔍 Active |
 | Data | Backend Dev | `.squad/agents/data/charter.md` | 🔧 Active |
+| Andy | Firestore Reliability Engineer | `.squad/agents/andy/charter.md` | 🔧 Active |
 | Chunk | Data Engineer | `.squad/agents/chunk/charter.md` | 📊 Active |
 | Stef | Tester | `.squad/agents/stef/charter.md` | 🧪 Active |
 | Scribe | Session Logger | `.squad/agents/scribe/charter.md` | 📋 Active |
