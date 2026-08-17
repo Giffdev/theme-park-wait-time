@@ -33,8 +33,14 @@ vi.mock('@/lib/firebase/firestore', () => ({
   whereConstraint: vi.fn(),
 }));
 
-vi.mock('@/lib/services/ride-log-service', () => ({ addRideLog: vi.fn() }));
-vi.mock('@/lib/firebase/waitTimeReports', () => ({ submitWaitTimeReport: vi.fn() }));
+vi.mock('@/lib/services/ride-log-service', () => ({
+  addRideLog: vi.fn(),
+  canDiscardRideLogSave: vi.fn(() => false),
+}));
+vi.mock('@/lib/firebase/waitTimeReports', () => ({
+  getOrCreateWaitTimeReportCommand: vi.fn(),
+  submitWaitTimeReport: vi.fn(),
+}));
 vi.mock('@/lib/services/trip-service', () => ({
   getActiveTrip: vi.fn().mockResolvedValue(null),
   getTripRideLogs: vi.fn().mockResolvedValue([]),

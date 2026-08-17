@@ -5,8 +5,11 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Search, X, Star, Timer, Clock, ChevronLeft, MapPin, Utensils } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
-import { getTrip, getTripRideLogs } from '@/lib/services/trip-service';
-import { createRideLog } from '@/lib/services/ride-log-service';
+import { getTrip } from '@/lib/services/trip-service';
+import {
+  canDiscardRideLogSave,
+  createRideLog,
+} from '@/lib/services/ride-log-service';
 import { addDiningLog } from '@/lib/services/dining-log-service';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
 import type { Trip } from '@/types/trip';
@@ -15,6 +18,11 @@ import type { MealType } from '@/types/dining-log';
 import { getAttractionIcon } from '@/lib/utils/attraction-icons';
 import { classifyAttraction } from '@/lib/utils/classify-attraction';
 import WaitTimeInput from '@/components/ride-log/WaitTimeInput';
+import { toLocalDateKey, useActiveRidePark } from '@/hooks/useActiveRidePark';
+import {
+  isValidRideWaitTime,
+  RIDE_WAIT_TIME_RANGE_MESSAGE,
+} from '@/lib/wait-time-contract';
 
 interface AttractionOption {
   id: string;
@@ -38,6 +46,7 @@ const TYPE_FILTERS: { value: string; label: string }[] = [
 
 const LOGGABLE_ENTITY_TYPES = new Set(['ATTRACTION', 'RIDE', 'SHOW', 'MEET_AND_GREET']);
 const RESTAURANT_ENTITY_TYPES = new Set(['RESTAURANT']);
+const RIDE_SAVE_TIMEOUT_MS = 10_000;
 
 const MEAL_TYPES: { value: MealType; label: string; icon: string }[] = [
   { value: 'breakfast', label: 'Breakfast', icon: '🌅' },
@@ -51,6 +60,34 @@ function formatElapsed(ms: number): string {
   const min = Math.floor(totalSec / 60);
   const sec = totalSec % 60;
   return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+}
+
+function createRequestId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `ride-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function isConfirmedPartialSave(error: unknown): error is Error & { savedLogId: string } {
+  return error instanceof Error
+    && 'code' in error
+    && error.code === 'post-write-refresh-failed'
+    && 'savedLogId' in error
+    && typeof error.savedLogId === 'string';
+}
+
+function rideSaveErrorMessage(error: unknown): string {
+  if (
+    error instanceof Error
+    && (
+      ('code' in error && error.code === 'timeout')
+      || /timed? out|too long/i.test(error.message)
+    )
+  ) {
+    return error.message;
+  }
+  return 'Failed to save ride log. Please try again.';
 }
 
 export default function TripLogRidePage() {
@@ -79,6 +116,7 @@ export default function TripLogRidePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [discardAllowed, setDiscardAllowed] = useState(false);
 
   // Dining log form state
   const [selectedRestaurant, setSelectedRestaurant] = useState<AttractionOption | null>(null);
@@ -95,8 +133,35 @@ export default function TripLogRidePage() {
   const [timerStart, setTimerStart] = useState<number | null>(null);
   const [timerElapsed, setTimerElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const savingRef = useRef(false);
+  const saveRequestIdRef = useRef<string | null>(null);
+  const parkSelectionTouchedRef = useRef(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const {
+    recentParkId,
+    setRecentParkId,
+    loading: rideParkLoading,
+    error: rideParkError,
+    retry: retryRidePark,
+  } = useActiveRidePark({
+    enabled: Boolean(user && tripId),
+    userId: user?.uid,
+    tripId,
+    tripName: trip?.name,
+    dateKey: toLocalDateKey(),
+  });
+  const resetParkSelection = useCallback((nextParkId: string, userInitiated = false) => {
+    if (userInitiated) parkSelectionTouchedRef.current = true;
+    setParkId(nextParkId);
+    setSelectedAttraction(null);
+    setSelectedRestaurant(null);
+    setAttractions([]);
+    setSearchQuery('');
+    setError('');
+    setDiscardAllowed(false);
+    saveRequestIdRef.current = null;
+  }, []);
 
   // Redirect to sign-in if not authenticated
   useEffect(() => {
@@ -105,45 +170,28 @@ export default function TripLogRidePage() {
     }
   }, [authLoading, user, router]);
 
-  // Load trip data and default park to today's most recent ride log park
+  // Load trip data. Park defaulting is scoped separately to this trip/day.
   useEffect(() => {
     if (!user || !tripId) return;
     setLoading(true);
     getTrip(user.uid, tripId)
-      .then(async (t) => {
+      .then((t) => {
         setTrip(t);
-        if (!t) return;
-
-        // Try to default park based on today's most recent ride log
-        const tripParkIds = t.parkIds ?? [];
-        try {
-          const logs = await getTripRideLogs(user.uid, tripId);
-          const todayStr = new Date().toISOString().split('T')[0];
-          const todayLog = logs.find((log) => {
-            const raw = log.rodeAt as unknown;
-            const d = raw instanceof Date
-              ? raw
-              : (raw && typeof (raw as { toDate?: () => Date }).toDate === 'function')
-                ? (raw as { toDate: () => Date }).toDate()
-                : new Date(raw as string | number);
-            return d.toISOString().split('T')[0] === todayStr;
-          });
-          if (todayLog) {
-            setParkId(todayLog.parkId);
-            return;
-          }
-        } catch {
-          // Fall through to default
-        }
-
-        // Fallback: first park in trip
-        if (tripParkIds.length > 0) {
-          setParkId(tripParkIds[0]);
-        }
       })
       .catch(() => setTrip(null))
       .finally(() => setLoading(false));
   }, [user, tripId]);
+
+  useEffect(() => {
+    if (!trip || parkSelectionTouchedRef.current) return;
+    if (recentParkId) {
+      if (parkId !== recentParkId) resetParkSelection(recentParkId);
+      return;
+    }
+    if (!rideParkLoading && !parkId && (trip.parkIds ?? []).length > 0) {
+      resetParkSelection((trip.parkIds ?? [])[0]);
+    }
+  }, [recentParkId, resetParkSelection, rideParkLoading, trip]);
 
   // Load available parks from Firestore (for park picker when trip has no pre-assigned parks)
   useEffect(() => {
@@ -161,11 +209,13 @@ export default function TripLogRidePage() {
       setAttractions([]);
       return;
     }
+    let cancelled = false;
+    setAttractions([]);
     getCollection<{ name: string; entityType?: string; attractionType?: AttractionType | null }>(
       'attractions',
       [whereConstraint('parkId', '==', parkId)]
     ).then((docs) => {
-      setAttractions(
+      if (!cancelled) setAttractions(
         docs
           .map((d) => ({
             id: d.id,
@@ -177,7 +227,14 @@ export default function TripLogRidePage() {
           .sort((a, b) => a.name.localeCompare(b.name))
       );
     });
+    return () => {
+      cancelled = true;
+    };
   }, [parkId]);
+
+  const handleParkChange = (nextParkId: string) => {
+    resetParkSelection(nextParkId, true);
+  };
 
   // Timer tick
   useEffect(() => {
@@ -246,6 +303,7 @@ export default function TripLogRidePage() {
     setRating(null);
     setNotes('');
     setError('');
+    saveRequestIdRef.current = null;
     setTimerStart(null);
   }, []);
 
@@ -265,9 +323,22 @@ export default function TripLogRidePage() {
 
   const handleSubmit = async () => {
     if (!user || !trip || !selectedAttraction) return;
+    if (savingRef.current) return;
+    const rideWaitTime = waitTimeMode === 'closed'
+      ? null
+      : waitTime
+        ? Number(waitTime)
+        : null;
+    if (!isValidRideWaitTime(rideWaitTime)) {
+      setError(RIDE_WAIT_TIME_RANGE_MESSAGE);
+      return;
+    }
 
+    savingRef.current = true;
     setSaving(true);
     setError('');
+    setDiscardAllowed(false);
+    saveRequestIdRef.current ??= createRequestId();
 
     const parkName = (trip.parkNames ?? {})[parkId] || availableParks.find((p) => p.id === parkId)?.name || '';
 
@@ -280,14 +351,20 @@ export default function TripLogRidePage() {
           parkName,
           attractionName: selectedAttraction.name,
           rodeAt: new Date(),
-          waitTimeMinutes: waitTimeMode === 'closed' ? null : (waitTime ? parseInt(waitTime, 10) : null),
+          waitTimeMinutes: rideWaitTime,
           attractionClosed: waitTimeMode === 'closed',
           source: logMode === 'timer' ? 'timer' : 'manual',
           rating,
           notes,
         },
         tripId,
+        {
+          requestId: saveRequestIdRef.current,
+          timeoutMs: RIDE_SAVE_TIMEOUT_MS,
+          waitForTripStats: true,
+        },
       );
+      setRecentParkId(parkId);
       setSuccessMessage(`${selectedAttraction.name} logged! 🎉`);
       setSelectedAttraction(null);
       setWaitTime('');
@@ -295,10 +372,22 @@ export default function TripLogRidePage() {
       setRating(null);
       setNotes('');
       setTimerStart(null);
+      saveRequestIdRef.current = null;
       setTimeout(() => setSuccessMessage(''), 3000);
-    } catch {
-      setError('Failed to save ride log. Please try again.');
+    } catch (saveError) {
+      if (
+        isConfirmedPartialSave(saveError)
+      ) {
+        setRecentParkId(parkId);
+        setSuccessMessage(`${selectedAttraction.name} logged! Trip totals may take a moment to refresh.`);
+        setSelectedAttraction(null);
+        saveRequestIdRef.current = null;
+      } else {
+        setDiscardAllowed(canDiscardRideLogSave(saveError));
+        setError(rideSaveErrorMessage(saveError));
+      }
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -345,6 +434,7 @@ export default function TripLogRidePage() {
   };
 
   const handleClosePanel = () => {
+    if (saveRequestIdRef.current) return;
     if (timerStart) {
       const confirmed = window.confirm('Timer is running. Discard?');
       if (!confirmed) return;
@@ -352,6 +442,19 @@ export default function TripLogRidePage() {
     setSelectedAttraction(null);
     setTimerStart(null);
   };
+  const handleDiscardFailedSave = () => {
+    saveRequestIdRef.current = null;
+    setError('');
+    setDiscardAllowed(false);
+    setSelectedAttraction(null);
+    setWaitTime('');
+    setWaitTimeMode('unknown');
+    setRating(null);
+    setNotes('');
+    setTimerStart(null);
+    saveRequestIdRef.current = null;
+  };
+  const commandFrozen = saveRequestIdRef.current !== null;
 
   const handleCloseDiningPanel = () => {
     setSelectedRestaurant(null);
@@ -411,7 +514,8 @@ export default function TripLogRidePage() {
               <button
                 key={id}
                 type="button"
-                onClick={() => { setParkId(id); setSelectedAttraction(null); setSelectedRestaurant(null); }}
+                onClick={() => handleParkChange(id)}
+                disabled={rideParkLoading}
                 className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all ${
                   parkId === id
                     ? 'bg-primary-600 text-white shadow-sm'
@@ -433,6 +537,7 @@ export default function TripLogRidePage() {
               placeholder="Search parks..."
               value={parkSearchQuery}
               onChange={(e) => setParkSearchQuery(e.target.value)}
+              disabled={rideParkLoading}
               className="w-full rounded-xl border border-primary-200 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
             />
           </div>
@@ -443,7 +548,8 @@ export default function TripLogRidePage() {
                 <button
                   key={park.id}
                   type="button"
-                  onClick={() => { setParkId(park.id); setParkSearchQuery(''); setSelectedAttraction(null); setSelectedRestaurant(null); }}
+                  onClick={() => { handleParkChange(park.id); setParkSearchQuery(''); }}
+                  disabled={rideParkLoading}
                   className="w-full px-4 py-3 text-left text-sm font-medium text-primary-700 hover:bg-primary-50 transition-colors"
                 >
                   {park.name}
@@ -458,7 +564,8 @@ export default function TripLogRidePage() {
         <div className="mb-4">
           <button
             type="button"
-            onClick={() => { setParkId(''); setSelectedAttraction(null); setSelectedRestaurant(null); }}
+            onClick={() => handleParkChange('')}
+            disabled={rideParkLoading}
             className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-600 hover:bg-primary-100 transition-colors"
           >
             <MapPin className="h-3 w-3" />
@@ -474,6 +581,18 @@ export default function TripLogRidePage() {
           {successMessage}
         </div>
       )}
+      {rideParkError && (
+        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p>{rideParkError}</p>
+          <button
+            type="button"
+            onClick={retryRidePark}
+            className="mt-2 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            Retry trip ride lookup
+          </button>
+        </div>
+      )}
 
       {/* ======================== UNIFIED LIST ======================== */}
       <>
@@ -486,6 +605,7 @@ export default function TripLogRidePage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              disabled={rideParkLoading}
               placeholder={typeFilter === 'dining' ? 'Search restaurants...' : 'Search rides & shows...'}
               className="w-full rounded-xl border border-primary-200 bg-white py-3 pl-10 pr-10 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
             />
@@ -539,6 +659,7 @@ export default function TripLogRidePage() {
                   key={a.id}
                   type="button"
                   onClick={() => handleSelectAttraction(a)}
+                  disabled={rideParkLoading}
                   className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${
                     isRestaurant ? 'hover:bg-amber-50 active:bg-amber-100' : 'hover:bg-primary-50 active:bg-primary-100'
                   }`}
@@ -582,7 +703,7 @@ export default function TripLogRidePage() {
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={handleClosePanel}
+            onClick={commandFrozen ? undefined : handleClosePanel}
           />
 
           {/* Panel */}
@@ -599,6 +720,7 @@ export default function TripLogRidePage() {
               <button
                 type="button"
                 onClick={handleClosePanel}
+                disabled={commandFrozen}
                 className="rounded-lg p-1.5 text-primary-400 hover:bg-primary-100 hover:text-primary-600"
                 aria-label="Close"
               >
@@ -615,6 +737,7 @@ export default function TripLogRidePage() {
               <button
                 type="button"
                 onClick={() => { setLogMode('quick'); setTimerStart(null); }}
+                disabled={commandFrozen}
                 className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
                   logMode === 'quick'
                     ? 'bg-white text-primary-700 shadow-sm'
@@ -627,6 +750,7 @@ export default function TripLogRidePage() {
               <button
                 type="button"
                 onClick={() => setLogMode('timer')}
+                disabled={commandFrozen}
                 className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
                   logMode === 'timer'
                     ? 'bg-white text-primary-700 shadow-sm'
@@ -648,6 +772,7 @@ export default function TripLogRidePage() {
                   <button
                     type="button"
                     onClick={handleStartTimer}
+                    disabled={commandFrozen}
                     className="inline-flex items-center gap-2 rounded-xl bg-green-500 px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-green-600 active:scale-95"
                   >
                     <Timer className="h-4 w-4" />
@@ -657,6 +782,7 @@ export default function TripLogRidePage() {
                   <button
                     type="button"
                     onClick={handleStopTimer}
+                    disabled={commandFrozen}
                     className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-indigo-600 active:scale-95 animate-pulse"
                   >
                     <Timer className="h-4 w-4" />
@@ -679,6 +805,7 @@ export default function TripLogRidePage() {
                   onChange={setWaitTime}
                   mode={waitTimeMode}
                   onModeChange={setWaitTimeMode}
+                  disabled={commandFrozen}
                 />
               </div>
             )}
@@ -694,6 +821,7 @@ export default function TripLogRidePage() {
                     key={star}
                     type="button"
                     onClick={() => setRating(star === rating ? null : star)}
+                    disabled={commandFrozen}
                     className="transition-transform hover:scale-110 active:scale-90"
                     aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
                   >
@@ -718,6 +846,7 @@ export default function TripLogRidePage() {
                 id="log-notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
+                disabled={commandFrozen}
                 placeholder="Front row was amazing!"
                 rows={2}
                 className="w-full resize-none rounded-xl border border-primary-200 px-4 py-2.5 text-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
@@ -731,8 +860,23 @@ export default function TripLogRidePage() {
               disabled={saving || (logMode === 'timer' && timerStart !== null)}
               className="w-full rounded-xl bg-gradient-to-r from-coral-500 to-coral-600 px-4 py-3.5 text-sm font-bold text-white shadow-lg transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50"
             >
-              {saving ? 'Saving...' : timerStart !== null ? 'Stop timer first' : 'Log Ride 🎢'}
+              {saving
+                ? 'Saving...'
+                : timerStart !== null
+                  ? 'Stop timer first'
+                  : commandFrozen
+                    ? 'Retry Save — Log Ride'
+                    : 'Log Ride 🎢'}
             </button>
+            {commandFrozen && error && discardAllowed && (
+              <button
+                type="button"
+                onClick={handleDiscardFailedSave}
+                className="mt-3 w-full rounded-xl border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
+              >
+                Discard failed save & start over
+              </button>
+            )}
           </div>
         </div>
       )}

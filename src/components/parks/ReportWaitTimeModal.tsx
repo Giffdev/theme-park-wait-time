@@ -3,7 +3,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Clock, Play, Pause, Square, RotateCcw, CheckCircle2, Timer } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
-import { submitWaitTimeReport } from '@/lib/firebase/waitTimeReports';
+import {
+  getOrCreateWaitTimeReportCommand,
+  submitWaitTimeReport,
+} from '@/lib/firebase/waitTimeReports';
+import {
+  isValidReportedWaitTime,
+  MAX_OPERATING_WAIT_MINUTES,
+  MIN_OPERATING_WAIT_MINUTES,
+} from '@/lib/wait-time-contract';
 
 interface ReportWaitTimeModalProps {
   attractionId: string;
@@ -114,23 +122,26 @@ export default function ReportWaitTimeModal({
     setError(null);
     setSubmitting(true);
 
-    const waitTime = isClosed ? -1 : parseInt(manualMinutes, 10);
+    const waitTime = isClosed ? -1 : Number(manualMinutes);
 
-    if (!isClosed && (isNaN(waitTime) || waitTime < 0 || waitTime > 300)) {
-      setError('Enter a valid wait time between 0 and 300 minutes.');
+    if (!isValidReportedWaitTime(waitTime)) {
+      setError(
+        `Enter 0 for walk-on or a wait time between `
+        + `${MIN_OPERATING_WAIT_MINUTES} and ${MAX_OPERATING_WAIT_MINUTES} minutes.`,
+      );
       setSubmitting(false);
       return;
     }
 
     try {
-      await submitWaitTimeReport({
+      const command = getOrCreateWaitTimeReportCommand({
+        accountId: user.uid,
         attractionId,
         attractionName,
         parkId,
-        userId: user.uid,
-        username: user.displayName || user.email || 'Anonymous',
         waitTime,
       });
+      await submitWaitTimeReport(command);
       setSuccess(true);
       onSuccess?.(waitTime);
       setTimeout(onClose, 1500);
@@ -333,7 +344,7 @@ export default function ReportWaitTimeModal({
                   id="wait-minutes"
                   type="number"
                   min="0"
-                  max="300"
+                  max={MAX_OPERATING_WAIT_MINUTES}
                   value={manualMinutes}
                   onChange={(e) => setManualMinutes(e.target.value)}
                   placeholder="e.g. 45"

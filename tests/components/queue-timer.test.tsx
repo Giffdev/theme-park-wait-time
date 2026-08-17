@@ -260,6 +260,25 @@ describe('TimerCompleteSheet', () => {
     expect(screen.getByRole('dialog')).toHaveAttribute('aria-labelledby', 'timer-complete-title');
   });
 
+  it.each([1, 181, 12.5, Number.NaN])(
+    'rejects invalid elapsed wait %s before the timer save entrypoint',
+    async (elapsedMinutes) => {
+      render(
+        <TimerCompleteSheet
+          elapsedMinutes={elapsedMinutes}
+          attractionName="Space Mountain"
+          parkId="magic-kingdom"
+          attractionId="space-mountain"
+          parkName="Magic Kingdom"
+          onClose={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+      expect(await screen.findByText(/Ride wait time must be/i)).toBeInTheDocument();
+      expect(mockCreateRideLog).not.toHaveBeenCalled();
+    },
+  );
+
   it('moves focus into the dialog and traps Tab navigation', () => {
     render(
       <TimerCompleteSheet

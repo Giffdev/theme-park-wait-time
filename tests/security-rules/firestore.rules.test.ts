@@ -25,6 +25,9 @@ import {
   collection,
   addDoc,
   getDocs,
+  query,
+  where,
+  orderBy,
 } from 'firebase/firestore';
 
 let testEnv: RulesTestEnvironment;
@@ -334,7 +337,7 @@ describe('User trips and ride logs', () => {
 });
 
 // ===========================================================================
-// 8. CROWD REPORTS — Public read, auth create, author-only update
+// 8. LEGACY CROWD REPORTS — server-only because documents contain PII
 // ===========================================================================
 describe('Crowd reports', () => {
   const userId = 'user-abc';
@@ -354,10 +357,10 @@ describe('Crowd reports', () => {
     await seedDoc(reportPath, reportData);
   });
 
-  it('allows unauthenticated read', async () => {
+  it('denies unauthenticated read of PII-bearing legacy reports', async () => {
     const ctx = unauthenticatedContext(testEnv);
     const ref = doc(ctx.firestore(), reportPath);
-    await expect(getDoc(ref)).resolves.toBeDefined();
+    await expect(getDoc(ref)).rejects.toThrow();
   });
 
   it('denies unauthenticated create', async () => {
@@ -366,10 +369,10 @@ describe('Crowd reports', () => {
     await expect(setDoc(ref, { ...reportData, userId: 'anon' })).rejects.toThrow();
   });
 
-  it('allows authenticated user to create report with own userId', async () => {
+  it('denies authenticated client creation even with own userId', async () => {
     const ctx = authenticatedContext(testEnv, userId);
     const ref = doc(ctx.firestore(), 'crowdReports/new-report');
-    await expect(setDoc(ref, reportData)).resolves.toBeUndefined();
+    await expect(setDoc(ref, reportData)).rejects.toThrow();
   });
 
   it('denies create when userId does not match auth uid', async () => {
@@ -394,10 +397,10 @@ describe('Crowd reports', () => {
     ).rejects.toThrow();
   });
 
-  it('allows author to update own report', async () => {
+  it('denies author updates to legacy reports', async () => {
     const ctx = authenticatedContext(testEnv, userId);
     const ref = doc(ctx.firestore(), reportPath);
-    await expect(updateDoc(ref, { waitMinutes: 35 })).resolves.toBeUndefined();
+    await expect(updateDoc(ref, { waitMinutes: 35 })).rejects.toThrow();
   });
 
   it('denies non-author from updating report', async () => {
@@ -414,7 +417,7 @@ describe('Crowd reports', () => {
 });
 
 // ===========================================================================
-// 9. CROWD REPORT VERIFICATIONS — Public read, auth create, no update/delete
+// 9. CROWD REPORT VERIFICATIONS — server-only because children contain PII
 // ===========================================================================
 describe('Crowd report verifications', () => {
   const userId = 'user-abc';
@@ -436,17 +439,168 @@ describe('Crowd report verifications', () => {
     });
   });
 
-  it('allows unauthenticated read', async () => {
+  describe('Anonymous wait-time reports', () => {
+      const attractionPath = 'attractions/space-mountain';
+      const validReport = {
+        schemaVersion: 1,
+        attractionId: 'space-mountain',
+        attractionName: 'Space Mountain',
+        parkId: 'magic-kingdom',
+        waitTime: 30,
+        reportedAt: new Date(),
+        status: 'pending',
+      };
+
+      beforeEach(async () => {
+        await seedDoc(attractionPath, {
+          name: 'Space Mountain',
+          parkId: 'magic-kingdom',
+          entityType: 'ATTRACTION',
+        });
+      });
+
+      it('denies authenticated direct writes even with an exact anonymous shape', async () => {
+        const ctx = authenticatedContext(testEnv, 'user-1');
+        await expect(setDoc(
+          doc(ctx.firestore(), 'waitTimeReports/report-request-1234'),
+          validReport,
+        )).rejects.toThrow();
+      });
+
+      it('denies unauthenticated reports', async () => {
+        const ctx = unauthenticatedContext(testEnv);
+        await expect(setDoc(
+          doc(ctx.firestore(), 'waitTimeReports/report-request-1234'),
+          validReport,
+        )).rejects.toThrow();
+      });
+
+      it.each([
+        ['stable UID', { userId: 'user-1' }],
+        ['email', { email: 'person@example.com' }],
+        ['display name', { username: 'Person' }],
+        ['unknown field', { source: 'client' }],
+      ])('denies public privacy/schema pollution: %s', async (_label, extra) => {
+        const ctx = authenticatedContext(testEnv, 'user-1');
+        await expect(setDoc(
+          doc(ctx.firestore(), `waitTimeReports/privacy-${Object.keys(extra)[0]}-1234`),
+          { ...validReport, ...extra },
+        )).rejects.toThrow();
+      });
+
+      it.each([
+        ['mismatched park', { parkId: 'epcot' }],
+        ['spoofed attraction name', { attractionName: 'Fake Mountain' }],
+        ['missing attraction', { attractionId: 'not-real' }],
+        ['out-of-range wait', { waitTime: 301 }],
+        ['fractional wait', { waitTime: 12.5 }],
+      ])('denies canonical/report spoofing: %s', async (_label, changed) => {
+        const ctx = authenticatedContext(testEnv, 'user-1');
+        await expect(setDoc(
+          doc(ctx.firestore(), `waitTimeReports/spoof-${String(changed.waitTime ?? changed.parkId ?? changed.attractionId ?? 'name')}`),
+          { ...validReport, ...changed },
+        )).rejects.toThrow();
+      });
+
+      it('denies direct idempotent replay and mutation (server-only writes)', async () => {
+        await seedDoc('waitTimeReports/idempotent-report-1234', validReport);
+        const ctx = authenticatedContext(testEnv, 'user-1');
+        const ref = doc(ctx.firestore(), 'waitTimeReports/idempotent-report-1234');
+        await expect(setDoc(ref, validReport)).rejects.toThrow();
+        await expect(setDoc(ref, { ...validReport, waitTime: 90 })).rejects.toThrow();
+      });
+
+      it('keeps anonymous reports publicly readable', async () => {
+        await seedDoc('waitTimeReports/public-report-1234', validReport);
+        const ctx = unauthenticatedContext(testEnv);
+        const snapshot = await getDoc(doc(ctx.firestore(), 'waitTimeReports/public-report-1234'));
+        expect(snapshot.data()).toEqual(expect.objectContaining({
+          ...validReport,
+          reportedAt: expect.anything(),
+        }));
+      });
+
+      it('denies public reads of legacy reports containing account identifiers', async () => {
+        await seedDoc('waitTimeReports/legacy-private-report', {
+          ...validReport,
+          userId: 'stable-user-id',
+          email: 'person@example.com',
+        });
+        const ctx = unauthenticatedContext(testEnv);
+        await expect(getDoc(
+          doc(ctx.firestore(), 'waitTimeReports/legacy-private-report'),
+        )).rejects.toThrow();
+      });
+
+      it.each([
+        ['uid', { uid: 'stable-user-id' }],
+        ['userId', { userId: 'stable-user-id' }],
+        ['email', { email: 'person@example.com' }],
+        ['accountId', { accountId: 'account-1' }],
+        ['unknown field', { source: 'client' }],
+      ])('denies public reads when schema-v1 contains %s', async (_label, extra) => {
+        const path = `waitTimeReports/private-${Object.keys(extra)[0]}`;
+        await seedDoc(path, { ...validReport, ...extra });
+        const ctx = unauthenticatedContext(testEnv);
+        await expect(getDoc(doc(ctx.firestore(), path))).rejects.toThrow();
+      });
+
+      it.each([
+        ['missing status', { ...validReport, status: undefined }],
+        ['fractional wait', { ...validReport, waitTime: 12.5 }],
+        ['one-minute wait', { ...validReport, waitTime: 1 }],
+        ['over maximum', { ...validReport, waitTime: 181 }],
+        ['wrong status', { ...validReport, status: 'private' }],
+      ])('denies public reads for invalid anonymous schema: %s', async (_label, report) => {
+        const cleanReport = Object.fromEntries(
+          Object.entries(report).filter(([, value]) => value !== undefined),
+        );
+        const path = `waitTimeReports/invalid-${_label.replaceAll(' ', '-')}`;
+        await seedDoc(path, cleanReport);
+        const ctx = unauthenticatedContext(testEnv);
+        await expect(getDoc(doc(ctx.firestore(), path))).rejects.toThrow();
+      });
+
+      it('denies collection queries so unsafe legacy documents cannot be filtered into public access', async () => {
+        await seedDoc('waitTimeReports/public-query-report', validReport);
+        await seedDoc('waitTimeReports/legacy-query-report', {
+          ...validReport,
+          schemaVersion: 0,
+          userId: 'legacy-user',
+        });
+        const ctx = unauthenticatedContext(testEnv);
+        const reports = query(
+          collection(ctx.firestore(), 'waitTimeReports'),
+          where('schemaVersion', '==', 1),
+          where('attractionId', '==', 'space-mountain'),
+          orderBy('reportedAt', 'desc'),
+        );
+        await expect(getDocs(reports)).rejects.toThrow();
+      });
+
+      it.each([
+        'queueReportRateLimits/account-hash',
+        'queueReportRequests/report-request-1234',
+        'queueReportContributions/contributor-hash',
+      ])('keeps private queue-report state inaccessible at %s', async (path) => {
+        await seedDoc(path, { uidHash: 'private', requestId: 'report-request-1234' });
+        const ctx = authenticatedContext(testEnv, 'user-1');
+        await expect(getDoc(doc(ctx.firestore(), path))).rejects.toThrow();
+        await expect(setDoc(doc(ctx.firestore(), path), { changed: true })).rejects.toThrow();
+      });
+  });
+
+  it('denies unauthenticated reads', async () => {
     await seedDoc(verPath, verData);
     const ctx = unauthenticatedContext(testEnv);
     const ref = doc(ctx.firestore(), verPath);
-    await expect(getDoc(ref)).resolves.toBeDefined();
+    await expect(getDoc(ref)).rejects.toThrow();
   });
 
-  it('allows authenticated user to create verification', async () => {
+  it('denies authenticated client creation', async () => {
     const ctx = authenticatedContext(testEnv, userId);
     const ref = doc(ctx.firestore(), verPath);
-    await expect(setDoc(ref, verData)).resolves.toBeUndefined();
+    await expect(setDoc(ref, verData)).rejects.toThrow();
   });
 
   it('denies unauthenticated create', async () => {

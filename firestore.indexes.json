@@ -59,6 +59,31 @@
       ]
     },
     {
+      "collectionGroup": "waitTimeReports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "attractionId", "order": "ASCENDING" },
+        { "fieldPath": "reportedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "waitTimeReports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "schemaVersion", "order": "ASCENDING" },
+        { "fieldPath": "attractionId", "order": "ASCENDING" },
+        { "fieldPath": "reportedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "queueReportContributions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "attractionKey", "order": "ASCENDING" },
+        { "fieldPath": "reportedAtMs", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "trips",
       "queryScope": "COLLECTION",
       "fields": [

@@ -114,7 +114,7 @@ export default function RecentReports({ attractionId, refreshKey }: RecentReport
           <div className="flex items-center gap-2 min-w-0">
             <StatusIcon status={report.status} />
             <span className="text-xs font-medium text-primary-600 truncate">
-              {report.username}
+              Guest report
             </span>
             <span className="text-xs text-primary-400 shrink-0">
               {formatTimeAgo(report.reportedAt)}

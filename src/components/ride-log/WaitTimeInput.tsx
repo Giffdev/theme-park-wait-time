@@ -1,6 +1,10 @@
 'use client';
 
 import { Ban, XCircle } from 'lucide-react';
+import {
+  MAX_OPERATING_WAIT_MINUTES,
+  MIN_OPERATING_WAIT_MINUTES,
+} from '@/lib/wait-time-contract';
 
 export type WaitTimeMode = 'unknown' | 'manual' | 'no-wait' | 'closed';
 
@@ -11,6 +15,7 @@ interface WaitTimeInputProps {
   /** Current selection mode */
   mode: WaitTimeMode;
   onModeChange: (mode: WaitTimeMode) => void;
+  disabled?: boolean;
 }
 
 /**
@@ -18,7 +23,7 @@ interface WaitTimeInputProps {
  * Default state is "unknown" — empty input, no numeric default.
  * Chips: "No Wait" (0 min walked-on) and "Closed" (attraction was closed).
  */
-export default function WaitTimeInput({ value, onChange, mode, onModeChange }: WaitTimeInputProps) {
+export default function WaitTimeInput({ value, onChange, mode, onModeChange, disabled = false }: WaitTimeInputProps) {
   const handleChipClick = (chipMode: 'no-wait' | 'closed') => {
     if (mode === chipMode) {
       // Toggle off → back to unknown
@@ -49,6 +54,7 @@ export default function WaitTimeInput({ value, onChange, mode, onModeChange }: W
       <div className="mb-2 flex gap-2">
         <button
           type="button"
+          disabled={disabled}
           onClick={() => handleChipClick('no-wait')}
           className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-all ${
             mode === 'no-wait'
@@ -62,6 +68,7 @@ export default function WaitTimeInput({ value, onChange, mode, onModeChange }: W
         </button>
         <button
           type="button"
+          disabled={disabled}
           onClick={() => handleChipClick('closed')}
           className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-all ${
             mode === 'closed'
@@ -80,11 +87,11 @@ export default function WaitTimeInput({ value, onChange, mode, onModeChange }: W
         <div className="relative">
           <input
             type="number"
-            min="0"
-            max="300"
+            min={MIN_OPERATING_WAIT_MINUTES}
+            max={MAX_OPERATING_WAIT_MINUTES}
             value={mode === 'no-wait' ? '0' : value}
             onChange={(e) => handleManualInput(e.target.value)}
-            disabled={mode === 'no-wait'}
+            disabled={disabled || mode === 'no-wait'}
             placeholder="Enter wait (min)"
             className={`w-full rounded-xl border border-primary-200 px-4 py-3 pr-14 text-lg font-medium placeholder:text-primary-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${
               mode === 'no-wait' ? 'bg-green-50 text-green-700' : ''

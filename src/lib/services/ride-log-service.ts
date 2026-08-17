@@ -14,6 +14,12 @@ import { auth, db } from '@/lib/firebase/config';
 import { getActiveTrip, updateTripStats } from '@/lib/services/trip-service';
 import type { RideLog, RideLogCreateData, RideLogUpdateData } from '@/types/ride-log';
 import { doc, runTransaction, type QueryConstraint } from 'firebase/firestore';
+import {
+  isValidReportedWaitTime,
+  isValidRideWaitTime,
+  RIDE_WAIT_TIME_RANGE_MESSAGE,
+  WAIT_TIME_RANGE_MESSAGE,
+} from '@/lib/wait-time-contract';
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -45,23 +51,42 @@ export type RideLogSaveErrorCode =
   | 'write-failed'
   | 'post-write-refresh-failed';
 
+export type RideLogSaveOutcome =
+  | 'definitive-non-commit'
+  | 'ambiguous'
+  | 'committed';
+
 export class RideLogSaveError extends Error {
   readonly code: RideLogSaveErrorCode;
   readonly cause?: unknown;
   readonly savedLogId?: string;
+  readonly outcome: RideLogSaveOutcome;
 
   constructor(
     code: RideLogSaveErrorCode,
     message: string,
     cause?: unknown,
     savedLogId?: string,
+    outcome?: RideLogSaveOutcome,
   ) {
     super(message);
     this.name = 'RideLogSaveError';
     this.code = code;
     this.cause = cause;
     this.savedLogId = savedLogId;
+    this.outcome = outcome ?? (
+      code === 'post-write-refresh-failed'
+        ? 'committed'
+        : code === 'auth-required' || code === 'invalid-data'
+          ? 'definitive-non-commit'
+          : 'ambiguous'
+    );
   }
+}
+
+export function canDiscardRideLogSave(error: unknown): boolean {
+  return error instanceof RideLogSaveError
+    && error.outcome === 'definitive-non-commit';
 }
 
 export interface AddRideLogOptions {
@@ -107,17 +132,35 @@ function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
   message: string,
+  outcome: RideLogSaveOutcome = 'ambiguous',
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      reject(new RideLogSaveError('timeout', message));
+      reject(new RideLogSaveError('timeout', message, undefined, undefined, outcome));
     }, Math.max(1, timeoutMs));
   });
 
   return Promise.race([promise, timeout]).finally(() => {
     if (timer) clearTimeout(timer);
   });
+}
+
+function firestoreErrorCode(error: unknown): string {
+  if (!error || typeof error !== 'object' || !('code' in error)) return '';
+  return typeof error.code === 'string' ? error.code.replace(/^firestore\//, '') : '';
+}
+
+function writeFailureOutcome(error: unknown): RideLogSaveOutcome {
+  return [
+    'permission-denied',
+    'unauthenticated',
+    'invalid-argument',
+    'failed-precondition',
+    'not-found',
+  ].includes(firestoreErrorCode(error))
+    ? 'definitive-non-commit'
+    : 'ambiguous';
 }
 
 function assertAuthenticatedUser(userId: string): void {
@@ -136,11 +179,17 @@ function validateRideLog(userId: string, data: RideLogCreateData, requestId?: st
   if (!(data.rodeAt instanceof Date) || Number.isNaN(data.rodeAt.getTime())) {
     throw new RideLogSaveError('invalid-data', 'Choose a valid ride date and time.');
   }
-  if (
-    data.waitTimeMinutes != null
-    && (!Number.isFinite(data.waitTimeMinutes) || data.waitTimeMinutes < 0)
-  ) {
-    throw new RideLogSaveError('invalid-data', 'Wait time must be zero or greater.');
+  if (!isValidRideWaitTime(data.waitTimeMinutes)) {
+    throw new RideLogSaveError('invalid-data', RIDE_WAIT_TIME_RANGE_MESSAGE);
+  }
+  if (data.attractionClosed != null && typeof data.attractionClosed !== 'boolean') {
+    throw new RideLogSaveError('invalid-data', 'Ride closed status is invalid.');
+  }
+  if (data.attractionClosed && data.waitTimeMinutes !== null) {
+    throw new RideLogSaveError(
+      'invalid-data',
+      'Closed rides must use the closed status instead of a numeric wait.',
+    );
   }
   if (data.rating != null && (!Number.isInteger(data.rating) || data.rating < 1 || data.rating > 5)) {
     throw new RideLogSaveError('invalid-data', 'Rating must be between 1 and 5.');
@@ -334,6 +383,7 @@ async function saveRideLog(
 
   if (options.requestId) {
     const state = getOrCreateRequestState(userId, data, tripId, options.requestId);
+    let failureOutcome: RideLogSaveOutcome = 'ambiguous';
     try {
       let confirmed: ConfirmedRideLogWrite;
       if (state.confirmedWrite) {
@@ -352,12 +402,15 @@ async function saveRideLog(
         if (existing) {
           confirmed = confirmExistingRequestRide(state, existing);
         } else {
+          failureOutcome = 'definitive-non-commit';
           const command = await withTimeout(
             prepareRideLogCommand(state),
             remainingTime(deadline, ACTIVE_TRIP_LOOKUP_TIMEOUT_MS),
             'Saving took too long while checking your active trip. Please retry.',
+            'definitive-non-commit',
           );
           assertAuthenticatedUser(userId);
+          failureOutcome = 'ambiguous';
           confirmed = await withTimeout(
             confirmRequestRideWrite(state, command),
             remainingTime(deadline, timeoutMs),
@@ -381,6 +434,10 @@ async function saveRideLog(
         'write-failed',
         'Firestore rejected the ride save. Check your connection and try again.',
         error,
+        undefined,
+        failureOutcome === 'definitive-non-commit'
+          ? failureOutcome
+          : writeFailureOutcome(error),
       );
     }
   } else {
@@ -393,6 +450,7 @@ async function saveRideLog(
         getActiveTrip(userId),
         remainingTime(deadline, ACTIVE_TRIP_LOOKUP_TIMEOUT_MS),
         'Saving took too long while checking your active trip. Please retry.',
+        'definitive-non-commit',
       );
       resolvedTripId = activeTrip?.id ?? null;
     }
@@ -424,6 +482,8 @@ async function saveRideLog(
         'write-failed',
         'Firestore rejected the ride save. Check your connection and try again.',
         error,
+        undefined,
+        writeFailureOutcome(error),
       );
     }
   }
@@ -446,6 +506,7 @@ async function saveRideLog(
           'Ride saved. The trip summary could not refresh, but retrying will not duplicate this ride.',
           error,
           logId,
+          'committed',
         );
       }
     } else {
@@ -498,6 +559,28 @@ export async function updateRideLog(
   logId: string,
   data: RideLogUpdateData,
 ): Promise<void> {
+  const changesWait = Object.prototype.hasOwnProperty.call(data, 'waitTimeMinutes');
+  const changesClosed = Object.prototype.hasOwnProperty.call(data, 'attractionClosed');
+  if (changesWait !== changesClosed) {
+    throw new RideLogSaveError(
+      'invalid-data',
+      'Update wait time and closed status together.',
+    );
+  }
+  if (changesWait) {
+    if (!isValidRideWaitTime(data.waitTimeMinutes)) {
+      throw new RideLogSaveError('invalid-data', RIDE_WAIT_TIME_RANGE_MESSAGE);
+    }
+    if (typeof data.attractionClosed !== 'boolean') {
+      throw new RideLogSaveError('invalid-data', 'Ride closed status is invalid.');
+    }
+    if (data.attractionClosed && data.waitTimeMinutes !== null) {
+      throw new RideLogSaveError(
+        'invalid-data',
+        'Closed rides must use the closed status instead of a numeric wait.',
+      );
+    }
+  }
   const updateData: Record<string, unknown> = { ...data };
   if (data.rodeAt) {
     updateData.rodeAt = dateToTimestamp(data.rodeAt);
@@ -520,6 +603,9 @@ export async function submitCrowdReport(data: {
   attractionId: string;
   waitTimeMinutes: number;
 }): Promise<void> {
+  if (!data.parkId.trim() || !data.attractionId.trim() || !isValidReportedWaitTime(data.waitTimeMinutes)) {
+    throw new RideLogSaveError('invalid-data', WAIT_TIME_RANGE_MESSAGE);
+  }
   const currentUser = auth.currentUser;
   if (!currentUser) {
     throw new RideLogSaveError('auth-required', 'Sign in to submit a crowd report.');

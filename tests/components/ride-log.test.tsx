@@ -58,6 +58,7 @@ vi.mock('@/lib/services/ride-log-service', () => ({
   getRideLogs: vi.fn(),
   addRideLog: vi.fn(),
   createRideLog: vi.fn(),
+  canDiscardRideLogSave: (error: { outcome?: string }) => error?.outcome === 'definitive-non-commit',
   deleteRideLog: vi.fn(),
 }));
 
@@ -76,7 +77,7 @@ vi.mock('@/lib/firebase/firestore', () => ({
 
 import RideLogList from '@/components/ride-log/RideLogList';
 import RideLogEntry from '@/components/ride-log/RideLogEntry';
-import ManualLogForm from '@/components/ride-log/ManualLogForm';
+import ManualLogForm, { formatDateTimeLocal } from '@/components/ride-log/ManualLogForm';
 
 describe('RideLogList', () => {
   beforeEach(() => {
@@ -216,6 +217,27 @@ describe('RideLogEntry', () => {
 });
 
 describe('ManualLogForm', () => {
+  it.each([
+    ['America/Los_Angeles', 2026, 7, 17, 0, 5, '2026-08-17T00:05'],
+    ['America/New_York', 2026, 7, 17, 23, 55, '2026-08-17T23:55'],
+  ])('formats datetime-local with local components at the %s day boundary', (
+    timezone,
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    expected,
+  ) => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = timezone;
+    try {
+      expect(formatDateTimeLocal(new Date(year, month, day, hour, minute))).toBe(expected);
+    } finally {
+      process.env.TZ = originalTimezone;
+    }
+  });
+
   it('validates required fields on submit', () => {
     const mockOnSuccess = vi.fn();
 

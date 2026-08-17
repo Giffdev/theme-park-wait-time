@@ -82,6 +82,7 @@ describe('ride-log-service', () => {
     attractionName: 'Space Mountain',
     rodeAt: new Date('2026-04-29T12:00:00Z'),
     waitTimeMinutes: 35,
+    attractionClosed: false,
     source: 'timer' as const,
     rating: 4,
     notes: 'Great ride!',
@@ -380,6 +381,9 @@ describe('ride-log-service', () => {
       await rejection;
       expect(mockAddDocument).not.toHaveBeenCalled();
       expect(mockTransactionSet).not.toHaveBeenCalled();
+      await expect(save).rejects.toMatchObject({
+        outcome: 'definitive-non-commit',
+      });
     });
 
     it('fails immediately when authentication is lost', async () => {
@@ -391,11 +395,67 @@ describe('ride-log-service', () => {
       expect(mockAddDocument).not.toHaveBeenCalled();
     });
 
+    it.each([null, 0, 2, 180])('accepts ride wait boundary %s', async (waitTimeMinutes) => {
+      mockAddDocument.mockResolvedValue({ id: 'boundary-log' });
+      await expect(addRideLog(userId, {
+        ...mockRideLogInput,
+        waitTimeMinutes,
+      }, null)).resolves.toBe('boundary-log');
+    });
+
+    it.each([-1, 1, 181, 12.5, Number.NaN])(
+      'rejects invalid ride wait %s before writing',
+      async (waitTimeMinutes) => {
+        await expect(addRideLog(userId, {
+          ...mockRideLogInput,
+          waitTimeMinutes,
+        }, null)).rejects.toMatchObject({
+          code: 'invalid-data',
+          outcome: 'definitive-non-commit',
+        });
+        expect(mockAddDocument).not.toHaveBeenCalled();
+        expect(mockTransactionSet).not.toHaveBeenCalled();
+      },
+    );
+
+    it('preserves closed and unknown null semantics', async () => {
+      mockAddDocument.mockResolvedValue({ id: 'null-log' });
+      await expect(addRideLog(userId, {
+        ...mockRideLogInput,
+        waitTimeMinutes: null,
+        attractionClosed: true,
+      }, null)).resolves.toBe('null-log');
+      await expect(addRideLog(userId, {
+        ...mockRideLogInput,
+        waitTimeMinutes: 20,
+        attractionClosed: true,
+      }, null)).rejects.toMatchObject({ code: 'invalid-data' });
+    });
+
     it('surfaces Firestore write rejection without reporting success', async () => {
-      mockAddDocument.mockRejectedValue(new Error('permission-denied'));
+      mockAddDocument.mockRejectedValue(Object.assign(new Error('permission-denied'), {
+        code: 'permission-denied',
+      }));
 
       await expect(addRideLog(userId, mockRideLogInput)).rejects.toMatchObject({
         code: 'write-failed',
+        outcome: 'definitive-non-commit',
+      });
+    });
+
+    it('classifies an unavailable write as ambiguous and keeps the request identity retryable', async () => {
+      mockRunTransaction.mockRejectedValueOnce(Object.assign(new Error('offline'), {
+        code: 'unavailable',
+      }));
+
+      await expect(addRideLog(
+        userId,
+        mockRideLogInput,
+        null,
+        { requestId: 'ride-request-offline' },
+      )).rejects.toMatchObject({
+        code: 'write-failed',
+        outcome: 'ambiguous',
       });
     });
 
@@ -515,7 +575,11 @@ describe('ride-log-service', () => {
 
     it('exposes typed save errors for callers', () => {
       const error = new RideLogSaveError('timeout', 'Timed out');
-      expect(error).toMatchObject({ name: 'RideLogSaveError', code: 'timeout' });
+      expect(error).toMatchObject({
+        name: 'RideLogSaveError',
+        code: 'timeout',
+        outcome: 'ambiguous',
+      });
     });
   });
 
@@ -610,6 +674,33 @@ describe('ride-log-service', () => {
 
       expect(mockDateToTimestamp).toHaveBeenCalledWith(newDate);
     });
+
+    it.each([null, 0, 2, 180])('accepts update wait boundary %s', async (waitTimeMinutes) => {
+      mockUpdateDocument.mockResolvedValue(undefined);
+      await updateRideLog(userId, 'log-1', {
+        waitTimeMinutes,
+        attractionClosed: waitTimeMinutes === null,
+      });
+      expect(mockUpdateDocument).toHaveBeenCalled();
+    });
+
+    it.each([-1, 1, 181, 12.5, Number.NaN])(
+      'rejects invalid update wait %s before writing',
+      async (waitTimeMinutes) => {
+        await expect(updateRideLog(userId, 'log-1', {
+          waitTimeMinutes,
+          attractionClosed: false,
+        })).rejects.toMatchObject({ code: 'invalid-data' });
+        expect(mockUpdateDocument).not.toHaveBeenCalled();
+      },
+    );
+
+    it('requires wait and closed state to update together', async () => {
+      await expect(updateRideLog(userId, 'log-1', {
+        waitTimeMinutes: 20,
+      })).rejects.toMatchObject({ code: 'invalid-data' });
+      expect(mockUpdateDocument).not.toHaveBeenCalled();
+    });
   });
 
   describe('deleteRideLog', () => {
@@ -645,6 +736,29 @@ describe('ride-log-service', () => {
         }),
       );
     });
+
+    it.each([-1, 0, 2, 180])('accepts report wait boundary %s', async (waitTimeMinutes) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+      await expect(submitCrowdReport({
+        parkId: 'magic-kingdom',
+        attractionId: 'space-mountain',
+        waitTimeMinutes,
+      })).resolves.toBeUndefined();
+    });
+
+    it.each([1, 181, 12.5, Number.NaN])(
+      'rejects report wait boundary %s before fetching',
+      async (waitTimeMinutes) => {
+        const fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
+        await expect(submitCrowdReport({
+          parkId: 'magic-kingdom',
+          attractionId: 'space-mountain',
+          waitTimeMinutes,
+        })).rejects.toMatchObject({ code: 'invalid-data' });
+        expect(fetchMock).not.toHaveBeenCalled();
+      },
+    );
 
     it('rejects an unsuccessful queue-report API response', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));

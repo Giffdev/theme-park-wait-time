@@ -138,7 +138,7 @@ export default function RideLogPage() {
       {/* Manual log form modal */}
       {showForm && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowForm(false)} />
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
           <div className="relative w-full max-w-md animate-slide-up rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl">
             <h2 className="mb-4 text-lg font-bold text-primary-900">Log a Ride</h2>
             <ManualLogForm

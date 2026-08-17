@@ -82,29 +82,14 @@ service cloud.firestore {
       }
     }
 
-    // ── CROWD REPORTS (mixed access) ──
+    // ── LEGACY CROWD REPORTS (server-only compatibility) ──
     match /crowdReports/{reportId} {
-      // Anyone can read public fields (waitMinutes, status, accuracy, reportedAt)
-      // userId field is protected by field-level logic in the app
-      allow read: if true;
-
-      // Only authenticated users can create reports
-      allow create: if request.auth != null
-                    && request.resource.data.userId == request.auth.uid
-                    && request.resource.data.waitMinutes >= -1
-                    && request.resource.data.waitMinutes <= 300;
-
-      // Only the author can update their own report
-      allow update: if request.auth != null
-                    && resource.data.userId == request.auth.uid;
-
-      allow delete: if false;
+      // Historical documents and verification children contain stable account
+      // identifiers. Firestore cannot redact fields, so clients get no access.
+      allow read, write: if false;
 
       match /verifications/{verificationId} {
-        allow read: if true;
-        allow create: if request.auth != null
-                      && request.resource.data.userId == request.auth.uid;
-        allow update, delete: if false;
+        allow read, write: if false;
       }
     }
 
@@ -114,6 +99,63 @@ service cloud.firestore {
       allow create: if request.auth != null; // Authenticated users can create share entries
       allow update, delete: if request.auth != null
                             && resource.data.userId == request.auth.uid; // Only owner can modify/delete
+    }
+
+    // Wait-time reports used by the current park and unified-log UI.
+    match /waitTimeReports/{reportId} {
+      // Legacy documents may contain account identifiers. Only the versioned,
+      // exact anonymous schema is publicly readable.
+      allow read: if resource.data.keys().hasAll([
+                      'schemaVersion',
+                      'attractionId',
+                      'attractionName',
+                      'parkId',
+                      'waitTime',
+                      'reportedAt',
+                      'status'
+                    ])
+                  && resource.data.keys().hasOnly([
+                      'schemaVersion',
+                      'attractionId',
+                      'attractionName',
+                      'parkId',
+                      'waitTime',
+                      'reportedAt',
+                      'status'
+                    ])
+                  && resource.data.get('schemaVersion', 0) == 1
+                  && resource.data.get('attractionId', null) is string
+                  && resource.data.get('attractionName', null) is string
+                  && resource.data.get('parkId', null) is string
+                  && resource.data.get('waitTime', -999) is int
+                  && (
+                    resource.data.get('waitTime', -999) == -1
+                    || resource.data.get('waitTime', -999) == 0
+                    || (
+                      resource.data.get('waitTime', -999) >= 2
+                      && resource.data.get('waitTime', -999) <= 180
+                    )
+                  )
+                  && resource.data.get('reportedAt', null) is timestamp
+                  && resource.data.get('status', null) in ['pending', 'verified', 'disputed'];
+
+      // Reports are validated, anonymized, and idempotently written by the
+      // authenticated /api/queue-report server route (Admin SDK).
+      allow create, update, delete: if false;
+    }
+
+    // Private server-side account abuse budgets. Never exposed to clients.
+    match /queueReportRateLimits/{accountHash} {
+      allow read, write: if false;
+    }
+
+    // Private idempotency receipts and per-account contribution state.
+    match /queueReportRequests/{requestId} {
+      allow read, write: if false;
+    }
+
+    match /queueReportContributions/{contributorHash} {
+      allow read, write: if false;
     }
 
     // ── PARK SCHEDULES (public read, server-only write) ──

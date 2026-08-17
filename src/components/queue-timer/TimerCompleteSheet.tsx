@@ -14,6 +14,10 @@ import {
   RIDE_LOG_SAVE_TIMEOUT_MS,
   submitCrowdReport,
 } from '@/lib/services/ride-log-service';
+import {
+  isValidRideWaitTime,
+  RIDE_WAIT_TIME_RANGE_MESSAGE,
+} from '@/lib/wait-time-contract';
 
 interface TimerCompleteSheetProps {
   elapsedMinutes: number;
@@ -149,6 +153,10 @@ export default function TimerCompleteSheet({
     }
     if (!user) {
       setError('Your session expired. Sign in again before saving this ride.');
+      return;
+    }
+    if (!isValidRideWaitTime(elapsedMinutes)) {
+      setError(RIDE_WAIT_TIME_RANGE_MESSAGE);
       return;
     }
 

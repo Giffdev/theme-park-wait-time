@@ -5,10 +5,22 @@ import { X, Search, Clock, Star, Check, MapPin, ChevronDown, ChevronUp } from 'l
 import Link from 'next/link';
 import { useAuth } from '@/lib/firebase/auth-context';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
-import { addRideLog } from '@/lib/services/ride-log-service';
-import { submitWaitTimeReport } from '@/lib/firebase/waitTimeReports';
-import { getActiveTrip, getTripRideLogs } from '@/lib/services/trip-service';
+import {
+  addRideLog,
+  canDiscardRideLogSave,
+} from '@/lib/services/ride-log-service';
+import {
+  getOrCreateWaitTimeReportCommand,
+  submitWaitTimeReport,
+} from '@/lib/firebase/waitTimeReports';
+import {
+  isValidReportedWaitTime,
+  isValidRideWaitTime,
+  RIDE_WAIT_TIME_RANGE_MESSAGE,
+  WAIT_TIME_RANGE_MESSAGE,
+} from '@/lib/wait-time-contract';
 import { classifyAttraction } from '@/lib/utils/classify-attraction';
+import { toLocalDateKey, useActiveRidePark } from '@/hooks/useActiveRidePark';
 import WaitTimeInput from '@/components/ride-log/WaitTimeInput';
 import type { WaitTimeMode } from '@/components/ride-log/WaitTimeInput';
 import type { AttractionType } from '@/types/attraction';
@@ -41,9 +53,24 @@ const TYPE_FILTERS: { value: string; label: string }[] = [
 ];
 
 const LOGGABLE_ENTITY_TYPES = new Set(['ATTRACTION', 'RIDE', 'SHOW', 'MEET_AND_GREET']);
-
+const RIDE_SAVE_TIMEOUT_MS = 10_000;
 const LAST_PARK_KEY = 'parkpulse-last-park';
 const LEGACY_LAST_PARK_KEY = 'parkflow-last-park';
+
+function createRequestId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `ride-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function isConfirmedPartialSave(error: unknown): error is Error & { savedLogId: string } {
+  return error instanceof Error
+    && 'code' in error
+    && error.code === 'post-write-refresh-failed'
+    && 'savedLogId' in error
+    && typeof error.savedLogId === 'string';
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -93,19 +120,63 @@ export default function UnifiedLogSheet({
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [waitReportSucceeded, setWaitReportSucceeded] = useState(false);
+  const [discardAllowed, setDiscardAllowed] = useState(false);
 
   // Trip association
-  const [activeTripId, setActiveTripId] = useState<string | null>(null);
-  const [activeTripName, setActiveTripName] = useState<string | null>(null);
-  const [tripCheckDone, setTripCheckDone] = useState(false);
   const [standaloneMode, setStandaloneMode] = useState(false);
 
   const searchRef = useRef<HTMLInputElement>(null);
+  const savingRef = useRef(false);
+  const saveRequestIdRef = useRef<string | null>(null);
+  const selectedParkIdRef = useRef('');
+  const {
+    tripId: activeTripId,
+    tripName: activeTripName,
+    recentParkId,
+    setRecentParkId,
+    loading: tripLoading,
+    error: tripLookupError,
+    retry: retryTripLookup,
+  } = useActiveRidePark({
+    enabled: open,
+    userId: user?.uid,
+    dateKey: toLocalDateKey(),
+  });
+  const tripCheckDone = !tripLoading;
+  const resetParkSelection = useCallback((nextParkId: string) => {
+    selectedParkIdRef.current = nextParkId;
+    setSelectedParkId(nextParkId);
+    setSelectedAttraction(null);
+    setSearchQuery('');
+    setTypeFilter('');
+    setAttractions([]);
+    setError(null);
+    setSuccessNotice(null);
+    setWaitReportSucceeded(false);
+    setDiscardAllowed(false);
+    saveRequestIdRef.current = null;
+  }, []);
 
   // Sync expandedByDefault prop
   useEffect(() => {
     if (open) setExpanded(expandedByDefault);
   }, [open, expandedByDefault]);
+
+  // Preserve the existing branding migration without using this global value
+  // as a ride default; ride defaults are scoped to the active trip and day.
+  useEffect(() => {
+    if (!open || typeof window === 'undefined') return;
+    const legacy = localStorage.getItem(LEGACY_LAST_PARK_KEY);
+    if (!legacy || localStorage.getItem(LAST_PARK_KEY)) return;
+    try {
+      localStorage.setItem(LAST_PARK_KEY, legacy);
+      localStorage.removeItem(LEGACY_LAST_PARK_KEY);
+    } catch {
+      // Storage can be unavailable in private browsing.
+    }
+  }, [open]);
 
   // Load parks
   useEffect(() => {
@@ -115,81 +186,38 @@ export default function UnifiedLogSheet({
     });
   }, [open, user]);
 
-  // Resolve initial park
+  // Keep a specific attraction's park; otherwise prefer this trip/day's latest ride.
   useEffect(() => {
-    if (!open) return;
-    if (initialParkId) {
-      setSelectedParkId(initialParkId);
+    if (!open || tripLoading) return;
+    if (initialParkId && initialAttractionId) {
+      if (selectedParkIdRef.current !== initialParkId) resetParkSelection(initialParkId);
       return;
     }
-    let last: string | null = null;
-    if (typeof window !== 'undefined') {
-      last = localStorage.getItem(LAST_PARK_KEY) || localStorage.getItem(LEGACY_LAST_PARK_KEY);
-      if (last && !localStorage.getItem(LAST_PARK_KEY)) {
-        try {
-          localStorage.setItem(LAST_PARK_KEY, last);
-          localStorage.removeItem(LEGACY_LAST_PARK_KEY);
-        } catch {
-          // Preserve the legacy value if storage migration is unavailable.
-        }
-      }
-    }
-    if (last) setSelectedParkId(last);
-  }, [open, initialParkId]);
+    const resolvedParkId = recentParkId ?? initialParkId ?? '';
+    if (selectedParkIdRef.current !== resolvedParkId) resetParkSelection(resolvedParkId);
+  }, [open, initialAttractionId, initialParkId, recentParkId, resetParkSelection, tripLoading]);
 
   // If attraction is pre-selected, jump to form
   useEffect(() => {
-    if (!open || !initialAttractionId || !initialAttractionName) return;
+    if (!open || tripLoading || !initialAttractionId || !initialAttractionName) return;
     setSelectedAttraction({
       id: initialAttractionId,
       name: initialAttractionName,
       effectiveType: 'thrill' as AttractionType,
     });
     setSheetState('form');
-  }, [open, initialAttractionId, initialAttractionName]);
-
-  // Check for active trip and default park from today's logs
-  useEffect(() => {
-    if (!open || !user) return;
-    getActiveTrip(user.uid).then(async (t) => {
-      setActiveTripId(t?.id ?? null);
-      setActiveTripName(t?.name ?? null);
-      setTripCheckDone(true);
-
-      // If no explicit initialParkId, try to default from today's most recent ride log
-      if (!initialParkId && t?.id) {
-        try {
-          const logs = await getTripRideLogs(user.uid, t.id);
-          const todayStr = new Date().toISOString().split('T')[0];
-          const todayLog = logs.find((log) => {
-            const raw = log.rodeAt as unknown;
-            const d = raw instanceof Date
-              ? raw
-              : (raw && typeof (raw as { toDate?: () => Date }).toDate === 'function')
-                ? (raw as { toDate: () => Date }).toDate()
-                : new Date(raw as string | number);
-            return d.toISOString().split('T')[0] === todayStr;
-          });
-          if (todayLog) {
-            setSelectedParkId(todayLog.parkId);
-          }
-        } catch {
-          // Ignore — localStorage fallback already applied
-        }
-      }
-    }).catch(() => { setActiveTripId(null); setActiveTripName(null); setTripCheckDone(true); });
-  }, [open, user, initialParkId]);
+  }, [open, tripLoading, initialAttractionId, initialAttractionName]);
 
   // Load attractions when park changes
   useEffect(() => {
     if (!selectedParkId) { setAttractions([]); return; }
-    if (typeof window !== 'undefined') localStorage.setItem(LAST_PARK_KEY, selectedParkId);
-
+    let cancelled = false;
+    setAttractions([]);
     getCollection<{ name: string; entityType?: string; attractionType?: AttractionType | null }>(
       'attractions',
       [whereConstraint('parkId', '==', selectedParkId)]
     ).then((docs) => {
-      setAttractions(
+      if (!cancelled) setAttractions(
         docs
           .filter((d) => LOGGABLE_ENTITY_TYPES.has(d.entityType ?? ''))
           .map((d) => ({
@@ -202,7 +230,14 @@ export default function UnifiedLogSheet({
           .sort((a, b) => a.name.localeCompare(b.name))
       );
     });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedParkId]);
+
+  const handleParkChange = (nextParkId: string) => {
+    resetParkSelection(nextParkId);
+  };
 
   // Filtered attractions
   const filteredAttractions = useMemo(() => {
@@ -216,6 +251,7 @@ export default function UnifiedLogSheet({
     }
     return result;
   }, [attractions, typeFilter, searchQuery]);
+  const commandFrozen = saveRequestIdRef.current !== null;
 
   // Handle attraction selection
   const handleSelectAttraction = (attraction: AttractionOption) => {
@@ -227,16 +263,24 @@ export default function UnifiedLogSheet({
   const getReportWaitTime = useCallback((): number => {
     if (waitTimeMode === 'closed') return -1;
     if (waitTimeMode === 'no-wait') return 0;
-    const parsed = parseInt(waitTime, 10);
+    const parsed = Number(waitTime);
     return isNaN(parsed) ? -2 : parsed; // -2 sentinel for "unknown/not provided"
   }, [waitTime, waitTimeMode]);
 
   // Handle submission — ALWAYS reports wait time; optionally logs ride
   const handleSubmit = async () => {
     if (!user || !selectedAttraction || !selectedParkId) return;
+    if (savingRef.current) return;
     setError(null);
+    setSuccessNotice(null);
+    setWaitReportSucceeded(false);
+    setDiscardAllowed(false);
 
     const reportWait = getReportWaitTime();
+    if (expanded && (tripLoading || tripLookupError)) {
+      setError(tripLookupError ?? 'Still checking for an active trip. Please wait.');
+      return;
+    }
 
     // Validate: we need a valid wait time (not unknown) for "report only" fast path
     if (!expanded && reportWait === -2) {
@@ -244,50 +288,84 @@ export default function UnifiedLogSheet({
       return;
     }
 
-    // In fast-path, validate range
-    if (!expanded && reportWait !== -1 && (reportWait < 0 || reportWait > 300)) {
-      setError('Wait time must be between 0 and 300 minutes.');
+    if (reportWait !== -2 && !isValidReportedWaitTime(reportWait)) {
+      setError(WAIT_TIME_RANGE_MESSAGE);
+      return;
+    }
+    const rideWaitTime = waitTimeMode === 'closed'
+      ? null
+      : waitTime
+        ? Number(waitTime)
+        : null;
+    if (expanded && !isValidRideWaitTime(rideWaitTime)) {
+      setError(RIDE_WAIT_TIME_RANGE_MESSAGE);
       return;
     }
 
+    savingRef.current = true;
     setSaving(true);
     try {
       const parkName = parks.find((p) => p.id === selectedParkId)?.name || '';
 
-      // Always submit wait time report (if user provided one)
-      if (reportWait !== -2) {
-        await submitWaitTimeReport({
-          attractionId: selectedAttraction.id,
-          attractionName: selectedAttraction.name,
-          parkId: selectedParkId,
-          userId: user.uid,
-          username: user.displayName || user.email || 'Anonymous',
-          waitTime: reportWait,
-        });
-        onWaitTimeReported?.(reportWait);
+      if (expanded) {
+        saveRequestIdRef.current ??= createRequestId();
+        try {
+          await addRideLog(user.uid, {
+            parkId: selectedParkId,
+            attractionId: selectedAttraction.id,
+            parkName,
+            attractionName: selectedAttraction.name,
+            rodeAt: new Date(),
+            waitTimeMinutes: rideWaitTime,
+            attractionClosed: waitTimeMode === 'closed',
+            source: 'manual',
+            rating: rating || null,
+            notes,
+          }, tripLoading ? undefined : activeTripId, {
+            requestId: saveRequestIdRef.current,
+            timeoutMs: RIDE_SAVE_TIMEOUT_MS,
+            waitForTripStats: true,
+          });
+        } catch (saveError) {
+          if (
+            !isConfirmedPartialSave(saveError)
+          ) {
+            setDiscardAllowed(canDiscardRideLogSave(saveError));
+            throw saveError;
+          }
+          setSuccessNotice(saveError.message);
+        }
+        setRecentParkId(selectedParkId);
       }
 
-      // If expanded (ride log mode), also log the ride
-      if (expanded) {
-        await addRideLog(user.uid, {
-          parkId: selectedParkId,
-          attractionId: selectedAttraction.id,
-          parkName,
-          attractionName: selectedAttraction.name,
-          rodeAt: new Date(),
-          waitTimeMinutes: waitTimeMode === 'closed' ? null : (waitTime ? Number(waitTime) : null),
-          attractionClosed: waitTimeMode === 'closed',
-          source: 'manual',
-          rating: rating || null,
-          notes,
-        }, activeTripId);
+      if (reportWait !== -2) {
+        try {
+          const reportCommand = getOrCreateWaitTimeReportCommand({
+            accountId: user.uid,
+            attractionId: selectedAttraction.id,
+            attractionName: selectedAttraction.name,
+            parkId: selectedParkId,
+            waitTime: reportWait,
+          });
+          await submitWaitTimeReport(reportCommand);
+          setWaitReportSucceeded(true);
+          onWaitTimeReported?.(reportWait);
+        } catch (reportError) {
+          if (!expanded) throw reportError;
+          setSuccessNotice('Ride saved. The community wait-time report could not be sent.');
+        }
       }
 
       setSheetState('success');
     } catch (err) {
       console.error('Submission failed:', err);
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Something went wrong. Please try again.',
+      );
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -301,12 +379,17 @@ export default function UnifiedLogSheet({
     setNotes('');
     setSearchQuery('');
     setError(null);
+    setSuccessNotice(null);
+    setWaitReportSucceeded(false);
+    setDiscardAllowed(false);
+    saveRequestIdRef.current = null;
     setExpanded(expandedByDefault);
     setSheetState('select');
   };
 
   // Full reset on close
   const handleClose = () => {
+    if (savingRef.current || (sheetState === 'form' && saveRequestIdRef.current)) return;
     setSheetState('select');
     setSelectedAttraction(null);
     setWaitTime('');
@@ -317,9 +400,28 @@ export default function UnifiedLogSheet({
     setTypeFilter('');
     setExpanded(expandedByDefault);
     setStandaloneMode(false);
-    setTripCheckDone(false);
     setError(null);
+    setSuccessNotice(null);
+    setWaitReportSucceeded(false);
+    setDiscardAllowed(false);
+    saveRequestIdRef.current = null;
     onClose();
+  };
+
+  const handleDiscardFailedSave = () => {
+    saveRequestIdRef.current = null;
+    setError(null);
+    setSuccessNotice(null);
+    setWaitReportSucceeded(false);
+    setDiscardAllowed(false);
+    setSelectedAttraction(null);
+    setWaitTime('');
+    setWaitTimeMode('unknown');
+    setRating(0);
+    setNotes('');
+    setSearchQuery('');
+    setTypeFilter('');
+    setSheetState('select');
   };
 
   if (!open) return null;
@@ -328,7 +430,10 @@ export default function UnifiedLogSheet({
   if (!user) {
     return (
       <>
-        <div className="fixed inset-0 z-[60] bg-black/40" onClick={handleClose} />
+        <div
+          className="fixed inset-0 z-[60] bg-black/40"
+          onClick={handleClose}
+        />
         <div className="fixed inset-x-0 bottom-0 z-[70] rounded-t-2xl bg-white shadow-2xl pb-[env(safe-area-inset-bottom)]">
           <div className="px-4 pt-6 pb-8 text-center">
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-primary-200" />
@@ -348,7 +453,10 @@ export default function UnifiedLogSheet({
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-[60] bg-black/40" onClick={handleClose} />
+      <div
+        className="fixed inset-0 z-[60] bg-black/40"
+        onClick={saving || (sheetState === 'form' && commandFrozen) ? undefined : handleClose}
+      />
 
       {/* Sheet */}
       <div className="fixed inset-x-0 bottom-0 z-[70] max-h-[90vh] overflow-y-auto rounded-t-2xl bg-white shadow-2xl transition-transform duration-300 pb-[env(safe-area-inset-bottom)]">
@@ -359,7 +467,11 @@ export default function UnifiedLogSheet({
             <h2 className="text-lg font-semibold text-primary-900">
               {expanded ? 'Report & Log Ride' : 'Report Wait Time'}
             </h2>
-            <button onClick={handleClose} className="rounded-full p-2 text-primary-400 hover:bg-primary-50 hover:text-primary-600">
+            <button
+              onClick={handleClose}
+              disabled={saving || (sheetState === 'form' && commandFrozen)}
+              className="rounded-full p-2 text-primary-400 hover:bg-primary-50 hover:text-primary-600 disabled:opacity-40"
+            >
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -369,11 +481,28 @@ export default function UnifiedLogSheet({
           {/* ─── SELECT STATE ─── */}
           {sheetState === 'select' && (
             <>
+              {tripLookupError && expanded && (
+                <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+                  <p className="text-xs font-medium text-amber-800">{tripLookupError}</p>
+                  <button
+                    type="button"
+                    onClick={retryTripLookup}
+                    className="mt-2 rounded-md bg-amber-700 px-2 py-1.5 text-xs font-semibold text-white"
+                  >
+                    Retry trip check
+                  </button>
+                </div>
+              )}
               {/* Park selector */}
               <div className="mb-4">
+                <label htmlFor="active-park-select" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-primary-500">
+                  Logging at
+                </label>
                 <select
+                  id="active-park-select"
                   value={selectedParkId}
-                  onChange={(e) => setSelectedParkId(e.target.value)}
+                  onChange={(e) => handleParkChange(e.target.value)}
+                  disabled={tripLoading}
                   className="w-full rounded-lg border border-primary-200 px-3 py-2.5 text-sm text-primary-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 >
                   <option value="">Select a park...</option>
@@ -393,6 +522,7 @@ export default function UnifiedLogSheet({
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
+                      disabled={tripLoading}
                       placeholder="Search attractions..."
                       className="w-full rounded-lg border border-primary-200 py-2.5 pl-9 pr-3 text-sm placeholder:text-primary-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                     />
@@ -424,6 +554,7 @@ export default function UnifiedLogSheet({
                       <button
                         key={a.id}
                         onClick={() => handleSelectAttraction(a)}
+                        disabled={tripLoading}
                         className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm text-primary-800 hover:bg-primary-50 active:bg-primary-100 transition-colors"
                       >
                         <span className="font-medium">{a.name}</span>
@@ -451,12 +582,14 @@ export default function UnifiedLogSheet({
                 onChange={setWaitTime}
                 mode={waitTimeMode}
                 onModeChange={setWaitTimeMode}
+                disabled={commandFrozen}
               />
 
               {/* ─── Expand toggle: "I rode this" ─── */}
               <button
                 type="button"
                 onClick={() => setExpanded(!expanded)}
+                disabled={commandFrozen}
                 className={`w-full flex items-center justify-between rounded-lg border px-4 py-3 text-sm font-medium transition-all ${
                   expanded
                     ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
@@ -478,8 +611,21 @@ export default function UnifiedLogSheet({
                     </div>
                   )}
 
+                  {tripLookupError && (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+                      <p className="text-xs font-medium text-amber-800">{tripLookupError}</p>
+                      <button
+                        type="button"
+                        onClick={retryTripLookup}
+                        className="mt-2 rounded-md bg-amber-700 px-2 py-1.5 text-xs font-semibold text-white"
+                      >
+                        Retry trip check
+                      </button>
+                    </div>
+                  )}
+
                   {/* No active trip prompt (inline) */}
-                  {tripCheckDone && !activeTripId && !standaloneMode && (
+                  {tripCheckDone && !tripLookupError && !activeTripId && !standaloneMode && (
                     <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
                       <div className="flex items-center gap-2 mb-1">
                         <MapPin className="h-3.5 w-3.5 text-amber-600" />
@@ -503,7 +649,7 @@ export default function UnifiedLogSheet({
                   )}
 
                   {/* Standalone mode indicator — allows user to switch back */}
-                  {tripCheckDone && !activeTripId && standaloneMode && (
+                  {tripCheckDone && !tripLookupError && !activeTripId && standaloneMode && (
                     <div className="flex items-center justify-between rounded-lg bg-primary-50 border border-primary-100 px-3 py-2">
                       <span className="text-xs text-primary-600">📍 Logging as standalone ride</span>
                       <button
@@ -525,6 +671,7 @@ export default function UnifiedLogSheet({
                           key={n}
                           type="button"
                           onClick={() => setRating(rating === n ? 0 : n)}
+                          disabled={commandFrozen}
                           className="p-1 transition-transform active:scale-110"
                         >
                           <Star
@@ -541,6 +688,7 @@ export default function UnifiedLogSheet({
                     <textarea
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
+                      disabled={commandFrozen}
                       rows={2}
                       placeholder="How was the ride?"
                       className="w-full rounded-lg border border-primary-200 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 resize-none"
@@ -559,6 +707,7 @@ export default function UnifiedLogSheet({
                 {!initialAttractionId && (
                   <button
                     onClick={() => { setSheetState('select'); setSelectedAttraction(null); setError(null); }}
+                    disabled={commandFrozen}
                     className="flex-1 rounded-lg border border-primary-200 px-4 py-3 text-sm font-medium text-primary-700 hover:bg-primary-50"
                   >
                     Back
@@ -571,11 +720,22 @@ export default function UnifiedLogSheet({
                 >
                   {saving
                     ? 'Saving...'
+                    : commandFrozen
+                      ? 'Retry Save'
                     : expanded
                       ? 'Submit & Log Ride ✓'
                       : 'Submit Wait Time ✓'}
                 </button>
               </div>
+              {commandFrozen && error && discardAllowed && (
+                <button
+                  type="button"
+                  onClick={handleDiscardFailedSave}
+                  className="w-full rounded-lg border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
+                >
+                  Discard failed save & start over
+                </button>
+              )}
 
               <p className="text-xs text-center text-primary-400">
                 {expanded
@@ -592,11 +752,20 @@ export default function UnifiedLogSheet({
                 <Check className="h-8 w-8 text-green-600" />
               </div>
               <p className="mt-4 text-lg font-semibold text-primary-900">
-                {expanded ? 'Ride Logged & Wait Reported!' : 'Wait Time Reported!'}
+                {expanded
+                  ? waitReportSucceeded
+                    ? 'Ride Logged & Wait Reported!'
+                    : 'Ride Logged!'
+                  : 'Wait Time Reported!'}
               </p>
               <p className="text-sm text-primary-500 mt-1">{selectedAttraction?.name}</p>
               {expanded && activeTripId && activeTripName && (
                 <p className="text-xs text-green-600 mt-2 font-medium">✓ Added to trip: {activeTripName}</p>
+              )}
+              {successNotice && (
+                <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-center text-xs text-amber-800">
+                  {successNotice}
+                </p>
               )}
 
               <div className="mt-6 flex gap-3 w-full">
@@ -604,7 +773,9 @@ export default function UnifiedLogSheet({
                   onClick={handleLogAnother}
                   className="flex-1 rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
                 >
-                  Report Another
+                  {expanded
+                    ? `Log another${parks.find((p) => p.id === selectedParkId)?.name ? ` at ${parks.find((p) => p.id === selectedParkId)?.name}` : ''}`
+                    : 'Report Another'}
                 </button>
                 <button
                   onClick={handleClose}
