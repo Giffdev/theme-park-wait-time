@@ -939,15 +939,26 @@ Trip creation ambiguity is reconciled automatically. After the UI deadline or
 on reload, the client uses authenticated
 `GET /api/trip-commands?requestId=<stable-id>` to read only the caller-owned
 command and target documents. The endpoint returns `committed`, `not-found`, or
-the structural states `target-only`, `command-only`, and `payload-conflict`;
-Firestore read failures return retryable `pending`. `not-found` causes a replay
+the structural states `target-only`, `command-only`, and `payload-conflict`.
+`not-found` is returned only after a successful Firestore `getAll` that finds
+both documents absent; any read error, including `RESOURCE_EXHAUSTED` (code 8),
+returns retryable `pending` (HTTP 503) and preserves the frozen command — the
+client never interprets a read failure as absence. `not-found` causes a replay
 of the original payload with the same request ID, never a new command.
-Structural states are unsafe rather than definitive rejection: the browser
-retains the frozen command, blocks a new request ID, and directs the user to
-retry confirmation or contact support. Cached-token stalls and HTTP 401
-responses trigger a bounded forced token refresh. The server logs only a
-truncated SHA-256 request hash plus authentication, parsing, Firestore, and
-total timings—never payloads or user identifiers.
+An `ALREADY_EXISTS` error from a re-POST is classified by reading both the
+command and trip documents; both must exist and carry a matching fingerprint and
+targetId before the outcome is `'replayed'`. Any classification read failure,
+including `RESOURCE_EXHAUSTED`, surfaces as `SaveCommandAmbiguousError` — never
+a silent optimistic replay. Structural states (`target-only`, `command-only`,
+`payload-conflict`) and share-ID collisions are conflicts: the browser retains
+the frozen command, blocks a new request ID, and directs the user to retry
+confirmation or contact support. Cached-token stalls and HTTP 401 responses
+trigger a bounded forced token refresh. The server logs only a truncated
+SHA-256 request hash plus authentication, parsing, Firestore write, and total
+timings — never payloads or user identifiers. `batch.commit` is additionally
+instrumented with structured attempt/success/failure events (including
+normalized error code and duration) so production logs can confirm whether
+commits land even after a client abort.
 
 All four production ride writers (unified sheet, manual form, timer completion,
 and trip ride page) use the same complete-command service. The stored command

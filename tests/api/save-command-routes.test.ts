@@ -272,4 +272,62 @@ describe('authenticated save command routes', () => {
       'a'.repeat(64),
     );
   });
+
+  // -------------------------------------------------------------------------
+  // R5: POST ride → 200 created
+  // -------------------------------------------------------------------------
+
+  it('R5: POST ride created → 200 with result created', async () => {
+    mockSaveRide.mockResolvedValue({ result: 'created', tripId: null, statsUpdated: true });
+    const response = await saveRide(request('/api/ride-logs', validRide));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ result: 'created' });
+  });
+
+  // -------------------------------------------------------------------------
+  // R6: POST ride/trip ambiguous → 503 retryable
+  // -------------------------------------------------------------------------
+
+  it('R6: POST ride SaveCommandAmbiguousError → 503 retryable', async () => {
+    const { SaveCommandAmbiguousError: SAE } = await import('@/lib/services/save-command-service');
+    mockSaveRide.mockRejectedValue(new SAE('ambiguous'));
+    const response = await saveRide(request('/api/ride-logs', validRide));
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ outcome: 'ambiguous', retryable: true });
+  });
+
+  it('R6b: POST trip SaveCommandAmbiguousError → 503 retryable', async () => {
+    const { SaveCommandAmbiguousError: SAE } = await import('@/lib/services/save-command-service');
+    mockSaveTrip.mockRejectedValue(new SAE('ambiguous'));
+    const response = await saveTrip(request('/api/trip-commands', validTrip));
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ outcome: 'ambiguous', retryable: true });
+  });
+
+  // -------------------------------------------------------------------------
+  // R7: POST ride conflict → 409
+  // -------------------------------------------------------------------------
+
+  it('R7: POST ride SaveCommandConflictError → 409', async () => {
+    mockSaveRide.mockRejectedValue(new SaveCommandConflictError('conflict'));
+    const response = await saveRide(request('/api/ride-logs', validRide));
+    expect(response.status).toBe(409);
+  });
+
+  // -------------------------------------------------------------------------
+  // R8: quota cycle at route level — status 503 pending does not fabricate
+  //     replay behavior; GET RESOURCE_EXHAUSTED never returns 'not-found'
+  // -------------------------------------------------------------------------
+
+  it('R8: GET RESOURCE_EXHAUSTED → 503 pending (not not-found, not replayed)', async () => {
+    mockGetTripStatus.mockRejectedValue(Object.assign(new Error('quota'), { code: 8 }));
+    const response = await getTripStatus(statusRequest());
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.status).toBe('pending');
+    expect(body.retryable).toBe(true);
+    // Must not expose 'not-found' or any replay classification under quota
+    expect(body.status).not.toBe('not-found');
+    expect(body.status).not.toBe('committed');
+  });
 });

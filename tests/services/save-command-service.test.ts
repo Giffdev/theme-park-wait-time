@@ -480,4 +480,84 @@ describe('durable save commands', () => {
       nanoseconds: 900_900,
     });
   });
+
+  // -------------------------------------------------------------------------
+  // T4: one-doc-only structural states → conflict, never replayed
+  // -------------------------------------------------------------------------
+
+  it('T4: trip-only or command-only structural state on ALREADY_EXISTS → conflict', async () => {
+    // command-only: commandRef exists, tripRef absent
+    documents.set('users/user-123/tripCreateCommands/trip-request-durable', {
+      targetId: 'trip-request-durable',
+      fingerprint: await tripCommandFingerprint(tripCommand),
+    });
+    await expect(saveTripCommand('user-123', tripCommand))
+      .rejects.toBeInstanceOf(SaveCommandConflictError);
+    documents.clear();
+
+    // target-only: tripRef exists, commandRef absent
+    documents.set('users/user-123/trips/trip-request-durable', { name: 'August Trip' });
+    await expect(saveTripCommand('user-123', tripCommand))
+      .rejects.toBeInstanceOf(SaveCommandConflictError);
+  });
+
+  // -------------------------------------------------------------------------
+  // T5: ALREADY_EXISTS + RESOURCE_EXHAUSTED classification → ambiguous
+  // -------------------------------------------------------------------------
+
+  it('T5: trip ALREADY_EXISTS + RESOURCE_EXHAUSTED classification reads → SaveCommandAmbiguousError, not replayed', async () => {
+    await expect(saveTripCommand('user-123', tripCommand)).resolves.toBe('created');
+    const readsBefore = firestoreControl.readAttempts;
+    firestoreControl.exhaustReads = true;
+    // batch.commit() detects stored docs → throws ALREADY_EXISTS (code 6).
+    // Classification reads (doc.get() × 2) are then attempted and hit
+    // RESOURCE_EXHAUSTED. Frozen contract: must throw SaveCommandAmbiguousError.
+    await expect(saveTripCommand('user-123', tripCommand))
+      .rejects.toBeInstanceOf(SaveCommandAmbiguousError);
+    // Both commits were attempted.
+    expect(firestoreControl.batchCommits).toBe(2);
+    // Classification reads WERE attempted — at least the two commandRef/tripRef
+    // doc.get() calls — proving this is the ALREADY_EXISTS→classification branch,
+    // not a short-circuit before reads.
+    expect(firestoreControl.readAttempts).toBeGreaterThan(readsBefore);
+  });
+
+  // -------------------------------------------------------------------------
+  // T6: generic (non-RESOURCE_EXHAUSTED) classification failure → ambiguous
+  // -------------------------------------------------------------------------
+
+  it('T6: generic classification failure on trips → SaveCommandAmbiguousError', async () => {
+    await saveTripCommand('user-123', tripCommand);
+    // docs are stored, so batch.commit() → ALREADY_EXISTS naturally.
+    // Override doc.get() to throw a generic (non-quota) error so classification fails.
+    const originalDoc = mockAdminDb.doc.bind(mockAdminDb);
+    const spy = vi.spyOn(mockAdminDb, 'doc').mockImplementation((path: string) => {
+      const real = originalDoc(path);
+      return { ...real, get: async () => { throw new Error('network error'); } };
+    });
+    try {
+      await expect(saveTripCommand('user-123', tripCommand))
+        .rejects.toBeInstanceOf(SaveCommandAmbiguousError);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // T8: global sharedTrips shareId collision → conflict, never replayed
+  // -------------------------------------------------------------------------
+
+  it('T8: sharedTrips shareId collision with user trip/command absent → conflict, not replayed', async () => {
+    // Pre-seed only the global sharedTrips doc — no user trip or command.
+    documents.set('sharedTrips/share-abc123', { userId: 'other-user', tripId: 'other-trip' });
+    const commandWithShare = { ...tripCommand, shareId: 'share-abc123' };
+    // batch.create() on the sharedTrips ref throws ALREADY_EXISTS;
+    // but neither user tripRef nor commandRef exists → structural conflict.
+    await expect(saveTripCommand('user-123', commandWithShare))
+      .rejects.toBeInstanceOf(SaveCommandConflictError);
+    // No user trip or command was written.
+    expect(documents.has('users/user-123/trips/trip-request-durable')).toBe(false);
+    expect(documents.has('users/user-123/tripCreateCommands/trip-request-durable')).toBe(false);
+  });
+
 });

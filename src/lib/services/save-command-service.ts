@@ -109,6 +109,7 @@ function isAlreadyExists(error: unknown): boolean {
     || (typeof value.message === 'string' && /\balready exists\b/i.test(value.message));
 }
 
+
 function normalizedRidePayload(command: RideSaveCommand) {
   return {
     parkId: command.parkId,
@@ -333,16 +334,48 @@ export async function saveTripCommand(
     });
   }
 
+  const commitHash = createHash('sha256')
+    .update(command.requestId)
+    .digest('hex')
+    .slice(0, 12);
+  const commitStartedAt = performance.now();
+  console.info('[saveTripCommand]', JSON.stringify({
+    event: 'batch.commit.attempt',
+    requestHash: commitHash,
+  }));
   try {
     await batch.commit();
+    console.info('[saveTripCommand]', JSON.stringify({
+      event: 'batch.commit.success',
+      outcome: 'created',
+      requestHash: commitHash,
+      durationMs: Math.round(performance.now() - commitStartedAt),
+    }));
     return 'created';
   } catch (writeError) {
+    const errorCode = writeError && typeof writeError === 'object' && 'code' in writeError
+      ? String((writeError as { code: unknown }).code)
+      : writeError instanceof Error ? writeError.name : 'unknown';
     if (!isAlreadyExists(writeError)) {
+      console.info('[saveTripCommand]', JSON.stringify({
+        event: 'batch.commit.failure',
+        outcome: 'ambiguous',
+        errorCode,
+        requestHash: commitHash,
+        durationMs: Math.round(performance.now() - commitStartedAt),
+      }));
       throw new SaveCommandAmbiguousError(
         'The trip creation was not confirmed. Retry with the same request ID.',
         writeError,
       );
     }
+    console.info('[saveTripCommand]', JSON.stringify({
+      event: 'batch.commit.failure',
+      outcome: 'already-exists',
+      errorCode,
+      requestHash: commitHash,
+      durationMs: Math.round(performance.now() - commitStartedAt),
+    }));
     try {
       const [commandSnapshot, tripSnapshot] = await Promise.all([
         commandRef.get(),
