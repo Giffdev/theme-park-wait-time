@@ -28,6 +28,9 @@ import {
   query,
   where,
   orderBy,
+  runTransaction,
+  serverTimestamp,
+  increment,
 } from 'firebase/firestore';
 
 let testEnv: RulesTestEnvironment;
@@ -311,6 +314,25 @@ describe('User trips and ride logs', () => {
     await expect(getDoc(ref)).resolves.toBeDefined();
   });
 
+  it('denies legacy client derived stats and generation writes while allowing normal trip updates', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const ref = doc(ctx.firestore(), tripPath);
+
+    await expect(updateDoc(ref, { status: 'completed' })).resolves.toBeUndefined();
+    await expect(updateDoc(ref, {
+      stats: {
+        totalRides: 99,
+        totalWaitMinutes: 999,
+        parksVisited: 9,
+        uniqueAttractions: 9,
+        favoriteAttraction: 'Injected',
+      },
+    })).rejects.toThrow();
+    await expect(updateDoc(ref, {
+      statsGeneration: { seconds: 999, nanoseconds: 0 },
+    })).rejects.toThrow();
+  });
+
   it('denies other user from reading trips', async () => {
     const ctx = authenticatedContext(testEnv, 'other-user');
     const ref = doc(ctx.firestore(), tripPath);
@@ -327,6 +349,272 @@ describe('User trips and ride logs', () => {
     const ctx = authenticatedContext(testEnv, userId);
     const ref = doc(ctx.firestore(), `users/${userId}/trips/trip-1/rideLogs/log-new`);
     await expect(setDoc(ref, rideLogData)).resolves.toBeUndefined();
+  });
+
+  it('allows the production retry-safe trip transaction payload', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const ref = doc(ctx.firestore(), `users/${userId}/trips/trip-request-1234`);
+
+    await expect(runTransaction(ctx.firestore(), async (transaction) => {
+      const existing = await transaction.get(ref);
+      if (existing.exists()) return;
+      transaction.set(ref, {
+        name: 'Summer Trip',
+        startDate: '2026-08-17',
+        endDate: '2026-08-17',
+        parkIds: [],
+        parkNames: {},
+        status: 'active',
+        shareId: null,
+        stats: {
+          totalRides: 0,
+          totalWaitMinutes: 0,
+          parksVisited: 0,
+          uniqueAttractions: 0,
+          favoriteAttraction: null,
+        },
+        notes: '',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    })).resolves.toBeUndefined();
+  });
+
+  it('rejects client trip creates with forged stats or a stats generation', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const forgedStatsRef = doc(ctx.firestore(), `users/${userId}/trips/forged-stats`);
+    const futureGenerationRef = doc(ctx.firestore(), `users/${userId}/trips/future-generation`);
+    const validTrip = {
+      name: 'Summer Trip',
+      startDate: '2026-08-17',
+      endDate: '2026-08-17',
+      parkIds: [],
+      parkNames: {},
+      status: 'active',
+      shareId: null,
+      stats: {
+        totalRides: 0,
+        totalWaitMinutes: 0,
+        parksVisited: 0,
+        uniqueAttractions: 0,
+        favoriteAttraction: null,
+      },
+      notes: '',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    await expect(setDoc(forgedStatsRef, {
+      ...validTrip,
+      stats: { ...validTrip.stats, totalRides: 99 },
+    })).rejects.toThrow();
+    await expect(setDoc(futureGenerationRef, {
+      ...validTrip,
+      statsGeneration: { seconds: 9_999_999_999, nanoseconds: 0 },
+    })).rejects.toThrow();
+  });
+
+  function stableRideLogData(requestId: string) {
+    const commandTime = new Date('2026-08-17T21:00:00Z');
+    return {
+      parkId: 'magic-kingdom',
+      attractionId: 'space-mountain',
+      parkName: 'Magic Kingdom',
+      attractionName: 'Space Mountain',
+      rodeAt: commandTime,
+      waitTimeMinutes: 25,
+      attractionClosed: false,
+      source: 'manual',
+      rating: 5,
+      notes: '',
+      tripId: 'trip-request-1234',
+      clientRequestId: requestId,
+      revision: 0,
+      createdAt: commandTime,
+      updatedAt: commandTime,
+    };
+  }
+
+  function currentProductionRideLogData(requestId: string) {
+    const { revision: _revision, ...currentProduction } = stableRideLogData(requestId);
+    return currentProduction;
+  }
+
+  it('allows an exact write-first replay without a transaction read', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const requestId = 'ride-request-1234';
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/${requestId}`);
+    const payload = stableRideLogData(requestId);
+
+    await expect(setDoc(ref, payload)).resolves.toBeUndefined();
+    await expect(setDoc(ref, payload)).resolves.toBeUndefined();
+  });
+
+  it('allows the strictly validated legacy create shape during rollout', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/legacy-open-bundle`);
+    const { clientRequestId: _requestId, revision: _revision, ...legacy } =
+      stableRideLogData('legacy-open-bundle');
+
+    await expect(setDoc(ref, legacy)).resolves.toBeUndefined();
+  });
+
+  it('allows the exact currently deployed clientRequestId-without-revision create', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const requestId = 'current-production-shape';
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/${requestId}`);
+
+    await expect(setDoc(ref, currentProductionRideLogData(requestId))).resolves.toBeUndefined();
+  });
+
+  it('supports current-production to old-client to revisioned-client edit chains', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const requestId = 'current-prod-edit-chain';
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/${requestId}`);
+    await setDoc(ref, currentProductionRideLogData(requestId));
+
+    await expect(updateDoc(ref, {
+      notes: 'current production edit',
+      updatedAt: serverTimestamp(),
+    })).resolves.toBeUndefined();
+    await expect(updateDoc(ref, {
+      notes: 'revision-aware edit',
+      revision: increment(1),
+      updatedAt: serverTimestamp(),
+    })).resolves.toBeUndefined();
+    await expect(updateDoc(ref, {
+      notes: 'old client after revision',
+      updatedAt: serverTimestamp(),
+    })).resolves.toBeUndefined();
+
+    const result = await getDoc(ref);
+    expect(result.data()?.clientRequestId).toBe(requestId);
+    expect(result.data()?.revision).toBe(1);
+  });
+
+  it('keeps current-production clientRequestId immutable during edits', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const requestId = 'current-prod-immutable-id';
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/${requestId}`);
+    await setDoc(ref, currentProductionRideLogData(requestId));
+
+    await expect(updateDoc(ref, {
+      clientRequestId: 'different-request-id',
+      notes: 'attempted reassignment',
+      updatedAt: serverTimestamp(),
+    })).rejects.toThrow();
+  });
+
+  it('does not let legacy compatibility accept extra fields', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/legacy-extra-field`);
+    const { clientRequestId: _requestId, revision: _revision, ...legacy } =
+      stableRideLogData('legacy-extra-field');
+
+    await expect(setDoc(ref, { ...legacy, unexpected: true })).rejects.toThrow();
+  });
+
+  it('denies a conflicting replay under the same ride request ID', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const requestId = 'ride-request-conflict';
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/${requestId}`);
+
+    await setDoc(ref, stableRideLogData(requestId));
+    await expect(setDoc(ref, {
+      ...stableRideLogData(requestId),
+      notes: 'different payload',
+    })).rejects.toThrow();
+  });
+
+  it('allows a revisioned user edit without weakening replay immutability', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const requestId = 'ride-request-edit';
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/${requestId}`);
+
+    await setDoc(ref, stableRideLogData(requestId));
+    await expect(updateDoc(ref, {
+      rating: 4,
+      notes: 'updated later',
+      revision: increment(1),
+      updatedAt: serverTimestamp(),
+    })).resolves.toBeUndefined();
+  });
+
+  it('allows a new revision-aware client to edit a legacy ride log', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const requestId = 'legacy-edited-by-new-client';
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/${requestId}`);
+    const { clientRequestId: _requestId, revision: _revision, ...legacy } =
+      stableRideLogData(requestId);
+    await setDoc(ref, legacy);
+
+    await expect(updateDoc(ref, {
+      notes: 'new client edit',
+      revision: increment(1),
+      updatedAt: serverTimestamp(),
+    })).resolves.toBeUndefined();
+    await expect(updateDoc(ref, {
+      notes: 'second new client edit',
+      revision: increment(1),
+      updatedAt: serverTimestamp(),
+    })).resolves.toBeUndefined();
+  });
+
+  it('allows the chained legacy to new-client to old-client edit direction', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const requestId = 'legacy-new-then-old';
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/${requestId}`);
+    const { clientRequestId: _requestId, revision: _revision, ...legacy } =
+      stableRideLogData(requestId);
+    await setDoc(ref, legacy);
+
+    await expect(updateDoc(ref, {
+      notes: 'new client revision edit',
+      revision: increment(1),
+      updatedAt: serverTimestamp(),
+    })).resolves.toBeUndefined();
+    await expect(updateDoc(ref, {
+      notes: 'old client follows revision edit',
+      updatedAt: serverTimestamp(),
+    })).resolves.toBeUndefined();
+
+    const result = await getDoc(ref);
+    expect(result.data()?.revision).toBe(1);
+    expect(result.data()?.notes).toBe('old client follows revision edit');
+  });
+
+  it('allows an old client to edit a stable ride log without changing revision', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const requestId = 'stable-edited-by-old-client';
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/${requestId}`);
+    await setDoc(ref, stableRideLogData(requestId));
+
+    await expect(updateDoc(ref, {
+      notes: 'old client edit',
+      updatedAt: serverTimestamp(),
+    })).resolves.toBeUndefined();
+  });
+
+  it('denies malformed or extra-field stable ride payloads', async () => {
+    const ctx = authenticatedContext(testEnv, userId);
+    const requestId = 'ride-request-malformed';
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/${requestId}`);
+
+    await expect(setDoc(ref, {
+      ...stableRideLogData(requestId),
+      waitTimeMinutes: 1,
+    })).rejects.toThrow();
+    await expect(setDoc(ref, {
+      ...stableRideLogData(requestId),
+      unexpected: true,
+    })).rejects.toThrow();
+  });
+
+  it('denies another user the production standalone ride-log path', async () => {
+    const ctx = authenticatedContext(testEnv, 'other-user');
+    const requestId = 'ride-request-denied';
+    const ref = doc(ctx.firestore(), `users/${userId}/rideLogs/${requestId}`);
+    await expect(setDoc(ref, stableRideLogData(requestId))).rejects.toThrow();
   });
 
   it('denies other user from writing ride logs', async () => {

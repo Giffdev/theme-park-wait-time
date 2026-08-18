@@ -50,6 +50,7 @@
     "@vitejs/plugin-react": "^4.4.1",
     "eslint": "^9.26.0",
     "eslint-config-next": "^15.3.1",
+    "fake-indexeddb": "^6.2.5",
     "firebase-tools": "^13.35.1",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.3",

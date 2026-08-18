@@ -921,3 +921,91 @@ module.exports = nextConfig;
 | 8 | Seasonal availability as date ranges on attraction docs | Client can compute "is this open today" without extra reads. No separate "schedule" collection needed. |
 | 9 | Trust-weighted consensus for crowd reports | Prevents spam. Rewards accurate contributors. Same algorithm as prototype but backed by Firestore. |
 | 10 | Vercel Cron over Firebase Scheduled Functions | Simpler deployment — single platform. Firebase Functions add cold start latency. |
+# Reliable ride and trip command rollout
+
+Ride saves with a stable request ID use authenticated server endpoints and
+Admin SDK write batches. The first attempt performs zero Firestore reads and
+atomically creates both the target document and
+a private immutable SHA-256 fingerprint of an exact normalized, canonically
+serialized business payload. A replay with the same ID and business payload
+succeeds after an `ALREADY_EXISTS` classification read, even after reload or
+later ride edits; a different payload returns HTTP 409. If classification
+reads are exhausted, the endpoint returns an explicit retryable ambiguous
+outcome. Trip creation uses the same pattern. Ambiguous commands are retained
+in bounded, seven-day browser storage scoped by authenticated UID and operation
+context; success or definitive rejection removes them.
+
+All four production ride writers (unified sheet, manual form, timer completion,
+and trip ride page) use the same complete-command service. The stored command
+includes the request ID, trip association, and immutable `rodeAt` timestamp, so
+reload retries cannot silently create a new semantic command. Storage is
+separated by UID and surface context, expires after seven days, rejects corrupt
+records, and retains at most eight contexts per account. IndexedDB unique-key
+transactions make insertion add-only across tabs: an exact replay is
+idempotent, a different live request conflicts, and completion removes only the
+matching request ID. Exact completion also writes an IndexedDB tombstone in the
+same transaction as command deletion. Tombstones are scoped by UID, context,
+request ID, and canonical command fingerprint; a retained legacy entry is
+suppressed only while an unexpired exact tombstone matches. A new request ID in
+the same context, or the same ID with a different payload, is not hidden.
+Tombstones expire after seven days and are capped at 32 per account by pruning
+oldest tombstones only; live commands are never evicted. Transaction abort
+leaves both the command and tombstone state unchanged, so there is no
+delete-before-tombstone resurrection window. Existing localStorage records migrate add-only without
+discarding conflicts. During the old/new bundle compatibility window, the
+legacy localStorage key is intentionally retained unchanged after every import.
+Repeated imports are harmless: exact commands are idempotent, while IndexedDB
+winners and conflicting legacy sources are both preserved. Corrupt, expired,
+or over-capacity legacy entries are ignored but not eagerly deleted because
+localStorage cannot provide an atomic read-modify-write guarantee against old
+tabs. A command is never sent until durable persistence is confirmed. Count,
+byte, quota, unavailable, and oversized capacity failures reject the new
+command and preserve every live command; no oldest-live eviction occurs.
+
+Client lifecycle state distinguishes an unconfirmed primary save from a
+confirmed primary save whose local cleanup is unfinished. After the server
+commit is confirmed, cleanup failure keeps the exact frozen command visible and
+offers **Finish Cleanup**; that action retries only the transactional
+remove+tombstone operation and does not resubmit the ride or trip. Success
+callbacks, form resets, navigation, and automatic close occur only after cleanup
+succeeds. A close or reload may retain the durable command; after reload, an
+idempotent server reconciliation is allowed when the in-memory committed state
+cannot be proven.
+
+The ride API performs the primary write without a client Firestore pre-read.
+Trip association on the user-owned ride document is accepted as a validated
+string; no trip lookup occurs before the primary write. After the Admin batch
+commits the ride and immutable command record, the
+server recomputes trip stats. Stats writes carry the query snapshot read-time as
+a generation and transactionally refuse older/equal generations, preventing a
+late stale snapshot from regressing newer totals. Stats failure is returned as
+explicit partial success and never rolls back or duplicates the ride. Every
+Admin document path validates UID, request ID, trip ID, and share ID segments
+before interpolation.
+
+Deployment order is mandatory:
+
+1. Deploy `firestore.rules` first. During the compatibility window, rules
+   accept the strictly validated legacy ride-create shape (no
+   `clientRequestId`/`revision`), the exact currently deployed shape
+   (`clientRequestId` but no `revision`), and the revisioned shape. The same
+   window permits new clients to add a revision while editing either
+   compatibility shape and old clients to edit stable documents without
+   incrementing revision, including cross-version edit chains.
+   Trip derived `stats` and `statsGeneration` are server-owned immediately:
+   client trip creates must contain exact zero stats and no generation, legacy
+   client refresh attempts are denied, and later Admin refreshes remain
+   allowed. Status/name/date updates and ride creation remain allowed. Older
+   clients already treat stats refresh as best-effort, so primary ride and trip
+   operations continue.
+2. Deploy the application containing `/api/ride-logs`,
+   `/api/trip-commands`, and the new client writers.
+3. Keep compatibility rules for at least the maximum lifetime of an open
+   production tab plus the normal CDN/service-worker cache lifetime. Retain the
+   legacy pending-save localStorage key unchanged for this entire window.
+4. Confirm legacy-create traffic has reached zero for that full window.
+5. In a separate reviewed deployment, remove all legacy create/edit and
+   cross-version edit branches. Only this later release may retire the legacy
+   pending-save localStorage key, after old-bundle traffic and the full
+   compatibility window have both expired. Do not eagerly clean it up and do
+   not combine tightening or storage retirement with step 2.

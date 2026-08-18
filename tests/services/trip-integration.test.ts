@@ -256,45 +256,26 @@ describe('trip + ride log integration', () => {
   // =========================================================================
 
   describe('complete trip flow', () => {
-    it('completeTrip computes final stats from ride logs with tripId', async () => {
-      const rideLogs = [
-        { id: 'log-1', tripId: 'trip-1', parkId: 'epcot', attractionId: 'frozen', attractionName: 'Frozen', waitTimeMinutes: 55 },
-        { id: 'log-2', tripId: 'trip-1', parkId: 'epcot', attractionId: 'soarin', attractionName: 'Soarin', waitTimeMinutes: 40 },
-      ];
-      mockGetCollection.mockResolvedValue(rideLogs);
+    it('completeTrip leaves final stats to the server', async () => {
       mockUpdateDocument.mockResolvedValue(undefined);
 
       await completeTrip(userId, 'trip-1');
 
-      // completeTrip calls updateTripStats (writes stats) then writes status
       expect(mockUpdateDocument).toHaveBeenCalledWith(
         `users/${userId}/trips`,
         'trip-1',
-        expect.objectContaining({
-          stats: expect.objectContaining({
-            totalRides: 2,
-            totalWaitMinutes: 95,
-            parksVisited: 1,
-            uniqueAttractions: 2,
-          }),
-        }),
+        { status: 'completed' },
       );
-      expect(mockUpdateDocument).toHaveBeenCalledWith(
-        `users/${userId}/trips`,
-        'trip-1',
-        expect.objectContaining({ status: 'completed' }),
-      );
+      expect(mockGetCollection).not.toHaveBeenCalled();
     });
 
-    it('completing a trip queries ride logs filtered by tripId', async () => {
-      mockGetCollection.mockResolvedValue([
-        { id: 'log-1', tripId: 'trip-1', parkId: 'mk', attractionId: 'space', attractionName: 'Space Mountain', waitTimeMinutes: 45 },
-      ]);
+    it('completing a trip performs no client ride-log query', async () => {
       mockUpdateDocument.mockResolvedValue(undefined);
 
       await completeTrip(userId, 'trip-1');
 
-      expect(mockWhereConstraint).toHaveBeenCalledWith('tripId', '==', 'trip-1');
+      expect(mockWhereConstraint).not.toHaveBeenCalledWith('tripId', '==', 'trip-1');
+      expect(mockGetCollection).not.toHaveBeenCalled();
     });
 
     it('getTripRideLogs only returns logs for the specified trip', async () => {

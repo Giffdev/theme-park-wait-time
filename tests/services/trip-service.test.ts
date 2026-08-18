@@ -5,7 +5,7 @@
  * sharing, and edge cases for the Trip feature.
  * The service uses generic Firestore helpers internally.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 
 // --- Mock Firestore helpers ---
 const mockAddDocument = vi.fn();
@@ -17,6 +17,18 @@ const mockSetDocument = vi.fn();
 const mockWhereConstraint = vi.fn((...args) => ({ type: 'where', args }));
 const mockOrderByConstraint = vi.fn((...args) => ({ type: 'orderBy', args }));
 const mockLimitConstraint = vi.fn((...args) => ({ type: 'limit', args }));
+const mockFirestoreDoc = vi.fn((...path: unknown[]) => ({ path }));
+const mockTransactionGet = vi.fn();
+const mockTransactionSet = vi.fn();
+const mockRunTransaction = vi.fn();
+const { mockAuth } = vi.hoisted(() => ({
+  mockAuth: {
+    currentUser: {
+      uid: 'user-123',
+      getIdToken: vi.fn().mockResolvedValue('test-token'),
+    } as { uid: string; getIdToken: ReturnType<typeof vi.fn> } | null,
+  },
+}));
 
 vi.mock('@/lib/firebase/firestore', () => ({
   addDocument: (...args: unknown[]) => mockAddDocument(...args),
@@ -35,7 +47,12 @@ vi.mock('@/lib/firebase/firestore', () => ({
 
 vi.mock('@/lib/firebase/config', () => ({
   db: {},
-  auth: { currentUser: { uid: 'user-123' } },
+  auth: mockAuth,
+}));
+
+vi.mock('firebase/firestore', () => ({
+  doc: (...args: unknown[]) => mockFirestoreDoc(...args),
+  runTransaction: (...args: unknown[]) => mockRunTransaction(...args),
 }));
 
 import {
@@ -47,6 +64,7 @@ import {
   getActiveTrip,
   activateTrip,
   completeTrip,
+  updateTripStats,
   getTripRideLogs,
   getSharedTrip,
   generateShareId,
@@ -83,6 +101,39 @@ describe('trip-service', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAuth.currentUser = {
+      uid: userId,
+      getIdToken: vi.fn().mockResolvedValue('test-token'),
+    };
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as { requestId: string };
+      return {
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ id: request.requestId }),
+      };
+    }));
+    mockTransactionGet.mockResolvedValue({
+      exists: () => false,
+      data: () => undefined,
+    });
+    mockRunTransaction.mockImplementation(
+      async (
+        _db: unknown,
+        update: (transaction: {
+          get: typeof mockTransactionGet;
+          set: typeof mockTransactionSet;
+        }) => Promise<unknown>,
+      ) => update({
+        get: mockTransactionGet,
+        set: mockTransactionSet,
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   // =========================================================================
@@ -152,6 +203,132 @@ describe('trip-service', () => {
         'share-xyz',
         expect.objectContaining({ userId, tripId: 'trip-shared' }),
       );
+    });
+
+    it('uses the authenticated command endpoint for retry-safe creation', async () => {
+      await expect(createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-1234',
+      })).resolves.toBe('trip-request-1234');
+
+      expect(fetch).toHaveBeenCalledWith('/api/trip-commands', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"requestId":"trip-request-1234"'),
+      }));
+      expect(mockAddDocument).not.toHaveBeenCalled();
+    });
+
+    it('bounds a never-resolving trip transaction with an ambiguous outcome', async () => {
+      vi.useFakeTimers();
+      vi.mocked(fetch).mockReturnValue(new Promise(() => {}));
+
+      const first = createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-hanging',
+        timeoutMs: 50,
+      });
+
+      const rejection = expect(first).rejects.toMatchObject({
+        code: 'timeout',
+        outcome: 'ambiguous',
+      });
+
+      await vi.advanceTimersByTimeAsync(51);
+      await rejection;
+    });
+
+    it('bounds token acquisition and allows a fresh reconciliation retry', async () => {
+      vi.useFakeTimers();
+      mockAuth.currentUser!.getIdToken.mockReturnValueOnce(new Promise(() => {}));
+
+      const first = createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-token-timeout',
+        timeoutMs: 50,
+      });
+      const rejection = expect(first).rejects.toMatchObject({
+        code: 'timeout',
+        outcome: 'ambiguous',
+      });
+      await vi.advanceTimersByTimeAsync(51);
+      await rejection;
+
+      mockAuth.currentUser!.getIdToken.mockResolvedValueOnce('retry-token');
+      await expect(createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-token-timeout',
+        timeoutMs: 50,
+      })).resolves.toBe('trip-request-token-timeout');
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a conflicting payload under the same durable trip request ID', async () => {
+      vi.useFakeTimers();
+      vi.mocked(fetch)
+        .mockImplementationOnce(() => new Promise(() => {}))
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 409,
+          json: vi.fn().mockResolvedValue({ error: 'different payload' }),
+        } as unknown as Response);
+
+      const first = createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-reconcile',
+        timeoutMs: 50,
+      });
+      const rejection = expect(first).rejects.toMatchObject({
+        code: 'timeout',
+        outcome: 'ambiguous',
+      });
+      await vi.advanceTimersByTimeAsync(51);
+      await rejection;
+
+      await expect(createTrip(userId, {
+        ...mockTripInput,
+        name: 'Changed after timeout',
+      }, {
+        requestId: 'trip-request-reconcile',
+        timeoutMs: 50,
+      })).rejects.toMatchObject({
+        code: 'conflicting-replay',
+        outcome: 'definitive-non-commit',
+      });
+    });
+
+    it('replays the same trip payload after an ambiguous timeout', async () => {
+      vi.useFakeTimers();
+      vi.mocked(fetch)
+        .mockImplementationOnce(() => new Promise(() => {}))
+        .mockImplementationOnce(async (_input, init) => {
+          const request = JSON.parse(String(init?.body)) as { requestId: string };
+          return {
+            ok: true,
+            status: 200,
+            json: vi.fn().mockResolvedValue({ id: request.requestId }),
+          } as unknown as Response;
+        });
+
+      const first = createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-immutable',
+        timeoutMs: 50,
+      });
+      const rejection = expect(first).rejects.toMatchObject({ code: 'timeout' });
+      await vi.advanceTimersByTimeAsync(51);
+      await rejection;
+
+      await expect(createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-immutable',
+        timeoutMs: 50,
+      })).resolves.toBe('trip-request-immutable');
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('fails definitively before writing when authentication is lost', async () => {
+      mockAuth.currentUser = null;
+
+      await expect(createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-auth',
+      })).rejects.toMatchObject({
+        code: 'auth-required',
+        outcome: 'definitive-non-commit',
+      });
+      expect(mockRunTransaction).not.toHaveBeenCalled();
     });
   });
 
@@ -365,36 +542,19 @@ describe('trip-service', () => {
       );
     });
 
-    it('computes stats correctly from ride logs', async () => {
-      const rideLogs = [
-        { id: 'log-1', parkId: 'magic-kingdom', attractionId: 'space-mountain', attractionName: 'Space Mountain', waitTimeMinutes: 45 },
-        { id: 'log-2', parkId: 'magic-kingdom', attractionId: 'space-mountain', attractionName: 'Space Mountain', waitTimeMinutes: 30 },
-        { id: 'log-3', parkId: 'epcot', attractionId: 'test-track', attractionName: 'Test Track', waitTimeMinutes: 60 },
-        { id: 'log-4', parkId: 'epcot', attractionId: 'frozen', attractionName: 'Frozen Ever After', waitTimeMinutes: 55 },
-      ];
-      mockGetCollection.mockResolvedValue(rideLogs);
-      mockUpdateDocument.mockResolvedValue(undefined);
+    describe('updateTripStats', () => {
+      it('never overwrites totals when ride-log reads fail', async () => {
+        const exhausted = Object.assign(new Error('RESOURCE_EXHAUSTED'), {
+          code: 'resource-exhausted',
+        });
+        mockGetCollection.mockRejectedValue(exhausted);
 
-      await completeTrip(userId, 'trip-1');
-
-      // updateTripStats writes stats, then completeTrip writes status
-      expect(mockUpdateDocument).toHaveBeenCalledWith(
-        collectionPath,
-        'trip-1',
-        expect.objectContaining({
-          stats: expect.objectContaining({
-            totalRides: 4,
-            totalWaitMinutes: 190,
-            parksVisited: 2,
-            uniqueAttractions: 3,
-            favoriteAttraction: 'Space Mountain',
-          }),
-        }),
-      );
+        await expect(updateTripStats(userId, 'trip-1')).rejects.toBe(exhausted);
+        expect(mockUpdateDocument).not.toHaveBeenCalled();
+      });
     });
 
-    it('handles trip with no rides gracefully', async () => {
-      mockGetCollection.mockResolvedValue([]);
+    it('leaves derived stats to the server when completing a trip', async () => {
       mockUpdateDocument.mockResolvedValue(undefined);
 
       await completeTrip(userId, 'trip-1');
@@ -402,16 +562,22 @@ describe('trip-service', () => {
       expect(mockUpdateDocument).toHaveBeenCalledWith(
         collectionPath,
         'trip-1',
-        expect.objectContaining({
-          stats: expect.objectContaining({
-            totalRides: 0,
-            totalWaitMinutes: 0,
-            parksVisited: 0,
-            uniqueAttractions: 0,
-            favoriteAttraction: null,
-          }),
-        }),
+        { status: 'completed' },
       );
+      expect(mockGetCollection).not.toHaveBeenCalled();
+    });
+
+    it('completes a trip without reading ride logs', async () => {
+      mockUpdateDocument.mockResolvedValue(undefined);
+
+      await completeTrip(userId, 'trip-1');
+
+      expect(mockUpdateDocument).toHaveBeenCalledWith(
+        collectionPath,
+        'trip-1',
+        { status: 'completed' },
+      );
+      expect(mockGetCollection).not.toHaveBeenCalled();
     });
   });
 

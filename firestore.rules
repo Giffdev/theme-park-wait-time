@@ -64,7 +64,69 @@ service cloud.firestore {
       allow delete: if false; // Account deletion via Admin SDK
 
       match /trips/{tripId} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+        function isTripOwner() {
+          return request.auth != null && request.auth.uid == uid;
+        }
+
+        function leavesServerDerivedTripFieldsUntouched() {
+          return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'stats',
+            'statsGeneration'
+          ]);
+        }
+
+        function isValidClientTripCreate() {
+          return request.resource.data.keys().hasAll([
+                   'name', 'startDate', 'endDate', 'parkIds', 'parkNames',
+                   'status', 'shareId', 'stats', 'notes', 'createdAt', 'updatedAt'
+                 ])
+                 && request.resource.data.keys().hasOnly([
+                   'name', 'startDate', 'endDate', 'parkIds', 'parkNames',
+                   'status', 'shareId', 'stats', 'notes', 'createdAt', 'updatedAt'
+                 ])
+                 && request.resource.data.name is string
+                 && request.resource.data.name.size() > 0
+                 && request.resource.data.name.size() <= 200
+                 && request.resource.data.startDate is string
+                 && request.resource.data.startDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+                 && request.resource.data.endDate is string
+                 && request.resource.data.endDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+                 && request.resource.data.parkIds is list
+                 && request.resource.data.parkIds.size() <= 100
+                 && request.resource.data.parkNames is map
+                 && request.resource.data.status in ['planning', 'active', 'completed']
+                 && (
+                   request.resource.data.shareId == null
+                   || (
+                     request.resource.data.shareId is string
+                     && request.resource.data.shareId.size() > 0
+                     && request.resource.data.shareId.size() <= 128
+                   )
+                 )
+                 && request.resource.data.stats is map
+                 && request.resource.data.stats.keys().hasAll([
+                   'totalRides', 'totalWaitMinutes', 'parksVisited',
+                   'uniqueAttractions', 'favoriteAttraction'
+                 ])
+                 && request.resource.data.stats.keys().hasOnly([
+                   'totalRides', 'totalWaitMinutes', 'parksVisited',
+                   'uniqueAttractions', 'favoriteAttraction'
+                 ])
+                 && request.resource.data.stats.totalRides == 0
+                 && request.resource.data.stats.totalWaitMinutes == 0
+                 && request.resource.data.stats.parksVisited == 0
+                 && request.resource.data.stats.uniqueAttractions == 0
+                 && request.resource.data.stats.favoriteAttraction == null
+                 && request.resource.data.notes is string
+                 && request.resource.data.notes.size() <= 5000
+                 && request.resource.data.createdAt == request.time
+                 && request.resource.data.updatedAt == request.time;
+        }
+
+        allow read: if isTripOwner();
+        allow create: if isTripOwner() && isValidClientTripCreate();
+        allow update: if isTripOwner() && leavesServerDerivedTripFieldsUntouched();
+        allow delete: if isTripOwner();
 
         match /rideLogs/{logId} {
           allow read, write: if request.auth != null && request.auth.uid == uid;
@@ -73,7 +135,445 @@ service cloud.firestore {
 
       // Ride logs (standalone — personal ride history)
       match /rideLogs/{logId} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+        function isOwner() {
+          return request.auth != null && request.auth.uid == uid;
+        }
+
+        function isValidStableRideLog() {
+          return request.resource.data.keys().hasAll([
+                   'parkId',
+                   'attractionId',
+                   'parkName',
+                   'attractionName',
+                   'rodeAt',
+                   'waitTimeMinutes',
+                   'attractionClosed',
+                   'source',
+                   'rating',
+                   'notes',
+                   'tripId',
+                   'clientRequestId',
+                   'revision',
+                   'createdAt',
+                   'updatedAt'
+                 ])
+                 && request.resource.data.keys().hasOnly([
+                   'parkId',
+                   'attractionId',
+                   'parkName',
+                   'attractionName',
+                   'rodeAt',
+                   'waitTimeMinutes',
+                   'attractionClosed',
+                   'source',
+                   'rating',
+                   'notes',
+                   'tripId',
+                   'clientRequestId',
+                   'revision',
+                   'createdAt',
+                   'updatedAt'
+                 ])
+                 && request.resource.data.parkId is string
+                 && request.resource.data.parkId.size() > 0
+                 && request.resource.data.attractionId is string
+                 && request.resource.data.attractionId.size() > 0
+                 && request.resource.data.parkName is string
+                 && request.resource.data.attractionName is string
+                 && request.resource.data.rodeAt is timestamp
+                 && (
+                   request.resource.data.waitTimeMinutes == null
+                   || (
+                     request.resource.data.waitTimeMinutes is int
+                     && (
+                       request.resource.data.waitTimeMinutes == 0
+                       || (
+                         request.resource.data.waitTimeMinutes >= 2
+                         && request.resource.data.waitTimeMinutes <= 180
+                       )
+                     )
+                   )
+                 )
+                 && request.resource.data.attractionClosed is bool
+                 && (
+                   !request.resource.data.attractionClosed
+                   || request.resource.data.waitTimeMinutes == null
+                 )
+                 && request.resource.data.source in ['timer', 'manual']
+                 && (
+                   request.resource.data.rating == null
+                   || (
+                     request.resource.data.rating is int
+                     && request.resource.data.rating >= 1
+                     && request.resource.data.rating <= 5
+                   )
+                 )
+                 && request.resource.data.notes is string
+                 && request.resource.data.notes.size() <= 2000
+                 && (
+                   request.resource.data.tripId == null
+                   || request.resource.data.tripId is string
+                 )
+                 && request.resource.data.clientRequestId is string
+                 && request.resource.data.clientRequestId == logId
+                 && request.resource.data.revision is int
+                 && request.resource.data.revision >= 0
+                 && request.resource.data.createdAt is timestamp
+                 && request.resource.data.updatedAt is timestamp;
+        }
+
+        function isValidRideLogEdit() {
+          return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                   'rodeAt',
+                   'waitTimeMinutes',
+                   'attractionClosed',
+                   'rating',
+                   'notes',
+                   'revision',
+                   'updatedAt'
+                 ])
+                 && request.resource.data.revision == resource.data.revision + 1
+                 && request.resource.data.updatedAt == request.time;
+        }
+
+        // Exact production shape deployed immediately before the server-command
+        // writer: stable clientRequestId, but no revision field yet.
+        function isValidCurrentProdRideLog() {
+          return request.resource.data.keys().hasAll([
+                   'parkId', 'attractionId', 'parkName', 'attractionName',
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                   'rating', 'notes', 'tripId', 'clientRequestId',
+                   'createdAt', 'updatedAt'
+                 ])
+                 && request.resource.data.keys().hasOnly([
+                   'parkId', 'attractionId', 'parkName', 'attractionName',
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                   'rating', 'notes', 'tripId', 'clientRequestId',
+                   'createdAt', 'updatedAt'
+                 ])
+                 && request.resource.data.parkId is string
+                 && request.resource.data.parkId.size() > 0
+                 && request.resource.data.attractionId is string
+                 && request.resource.data.attractionId.size() > 0
+                 && request.resource.data.parkName is string
+                 && request.resource.data.attractionName is string
+                 && request.resource.data.rodeAt is timestamp
+                 && (
+                   request.resource.data.waitTimeMinutes == null
+                   || (
+                     request.resource.data.waitTimeMinutes is int
+                     && (
+                       request.resource.data.waitTimeMinutes == 0
+                       || (
+                         request.resource.data.waitTimeMinutes >= 2
+                         && request.resource.data.waitTimeMinutes <= 180
+                       )
+                     )
+                   )
+                 )
+                 && request.resource.data.attractionClosed is bool
+                 && (
+                   !request.resource.data.attractionClosed
+                   || request.resource.data.waitTimeMinutes == null
+                 )
+                 && request.resource.data.source in ['timer', 'manual']
+                 && (
+                   request.resource.data.rating == null
+                   || (
+                     request.resource.data.rating is int
+                     && request.resource.data.rating >= 1
+                     && request.resource.data.rating <= 5
+                   )
+                 )
+                 && request.resource.data.notes is string
+                 && request.resource.data.notes.size() <= 2000
+                 && (
+                   request.resource.data.tripId == null
+                   || request.resource.data.tripId is string
+                 )
+                 && request.resource.data.clientRequestId is string
+                 && request.resource.data.clientRequestId == logId
+                 && request.resource.data.createdAt is timestamp
+                 && request.resource.data.updatedAt is timestamp;
+        }
+
+        function isValidCurrentProdRideLogEdit() {
+          return isValidCurrentProdRideLog()
+                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed',
+                   'rating', 'notes', 'updatedAt'
+                 ])
+                 && request.resource.data.clientRequestId == resource.data.clientRequestId
+                 && request.resource.data.updatedAt == request.time;
+        }
+
+        function isValidNewClientCurrentProdRideLogEdit() {
+          return resource.data.keys().hasAll([
+                   'parkId', 'attractionId', 'parkName', 'attractionName',
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                   'rating', 'notes', 'tripId', 'clientRequestId',
+                   'createdAt', 'updatedAt'
+                 ])
+                 && resource.data.keys().hasOnly([
+                   'parkId', 'attractionId', 'parkName', 'attractionName',
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                   'rating', 'notes', 'tripId', 'clientRequestId',
+                   'createdAt', 'updatedAt'
+                 ])
+                 && isValidStableRideLog()
+                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed',
+                   'rating', 'notes', 'revision', 'updatedAt'
+                 ])
+                 && request.resource.data.clientRequestId == resource.data.clientRequestId
+                 && request.resource.data.revision == 1
+                 && request.resource.data.updatedAt == request.time;
+        }
+
+        function isValidOldClientStableRideLogEdit() {
+          return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                   'rodeAt',
+                   'waitTimeMinutes',
+                   'attractionClosed',
+                   'rating',
+                   'notes',
+                   'updatedAt'
+                 ])
+                 && request.resource.data.revision == resource.data.revision
+                 && request.resource.data.clientRequestId == resource.data.clientRequestId
+                 && request.resource.data.updatedAt == request.time;
+        }
+
+        // Compatibility window for production bundles deployed before stable
+        // request IDs and revisions were introduced. Remove only after the
+        // documented rollout window has elapsed.
+        function isValidLegacyRideLog() {
+          return request.resource.data.keys().hasAll([
+                   'parkId', 'attractionId', 'parkName', 'attractionName',
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                   'rating', 'notes', 'tripId', 'createdAt', 'updatedAt'
+                 ])
+                 && request.resource.data.keys().hasOnly([
+                   'parkId', 'attractionId', 'parkName', 'attractionName',
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                   'rating', 'notes', 'tripId', 'createdAt', 'updatedAt'
+                 ])
+                 && request.resource.data.parkId is string
+                 && request.resource.data.parkId.size() > 0
+                 && request.resource.data.attractionId is string
+                 && request.resource.data.attractionId.size() > 0
+                 && request.resource.data.parkName is string
+                 && request.resource.data.attractionName is string
+                 && request.resource.data.rodeAt is timestamp
+                 && (
+                   request.resource.data.waitTimeMinutes == null
+                   || (
+                     request.resource.data.waitTimeMinutes is int
+                     && (
+                       request.resource.data.waitTimeMinutes == 0
+                       || (
+                         request.resource.data.waitTimeMinutes >= 2
+                         && request.resource.data.waitTimeMinutes <= 180
+                       )
+                     )
+                   )
+                 )
+                 && request.resource.data.attractionClosed is bool
+                 && (
+                   !request.resource.data.attractionClosed
+                   || request.resource.data.waitTimeMinutes == null
+                 )
+                 && request.resource.data.source in ['timer', 'manual']
+                 && (
+                   request.resource.data.rating == null
+                   || (
+                     request.resource.data.rating is int
+                     && request.resource.data.rating >= 1
+                     && request.resource.data.rating <= 5
+                   )
+                 )
+                 && request.resource.data.notes is string
+                 && request.resource.data.notes.size() <= 2000
+                 && (
+                   request.resource.data.tripId == null
+                   || request.resource.data.tripId is string
+                 )
+                 && request.resource.data.createdAt is timestamp
+                 && request.resource.data.updatedAt is timestamp;
+        }
+
+        function isValidLegacyRideLogEdit() {
+          return isValidLegacyRideLog()
+                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed',
+                   'rating', 'notes', 'updatedAt'
+                 ])
+                 && request.resource.data.updatedAt == request.time;
+        }
+
+        function isValidNewClientLegacyRideLogEdit() {
+          return request.resource.data.keys().hasAll([
+                   'parkId', 'attractionId', 'parkName', 'attractionName',
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                   'rating', 'notes', 'tripId', 'createdAt', 'updatedAt',
+                   'revision'
+                 ])
+                 && request.resource.data.keys().hasOnly([
+                   'parkId', 'attractionId', 'parkName', 'attractionName',
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                   'rating', 'notes', 'tripId', 'createdAt', 'updatedAt',
+                   'revision'
+                 ])
+                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed',
+                   'rating', 'notes', 'revision', 'updatedAt'
+                 ])
+                 && request.resource.data.rodeAt is timestamp
+                 && (
+                   request.resource.data.waitTimeMinutes == null
+                   || (
+                     request.resource.data.waitTimeMinutes is int
+                     && (
+                       request.resource.data.waitTimeMinutes == 0
+                       || (
+                         request.resource.data.waitTimeMinutes >= 2
+                         && request.resource.data.waitTimeMinutes <= 180
+                       )
+                     )
+                   )
+                 )
+                 && request.resource.data.attractionClosed is bool
+                 && (
+                   !request.resource.data.attractionClosed
+                   || request.resource.data.waitTimeMinutes == null
+                 )
+                 && (
+                   request.resource.data.rating == null
+                   || (
+                     request.resource.data.rating is int
+                     && request.resource.data.rating >= 1
+                     && request.resource.data.rating <= 5
+                   )
+                 )
+                 && request.resource.data.notes is string
+                 && request.resource.data.notes.size() <= 2000
+                 && (
+                   (
+                     resource.data.keys().hasAll([
+                       'parkId', 'attractionId', 'parkName', 'attractionName',
+                       'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                       'rating', 'notes', 'tripId', 'createdAt', 'updatedAt'
+                     ])
+                     && resource.data.keys().hasOnly([
+                       'parkId', 'attractionId', 'parkName', 'attractionName',
+                       'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                       'rating', 'notes', 'tripId', 'createdAt', 'updatedAt'
+                     ])
+                     && request.resource.data.revision == 1
+                   )
+                   || (
+                     resource.data.keys().hasAll([
+                       'parkId', 'attractionId', 'parkName', 'attractionName',
+                       'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                       'rating', 'notes', 'tripId', 'createdAt', 'updatedAt',
+                       'revision'
+                     ])
+                     && resource.data.keys().hasOnly([
+                       'parkId', 'attractionId', 'parkName', 'attractionName',
+                       'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                       'rating', 'notes', 'tripId', 'createdAt', 'updatedAt',
+                       'revision'
+                     ])
+                     && request.resource.data.revision == resource.data.revision + 1
+                   )
+                 )
+                 && request.resource.data.updatedAt == request.time;
+        }
+
+        function isValidOldClientRevisionOnlyRideLogEdit() {
+          return resource.data.keys().hasAll([
+                   'parkId', 'attractionId', 'parkName', 'attractionName',
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                   'rating', 'notes', 'tripId', 'createdAt', 'updatedAt',
+                   'revision'
+                 ])
+                 && resource.data.keys().hasOnly([
+                   'parkId', 'attractionId', 'parkName', 'attractionName',
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed', 'source',
+                   'rating', 'notes', 'tripId', 'createdAt', 'updatedAt',
+                   'revision'
+                 ])
+                 && request.resource.data.keys() == resource.data.keys()
+                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                   'rodeAt', 'waitTimeMinutes', 'attractionClosed',
+                   'rating', 'notes', 'updatedAt'
+                 ])
+                 && request.resource.data.revision == resource.data.revision
+                 && request.resource.data.rodeAt is timestamp
+                 && (
+                   request.resource.data.waitTimeMinutes == null
+                   || (
+                     request.resource.data.waitTimeMinutes is int
+                     && (
+                       request.resource.data.waitTimeMinutes == 0
+                       || (
+                         request.resource.data.waitTimeMinutes >= 2
+                         && request.resource.data.waitTimeMinutes <= 180
+                       )
+                     )
+                   )
+                 )
+                 && request.resource.data.attractionClosed is bool
+                 && (
+                   !request.resource.data.attractionClosed
+                   || request.resource.data.waitTimeMinutes == null
+                 )
+                 && (
+                   request.resource.data.rating == null
+                   || (
+                     request.resource.data.rating is int
+                     && request.resource.data.rating >= 1
+                     && request.resource.data.rating <= 5
+                   )
+                 )
+                 && request.resource.data.notes is string
+                 && request.resource.data.notes.size() <= 2000
+                 && request.resource.data.updatedAt == request.time;
+        }
+
+        allow read: if isOwner();
+        allow create: if isOwner()
+                      && (
+                        isValidStableRideLog()
+                        || isValidCurrentProdRideLog()
+                        || isValidLegacyRideLog()
+                      );
+        allow update: if isOwner()
+                      && (
+                        (
+                          isValidStableRideLog()
+                          && (
+                            request.resource.data == resource.data
+                            || isValidRideLogEdit()
+                            || isValidOldClientStableRideLogEdit()
+                          )
+                        )
+                        || isValidCurrentProdRideLogEdit()
+                        || isValidNewClientCurrentProdRideLogEdit()
+                        || isValidLegacyRideLogEdit()
+                        || isValidNewClientLegacyRideLogEdit()
+                        || isValidOldClientRevisionOnlyRideLogEdit()
+                      );
+        allow delete: if isOwner();
+      }
+
+      // Durable server-owned idempotency records. Admin SDK bypasses rules.
+      match /rideLogCommands/{requestId} {
+        allow read, write: if false;
+      }
+
+      match /tripCreateCommands/{requestId} {
+        allow read, write: if false;
       }
 
       // Active timer (single doc per user)

@@ -61,14 +61,31 @@ vi.mock('@/lib/services/ride-log-service', () => ({
   RideLogSaveError: class RideLogSaveError extends Error {
     code: string;
     savedLogId?: string;
+    outcome: 'definitive-non-commit' | 'ambiguous' | 'committed';
 
-    constructor(code: string, message: string, _cause?: unknown, savedLogId?: string) {
+    constructor(
+      code: string,
+      message: string,
+      _cause?: unknown,
+      savedLogId?: string,
+      outcome?: 'definitive-non-commit' | 'ambiguous' | 'committed',
+    ) {
       super(message);
       this.name = 'RideLogSaveError';
       this.code = code;
       this.savedLogId = savedLogId;
+      this.outcome = outcome ?? (
+        code === 'post-write-refresh-failed'
+          ? 'committed'
+          : code === 'auth-required' || code === 'invalid-data'
+            ? 'definitive-non-commit'
+            : 'ambiguous'
+      );
     }
   },
+  canDiscardRideLogSave: (error: { outcome?: string }) => (
+    error?.outcome === 'definitive-non-commit'
+  ),
   RIDE_LOG_SAVE_TIMEOUT_MS: 10_000,
   createRideLog: vi.fn().mockResolvedValue('log-1'),
   submitCrowdReport: vi.fn().mockResolvedValue(undefined),
@@ -93,13 +110,24 @@ import {
   RideLogSaveError,
   submitCrowdReport,
 } from '@/lib/services/ride-log-service';
+import { restorePendingRideSaveCommand, rideSaveContext } from '@/lib/services/pending-ride-save-command';
+import {
+  configurePendingSaveCommandMemoryStorageForTests,
+  configurePendingSaveCommandRemovalFailureForTests,
+  resetPendingSaveCommandStorageForTests,
+} from '@/lib/services/pending-save-command-storage';
+
+configurePendingSaveCommandMemoryStorageForTests();
 
 const mockCreateRideLog = vi.mocked(createRideLog);
 const mockSubmitCrowdReport = vi.mocked(submitCrowdReport);
 
 describe('QueueTimerButton', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await resetPendingSaveCommandStorageForTests();
+    configurePendingSaveCommandRemovalFailureForTests(null);
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   it('renders "Start Queue Timer" when no timer is active', () => {
@@ -235,8 +263,11 @@ describe('TimerDisplay', () => {
 });
 
 describe('TimerCompleteSheet', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await resetPendingSaveCommandStorageForTests();
+    configurePendingSaveCommandRemovalFailureForTests(null);
     vi.clearAllMocks();
+    localStorage.clear();
     mockAuthState.user = { uid: 'user-123', email: 'test@example.com' };
     mockCreateRideLog.mockResolvedValue('log-1');
     mockSubmitCrowdReport.mockResolvedValue(undefined);
@@ -260,7 +291,7 @@ describe('TimerCompleteSheet', () => {
     expect(screen.getByRole('dialog')).toHaveAttribute('aria-labelledby', 'timer-complete-title');
   });
 
-  it.each([1, 181, 12.5, Number.NaN])(
+  it.each([181, 12.5, Number.NaN])(
     'rejects invalid elapsed wait %s before the timer save entrypoint',
     async (elapsedMinutes) => {
       render(
@@ -278,6 +309,29 @@ describe('TimerCompleteSheet', () => {
       expect(mockCreateRideLog).not.toHaveBeenCalled();
     },
   );
+
+  it('normalizes a one-minute completion to the supported two-minute minimum', async () => {
+    render(
+      <TimerCompleteSheet
+        elapsedMinutes={1}
+        attractionName="Space Mountain"
+        parkId="magic-kingdom"
+        attractionId="space-mountain"
+        parkName="Magic Kingdom"
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+    await waitFor(() => expect(mockCreateRideLog).toHaveBeenCalled());
+    expect(mockCreateRideLog.mock.calls[0][1].waitTimeMinutes).toBe(2);
+    await waitFor(() => {
+      expect(mockSubmitCrowdReport).toHaveBeenCalledWith({
+        parkId: 'magic-kingdom',
+        attractionId: 'space-mountain',
+        waitTimeMinutes: 2,
+      });
+    });
+  });
 
   it('moves focus into the dialog and traps Tab navigation', () => {
     render(
@@ -401,7 +455,7 @@ describe('TimerCompleteSheet', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText(/Save/));
+    fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(mockCreateRideLog).toHaveBeenCalledWith(
@@ -422,6 +476,36 @@ describe('TimerCompleteSheet', () => {
       attractionId: 'space-mountain',
       waitTimeMinutes: 35,
     });
+  });
+
+  it('keeps the committed command visible and retries cleanup without resaving', async () => {
+      const onClose = vi.fn();
+      configurePendingSaveCommandRemovalFailureForTests(() => {
+        throw new Error('cleanup failed');
+      });
+      render(
+        <TimerCompleteSheet
+          elapsedMinutes={35}
+          attractionName="Space Mountain"
+          parkId="magic-kingdom"
+          attractionId="space-mountain"
+          parkName="Magic Kingdom"
+          onClose={onClose}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+      expect(await screen.findByRole('button', { name: /Finish Cleanup/i })).toBeEnabled();
+      expect(screen.getByText(/ride is saved/i)).toBeInTheDocument();
+      expect(mockCreateRideLog).toHaveBeenCalledTimes(1);
+      expect(onClose).not.toHaveBeenCalled();
+      expect(mockSubmitCrowdReport).not.toHaveBeenCalled();
+
+      configurePendingSaveCommandRemovalFailureForTests(null);
+      fireEvent.click(screen.getByRole('button', { name: /Finish Cleanup/i }));
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(mockCreateRideLog).toHaveBeenCalledTimes(1);
+      expect(mockSubmitCrowdReport).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces a bounded backend timeout and clears Saving state', async () => {
@@ -470,7 +554,7 @@ describe('TimerCompleteSheet', () => {
     fireEvent.change(screen.getByLabelText('Notes (optional)'), {
       target: { value: 'First command notes' },
     });
-    fireEvent.click(screen.getByText(/Save/));
+    fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/retrying is safe/i);
 
     const firstData = mockCreateRideLog.mock.calls[0][1];
@@ -482,7 +566,7 @@ describe('TimerCompleteSheet', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(mockCreateRideLog).toHaveBeenCalledTimes(2);
     expect(mockCreateRideLog.mock.calls[1][3]?.requestId).toBe(firstRequestId);
-    expect(mockCreateRideLog.mock.calls[1][1]).toBe(firstData);
+    expect(mockCreateRideLog.mock.calls[1][1]).toStrictEqual(firstData);
     expect(mockCreateRideLog.mock.calls[1][1]).toMatchObject({
       rating: 4,
       notes: 'First command notes',
@@ -490,10 +574,13 @@ describe('TimerCompleteSheet', () => {
     });
   });
 
-  it('surfaces auth loss without starting a write', async () => {
-    mockAuthState.user = null;
-
-    render(
+  it('restores the complete frozen timer command after reload', async () => {
+    mockCreateRideLog
+      .mockRejectedValueOnce(
+        new RideLogSaveError('timeout', 'Saving timed out; retrying is safe.'),
+      )
+      .mockResolvedValueOnce('confirmed-log');
+    const first = render(
       <TimerCompleteSheet
         elapsedMinutes={35}
         attractionName="Space Mountain"
@@ -503,12 +590,173 @@ describe('TimerCompleteSheet', () => {
         onClose={vi.fn()}
       />,
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Rate 4 out of 5 stars' }));
+    fireEvent.change(screen.getByLabelText('Notes (optional)'), {
+      target: { value: 'Frozen timer notes' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+    await screen.findByRole('alert');
+    const firstRequestId = mockCreateRideLog.mock.calls[0][3]?.requestId;
+    const firstRodeAt = mockCreateRideLog.mock.calls[0][1].rodeAt.toISOString();
+    first.unmount();
+
+    const onClose = vi.fn();
+    render(
+      <TimerCompleteSheet
+        elapsedMinutes={35}
+        attractionName="Space Mountain"
+        parkId="magic-kingdom"
+        attractionId="space-mountain"
+        parkName="Magic Kingdom"
+        onClose={onClose}
+      />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Retry Save/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+
+    expect(mockCreateRideLog.mock.calls[1][3]?.requestId).toBe(firstRequestId);
+    expect(mockCreateRideLog.mock.calls[1][1].rodeAt.toISOString()).toBe(firstRodeAt);
+    expect(mockCreateRideLog.mock.calls[1][1]).toMatchObject({
+      rating: 4,
+      notes: 'Frozen timer notes',
+    });
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('preserves an ambiguous command across sign-out and retries it for the same UID', async () => {
+    mockCreateRideLog
+      .mockRejectedValueOnce(
+        new RideLogSaveError('timeout', 'Saving timed out; retrying is safe.'),
+      )
+      .mockResolvedValueOnce('confirmed-log');
+    const props = {
+      elapsedMinutes: 35,
+      attractionName: 'Space Mountain',
+      parkId: 'magic-kingdom',
+      attractionId: 'space-mountain',
+      parkName: 'Magic Kingdom',
+      onClose: vi.fn(),
+    };
+    const view = render(<TimerCompleteSheet {...props} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+    await screen.findByRole('alert');
+    const requestId = mockCreateRideLog.mock.calls[0][3]?.requestId;
+
+    mockAuthState.user = null;
+    view.rerender(<TimerCompleteSheet {...props} />);
+    expect(screen.getByText(/sign in to the same account/i)).toBeInTheDocument();
+    expect(await restorePendingRideSaveCommand(
+      'user-123',
+      rideSaveContext('timer', 'magic-kingdom:space-mountain'),
+    )).not.toBeNull();
+
+    mockAuthState.user = { uid: 'user-123', email: 'test@example.com' };
+    view.rerender(<TimerCompleteSheet {...props} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Retry Save/i }));
+
+    await waitFor(() => expect(mockCreateRideLog).toHaveBeenCalledTimes(2));
+    expect(mockCreateRideLog.mock.calls[1][3]?.requestId).toBe(requestId);
+  });
+
+  it('does not expose or reuse another UID pending timer command', async () => {
+    mockCreateRideLog.mockRejectedValueOnce(
+      new RideLogSaveError('timeout', 'Saving timed out; retrying is safe.'),
+    );
+    const props = {
+      elapsedMinutes: 35,
+      attractionName: 'Space Mountain',
+      parkId: 'magic-kingdom',
+      attractionId: 'space-mountain',
+      parkName: 'Magic Kingdom',
+      onClose: vi.fn(),
+    };
+    const view = render(<TimerCompleteSheet {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+    await screen.findByRole('alert');
+
+    mockAuthState.user = { uid: 'other-user', email: 'other@example.com' };
+    view.rerender(<TimerCompleteSheet {...props} />);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /Retry Save/i })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Pending save for Space Mountain/i)).not.toBeInTheDocument();
+    expect(await restorePendingRideSaveCommand(
+      'user-123',
+      rideSaveContext('timer', 'magic-kingdom:space-mountain'),
+    )).not.toBeNull();
+  });
+
+  it('surfaces auth loss without starting a write', async () => {
+    const onClose = vi.fn();
+    mockAuthState.user = null;
+
+    render(
+      <TimerCompleteSheet
+        elapsedMinutes={35}
+        attractionName="Space Mountain"
+        parkId="magic-kingdom"
+        attractionId="space-mountain"
+        parkName="Magic Kingdom"
+        onClose={onClose}
+      />,
+    );
 
     fireEvent.click(screen.getByText(/Save/));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/session expired/i);
     expect(mockCreateRideLog).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Discard failed ride save and close/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
+
+  it.each(['close', 'backdrop', 'escape'] as const)(
+    'allows %s dismissal after a definitive non-commit and clears the frozen command',
+    async (dismissal) => {
+      const onClose = vi.fn();
+      mockCreateRideLog.mockRejectedValue(
+        new RideLogSaveError(
+          'invalid-data',
+          'The ride command was rejected before commit.',
+        ),
+      );
+      const { container } = render(
+        <TimerCompleteSheet
+          elapsedMinutes={35}
+          attractionName="Space Mountain"
+          parkId="magic-kingdom"
+          attractionId="space-mountain"
+          parkName="Magic Kingdom"
+          onClose={onClose}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(/rejected before commit/i);
+      expect(screen.queryByRole('button', { name: /Retry Save/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Discard failed save & close/i })).toBeEnabled();
+      expect(await restorePendingRideSaveCommand(
+        'user-123',
+        rideSaveContext('timer', 'magic-kingdom:space-mountain'),
+      )).toBeNull();
+
+      if (dismissal === 'close') {
+        fireEvent.click(screen.getByRole('button', {
+          name: /Discard failed ride save and close/i,
+        }));
+      } else if (dismissal === 'backdrop') {
+        const backdrop = container.firstElementChild?.firstElementChild;
+        expect(backdrop).not.toBeNull();
+        fireEvent.click(backdrop as Element);
+      } else {
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+      }
+
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(mockCreateRideLog).toHaveBeenCalledTimes(1));
+    },
+  );
 
   it('surfaces Firestore rejection and does not close', async () => {
     const onClose = vi.fn();
@@ -557,7 +805,7 @@ describe('TimerCompleteSheet', () => {
 
     fireEvent.click(screen.getByText('Close'));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2));
-    expect(mockCreateRideLog).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockCreateRideLog).toHaveBeenCalledTimes(1));
   });
 
   it('reports post-write stats timeout as saved and prevents duplicate retry', async () => {
@@ -587,7 +835,7 @@ describe('TimerCompleteSheet', () => {
     expect(screen.getByText('Close')).toBeEnabled();
     expect(screen.getByRole('status')).toHaveTextContent('Ride saved.');
     expect(mockSubmitCrowdReport).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('Close')).toHaveFocus();
+    await waitFor(() => expect(screen.getByText('Close')).toHaveFocus());
 
     fireEvent.click(screen.getByText('Close'));
     await waitFor(() => expect(mockCreateRideLog).toHaveBeenCalledTimes(1));
@@ -626,7 +874,7 @@ describe('TimerCompleteSheet', () => {
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
     expect(dialog).toHaveFocus();
     fireEvent.keyDown(dialog, { key: 'Escape' });
-    expect(mockCreateRideLog).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockCreateRideLog).toHaveBeenCalledTimes(1));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
     resolveSave('log-1');
@@ -655,7 +903,7 @@ describe('TimerCompleteSheet', () => {
     fireEvent.click(saveButton);
     fireEvent.click(saveButton);
 
-    expect(mockCreateRideLog).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockCreateRideLog).toHaveBeenCalledTimes(1));
 
     resolveSave('log-1');
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));

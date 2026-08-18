@@ -9,6 +9,7 @@ import {
   whereConstraint,
   limitConstraint,
 } from '@/lib/firebase/firestore';
+import { auth } from '@/lib/firebase/config';
 import { getParkById } from '@/lib/parks';
 import type { Trip, TripCreateData, TripUpdateData, TripStats } from '@/types/trip';
 import type { RideLog } from '@/types/ride-log';
@@ -66,36 +67,200 @@ export interface GetTripsOptions {
   limit?: number;
 }
 
+export interface CreateTripOptions {
+  requestId?: string;
+  timeoutMs?: number;
+}
+
+export type TripCreateOutcome = 'definitive-non-commit' | 'ambiguous';
+
+export class TripCreateError extends Error {
+  readonly code: 'auth-required' | 'invalid-data' | 'conflicting-replay' | 'timeout' | 'write-failed';
+  readonly outcome: TripCreateOutcome;
+  readonly cause?: unknown;
+
+  constructor(
+    code: TripCreateError['code'],
+    message: string,
+    outcome: TripCreateOutcome,
+    cause?: unknown,
+  ) {
+    super(message);
+    this.name = 'TripCreateError';
+    this.code = code;
+    this.outcome = outcome;
+    this.cause = cause;
+  }
+}
+
+const inFlightTripCreates = new Map<string, Promise<string>>();
+
+function assertTripCreateAuth(userId: string): void {
+  if (!auth.currentUser || auth.currentUser.uid !== userId) {
+    throw new TripCreateError(
+      'auth-required',
+      'Your session expired. Sign in again before creating this trip.',
+      'definitive-non-commit',
+    );
+  }
+}
+
+async function postTripCommand(
+    data: TripCreateData,
+    requestId: string,
+    timeoutMs: number,
+  ): Promise<string> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new TripCreateError(
+        'auth-required',
+        'Sign in before creating this trip.',
+        'definitive-non-commit',
+      );
+    }
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        const requestPromise = (async () => {
+          const idToken = await currentUser.getIdToken();
+          return fetch('/api/trip-commands', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${idToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              requestId,
+              name: data.name,
+              startDate: data.startDate,
+              endDate: data.endDate,
+              parkIds: data.parkIds ?? [],
+              parkNames: data.parkNames ?? {},
+              status: data.status,
+              shareId: data.shareId ?? null,
+              notes: data.notes,
+            }),
+            signal: controller.signal,
+          });
+        })();
+      const deadline = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new TripCreateError(
+            'timeout',
+            'Trip creation was not confirmed. Retry will reuse the same trip ID.',
+            'ambiguous',
+          ));
+        }, timeoutMs);
+      });
+      const response = await Promise.race([requestPromise, deadline]);
+      const body = await response.json().catch(() => ({})) as { id?: string; error?: string };
+      if (response.status === 409) {
+        throw new TripCreateError(
+          'conflicting-replay',
+          body.error ?? 'This request ID is bound to a different trip.',
+          'definitive-non-commit',
+        );
+      }
+      if (!response.ok) {
+        throw new TripCreateError(
+          response.status === 401 ? 'auth-required' : response.status < 500 ? 'invalid-data' : 'write-failed',
+          body.error ?? 'Trip creation was not confirmed. Retry with the same trip ID.',
+          response.status < 500 ? 'definitive-non-commit' : 'ambiguous',
+        );
+      }
+      return body.id ?? requestId;
+    } catch (error) {
+      if (error instanceof TripCreateError) throw error;
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new TripCreateError(
+          'timeout',
+          'Trip creation was not confirmed. Retry will reuse the same trip ID.',
+          'ambiguous',
+          error,
+        );
+      }
+      throw new TripCreateError(
+        'write-failed',
+        'Trip creation was not confirmed. Retry will reuse the same trip ID.',
+        'ambiguous',
+        error,
+      );
+    } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /** Create a new trip for the user. Returns the new document ID. */
 export async function createTrip(
   userId: string,
   data: TripCreateData,
+  options: CreateTripOptions = {},
+): Promise<string> {
+  assertTripCreateAuth(userId);
+  if (options.requestId && !/^[A-Za-z0-9_-]{8,128}$/.test(options.requestId)) {
+    throw new TripCreateError(
+      'invalid-data',
+      'The trip creation request ID is invalid.',
+      'definitive-non-commit',
+    );
+  }
+
+  const requestKey = options.requestId ? `${userId}:${options.requestId}` : null;
+  if (requestKey) {
+    const existing = inFlightTripCreates.get(requestKey);
+    if (existing) return existing;
+  }
+
+  const createPromise = createTripDocument(userId, data, options);
+  if (!requestKey) return createPromise;
+
+  inFlightTripCreates.set(requestKey, createPromise);
+  try {
+    return await createPromise;
+  } finally {
+    if (inFlightTripCreates.get(requestKey) === createPromise) {
+      inFlightTripCreates.delete(requestKey);
+    }
+  }
+}
+
+async function createTripDocument(
+  userId: string,
+  data: TripCreateData,
+  options: CreateTripOptions,
 ): Promise<string> {
   const shareId = data.shareId !== undefined ? data.shareId : null;
 
-  const tripData = {
+  const tripData: Record<string, unknown> = {
     name: data.name,
     startDate: data.startDate,
     endDate: data.endDate,
-    parkIds: data.parkIds ?? [],
-    parkNames: data.parkNames ?? {},
+    parkIds: [...(data.parkIds ?? [])],
+    parkNames: { ...(data.parkNames ?? {}) },
     status: data.status,
     shareId,
     stats: emptyStats(),
     notes: data.notes,
   };
 
-  const ref = await addDocument(tripsPath(userId), tripData);
+  let tripId: string;
+  if (options.requestId) {
+    tripId = await postTripCommand(data, options.requestId, options.timeoutMs ?? 30_000);
+  } else {
+    const ref = await addDocument(tripsPath(userId), tripData);
+    tripId = ref.id;
+  }
 
   // If sharing is enabled, index in shared collection for public access
-  if (shareId) {
+  if (shareId && !options.requestId) {
     await setDocument(SHARED_TRIPS_COLLECTION, shareId, {
       userId,
-      tripId: ref.id,
+      tripId,
     });
   }
 
-  return ref.id;
+  return tripId;
 }
 
 /** Get a user's trips with optional status filter. */
@@ -135,17 +300,12 @@ export async function getTrips(
     trips = results;
   }
 
-  // Backfill parkNames for trips that have rides but missing parkNames
+  // Populate missing display names for this render without client writes to
+  // server-owned derived fields.
   const tripsNeedingBackfill = trips.filter(
     (t) => t.stats.totalRides > 0 && (!t.parkNames || Object.keys(t.parkNames).length === 0)
   );
   if (tripsNeedingBackfill.length > 0) {
-    // Fire-and-forget: update stats in the background so next load has parkNames
-    Promise.all(
-      tripsNeedingBackfill.map((t) => updateTripStats(userId, t.id))
-    ).catch((err) => console.warn('[getTrips] parkNames backfill failed:', err));
-
-    // Also fetch ride logs now to populate parkNames for this render
     for (const trip of tripsNeedingBackfill) {
       try {
         const logs = await getTripRideLogs(userId, trip.id);
@@ -282,12 +442,6 @@ export async function activateTrip(userId: string, tripId: string): Promise<void
 
 /** Complete a trip and compute final stats from ride logs. */
 export async function completeTrip(userId: string, tripId: string): Promise<void> {
-  try {
-    await updateTripStats(userId, tripId);
-  } catch (error) {
-    // Stats are nice-to-have; trip completion is the critical operation
-    console.warn('[completeTrip] Stats update failed, completing trip anyway:', error);
-  }
   await updateDocument(tripsPath(userId), tripId, { status: 'completed' });
 }
 
@@ -331,13 +485,7 @@ export async function getTripRideLogs(
 
 /** Recompute and persist trip stats from its ride logs. */
 export async function updateTripStats(userId: string, tripId: string): Promise<void> {
-  let logs: (RideLog & { id: string })[];
-  try {
-    logs = await getTripRideLogs(userId, tripId);
-  } catch (error) {
-    console.warn('[updateTripStats] Failed to fetch ride logs, using empty stats:', error);
-    logs = [];
-  }
+  const logs = await getTripRideLogs(userId, tripId);
 
   const parks = new Set<string>();
   const parkNames: Record<string, string> = {};

@@ -4,10 +4,15 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Star } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
 import {
+  pendingSaveRemovalErrorMessage,
+  pendingSaveStorageErrorMessage,
+} from '@/lib/services/pending-save-command-storage';
+import {
   canDiscardRideLogSave,
   createRideLog,
 } from '@/lib/services/ride-log-service';
 import { getCollection, whereConstraint } from '@/lib/firebase/firestore';
+import { withReadDeadline } from '@/lib/services/bounded-read';
 import { toLocalDateKey, useActiveRidePark } from '@/hooks/useActiveRidePark';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import WaitTimeInput from '@/components/ride-log/WaitTimeInput';
@@ -16,6 +21,15 @@ import {
   isValidRideWaitTime,
   RIDE_WAIT_TIME_RANGE_MESSAGE,
 } from '@/lib/wait-time-contract';
+import {
+  clearPendingRideSaveCommand,
+  createPendingRideSaveCommand,
+  type PendingRideSaveCommand,
+  persistPendingRideSaveCommand,
+  restorePendingRideSaveCommand,
+  rideCommandData,
+  rideSaveContext,
+} from '@/lib/services/pending-ride-save-command';
 
 interface ManualLogFormProps {
   onSuccess?: () => void;
@@ -46,13 +60,6 @@ export function formatDateTimeLocal(date: Date): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-function createRequestId(): string {
-  if (typeof globalThis.crypto?.randomUUID === 'function') {
-    return globalThis.crypto.randomUUID();
-  }
-  return `ride-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-}
-
 function isConfirmedPartialSave(error: unknown): error is Error & { savedLogId: string } {
   return error instanceof Error
     && 'code' in error
@@ -76,10 +83,19 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
   const [rating, setRating] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [cleanupPending, setCleanupPending] = useState(false);
   const [error, setError] = useState('');
   const [discardAllowed, setDiscardAllowed] = useState(false);
+  const [parkCatalogError, setParkCatalogError] = useState('');
+  const [attractionCatalogError, setAttractionCatalogError] = useState('');
+  const [parkCatalogLoading, setParkCatalogLoading] = useState(false);
+  const [attractionCatalogLoading, setAttractionCatalogLoading] = useState(false);
+  const [parkCatalogRetry, setParkCatalogRetry] = useState(0);
+  const [attractionCatalogRetry, setAttractionCatalogRetry] = useState(0);
   const savingRef = useRef(false);
-  const requestIdRef = useRef<string | null>(null);
+  const pendingCommandRef = useRef<PendingRideSaveCommand | null>(null);
+  const [pendingCommand, setPendingCommand] = useState<PendingRideSaveCommand | null>(null);
+  const pendingContext = rideSaveContext('manual');
   const dateKey = useMemo(() => toLocalDateKey(new Date(dateTime)), [dateTime]);
   const {
     tripId: activeTripId,
@@ -88,7 +104,9 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
     setRecentParkId,
     loading: activeTripLoading,
     error: activeTripError,
+    errorKind: activeTripErrorKind,
     retry: retryActiveTrip,
+    continueStandalone,
   } = useActiveRidePark({
     enabled: Boolean(user),
     userId: user?.uid,
@@ -100,42 +118,90 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
     setAttractions([]);
     setError('');
     setDiscardAllowed(false);
-    requestIdRef.current = null;
+    pendingCommandRef.current = null;
+    setPendingCommand(null);
   }, []);
 
   // Load parks on mount
   useEffect(() => {
-    getCollection<{ name: string }>('parks').then((docs) => {
+    setParkCatalogLoading(true);
+    setParkCatalogError('');
+    withReadDeadline(
+      getCollection<{ name: string }>('parks'),
+      'Parks could not be loaded. Retry before selecting a park.',
+    ).then((docs) => {
       setParks(docs.map((d) => ({ id: d.id, name: d.name })));
-    });
-  }, []);
+    }).catch((readError: Error) => setParkCatalogError(readError.message))
+      .finally(() => setParkCatalogLoading(false));
+  }, [parkCatalogRetry]);
 
   // Load attractions when park changes
   useEffect(() => {
     if (!parkId) {
       setAttractions([]);
+      setAttractionCatalogError('');
+      setAttractionCatalogLoading(false);
       return;
     }
     let cancelled = false;
     setAttractions([]);
-    getCollection<{ name: string; entityType?: string }>('attractions', [whereConstraint('parkId', '==', parkId)]).then((docs) => {
+    setAttractionCatalogLoading(true);
+    setAttractionCatalogError('');
+    withReadDeadline(
+      getCollection<{ name: string; entityType?: string }>('attractions', [whereConstraint('parkId', '==', parkId)]),
+      'Attractions could not be loaded. Retry or choose another park.',
+    ).then((docs) => {
       if (!cancelled) setAttractions(
         docs
           .filter((d) => !d.entityType || LOGGABLE_ENTITY_TYPES.has(d.entityType))
           .map((d) => ({ id: d.id, name: d.name, entityType: d.entityType }))
           .sort((a, b) => a.name.localeCompare(b.name))
       );
+    }).catch((readError: Error) => {
+      if (!cancelled) setAttractionCatalogError(readError.message);
+    }).finally(() => {
+      if (!cancelled) setAttractionCatalogLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [parkId]);
+  }, [attractionCatalogRetry, parkId]);
 
   useEffect(() => {
-    if (!activeTripLoading && !requestIdRef.current) {
+    if (!activeTripLoading && !pendingCommandRef.current) {
       resetParkSelection(recentParkId ?? '');
     }
   }, [activeTripLoading, dateKey, recentParkId, resetParkSelection]);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      pendingCommandRef.current = null;
+      setPendingCommand(null);
+      return;
+    }
+    let cancelled = false;
+    void restorePendingRideSaveCommand(user.uid, pendingContext).then((restored) => {
+      if (cancelled || pendingCommandRef.current) return;
+      pendingCommandRef.current = restored;
+      setPendingCommand(restored);
+      if (!restored) return;
+      setParkId(restored.data.parkId);
+      setAttractionId(restored.data.attractionId);
+      setDateTime(formatDateTimeLocal(new Date(restored.data.rodeAt)));
+      setWaitTime(restored.data.waitTimeMinutes === null ? '' : String(restored.data.waitTimeMinutes));
+      setWaitTimeMode(restored.data.attractionClosed
+        ? 'closed'
+        : restored.data.waitTimeMinutes === null
+          ? 'unknown'
+          : restored.data.waitTimeMinutes === 0 ? 'no-wait' : 'manual');
+      setRating(restored.data.rating);
+      setCleanupPending(false);
+      setError('This ride save was not confirmed. Retry will reconcile the same request.');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingContext, user?.uid]);
 
   const selectedParkName = parks.find((p) => p.id === parkId)?.name ?? '';
   const selectedAttractionName = attractions.find((a) => a.id === attractionId)?.name ?? '';
@@ -159,7 +225,7 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
       setError('Please select a park and attraction.');
       return;
     }
-    if (activeTripError || activeTripLoading) {
+    if (activeTripLoading || activeTripErrorKind === 'active-trip') {
       setError(activeTripError ?? 'Still checking for an active trip. Please wait.');
       return;
     }
@@ -178,35 +244,70 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
     setSaved(false);
     setError('');
     setDiscardAllowed(false);
-    requestIdRef.current ??= createRequestId();
+    const command = pendingCommandRef.current ?? createPendingRideSaveCommand({
+      parkId,
+      attractionId,
+      parkName: selectedParkName,
+      attractionName: selectedAttractionName,
+      rodeAt: new Date(dateTime),
+      waitTimeMinutes: rideWaitTime,
+      attractionClosed: waitTimeMode === 'closed',
+      source: 'manual',
+      rating,
+      notes: '',
+    }, activeTripId ?? null);
+    if (!pendingCommandRef.current) {
+      const persisted = await persistPendingRideSaveCommand(user.uid, pendingContext, command);
+      if (!persisted.ok) {
+        setError(pendingSaveStorageErrorMessage('save this ride', persisted));
+        savingRef.current = false;
+        setSaving(false);
+        return;
+      }
+      pendingCommandRef.current = command;
+      setPendingCommand(command);
+    }
+
+    const finishCommittedSave = async () => {
+      setCleanupPending(true);
+      const removed = await clearPendingRideSaveCommand(
+        user.uid,
+        pendingContext,
+        command.requestId,
+      );
+      if (!removed.ok) {
+        setError(
+          `${pendingSaveRemovalErrorMessage('ride save', removed)} `
+          + 'The ride is saved; use Finish Cleanup without submitting it again.',
+        );
+        return false;
+      }
+      pendingCommandRef.current = null;
+      setPendingCommand(null);
+      setCleanupPending(false);
+      setError('');
+      setRecentParkId(command.data.parkId);
+      setSaved(true);
+      onSuccess?.();
+      return true;
+    };
 
     try {
-      await createRideLog(user.uid, {
-        parkId,
-        attractionId,
-        parkName: selectedParkName,
-        attractionName: selectedAttractionName,
-        rodeAt: new Date(dateTime),
-        waitTimeMinutes: rideWaitTime,
-        attractionClosed: waitTimeMode === 'closed',
-        source: 'manual',
-        rating,
-        notes: '',
-      }, activeTripLoading ? undefined : activeTripId, {
-        requestId: requestIdRef.current,
+      if (cleanupPending) {
+        await finishCommittedSave();
+        return;
+      }
+      await createRideLog(user.uid, rideCommandData(command), command.tripId, {
+        requestId: command.requestId,
         timeoutMs: RIDE_SAVE_TIMEOUT_MS,
         waitForTripStats: true,
       });
-      setRecentParkId(parkId);
-      setSaved(true);
-      onSuccess?.();
+      await finishCommittedSave();
     } catch (saveError) {
       if (
         isConfirmedPartialSave(saveError)
       ) {
-        setRecentParkId(parkId);
-        setSaved(true);
-        onSuccess?.();
+        await finishCommittedSave();
       } else {
         setDiscardAllowed(canDiscardRideLogSave(saveError));
         setError(
@@ -220,12 +321,25 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
       setSaving(false);
     }
   };
-  const commandFrozen = requestIdRef.current !== null;
-  const handleDiscardFailedSave = () => {
-    requestIdRef.current = null;
+  const commandFrozen = pendingCommand !== null;
+  const handleDiscardFailedSave = async () => {
+    if (user && pendingCommandRef.current) {
+      const removed = await clearPendingRideSaveCommand(
+        user.uid,
+        pendingContext,
+        pendingCommandRef.current.requestId,
+      );
+      if (!removed.ok) {
+        setError(pendingSaveRemovalErrorMessage('ride save', removed));
+        return;
+      }
+    }
+    pendingCommandRef.current = null;
+    setPendingCommand(null);
     setError('');
     setDiscardAllowed(false);
     setSaved(false);
+    setCleanupPending(false);
   };
 
   return (
@@ -234,13 +348,57 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
         <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
       {activeTripError && (
-        <button
-          type="button"
-          onClick={retryActiveTrip}
-          className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-800"
-        >
-          Retry active trip check
-        </button>
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p>{activeTripError}</p>
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={retryActiveTrip} className="rounded-lg bg-amber-700 px-3 py-2 font-medium text-white">
+              Retry active trip check
+            </button>
+            {activeTripErrorKind === 'active-trip' && (
+              <button type="button" onClick={continueStandalone} className="rounded-lg border border-amber-400 bg-white px-3 py-2 font-medium">
+                Log standalone
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {parkCatalogError && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p>{parkCatalogError}</p>
+          <button
+            type="button"
+            onClick={() => setParkCatalogRetry((value) => value + 1)}
+            className="mt-2 rounded-lg bg-amber-700 px-3 py-2 font-medium text-white"
+          >
+            Retry park loading
+          </button>
+        </div>
+      )}
+      {attractionCatalogError && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p>{attractionCatalogError}</p>
+          <button
+            type="button"
+            onClick={() => setAttractionCatalogRetry((value) => value + 1)}
+            className="mt-2 rounded-lg bg-amber-700 px-3 py-2 font-medium text-white"
+          >
+            Retry attraction loading
+          </button>
+        </div>
+      )}
+      {commandFrozen && pendingCommand && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">Pending save for {pendingCommand.data.attractionName}</p>
+          <p>
+            {pendingCommand.data.parkName || pendingCommand.data.parkId}
+            {' · '}
+            {pendingCommand.data.waitTimeMinutes === null
+              ? 'Unknown wait'
+              : `${pendingCommand.data.waitTimeMinutes} min wait`}
+            {' · '}
+            {new Date(pendingCommand.data.rodeAt).toLocaleString()}
+          </p>
+        </div>
       )}
       {activeTripId && activeTripName && (
         <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800">
@@ -262,6 +420,11 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
           label="Park"
           disabled={activeTripLoading || commandFrozen}
         />
+        {parks.length === 0 && !parkCatalogError && (
+          <p className="mt-2 text-xs text-primary-500">
+            {parkCatalogLoading ? 'Loading parks…' : 'No parks are available. Retry park loading.'}
+          </p>
+        )}
       </div>
 
       {/* Attraction */}
@@ -278,6 +441,13 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
           id="attraction-select"
           label="Attraction"
         />
+        {parkId && attractions.length === 0 && !attractionCatalogError && (
+          <p className="mt-2 text-xs text-primary-500">
+            {attractionCatalogLoading
+              ? 'Loading attractions…'
+              : 'No attractions are available. Retry attraction loading.'}
+          </p>
+        )}
       </div>
 
       {/* Date/Time */}
@@ -346,7 +516,13 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
           disabled={saving}
           className="flex-1 rounded-xl bg-gradient-to-r from-primary-600 to-primary-700 px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg active:scale-[0.98] disabled:opacity-50"
         >
-          {saved ? 'Saved ✓' : saving ? 'Saving...' : commandFrozen ? 'Retry Save' : 'Log Ride 🎢'}
+          {saved
+            ? 'Saved ✓'
+            : saving
+              ? (cleanupPending ? 'Finishing Cleanup...' : 'Saving...')
+              : cleanupPending
+                ? 'Finish Cleanup'
+                : commandFrozen ? 'Retry Save' : 'Log Ride 🎢'}
         </button>
       </div>
       {commandFrozen && error && discardAllowed && (

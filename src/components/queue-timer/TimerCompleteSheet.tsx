@@ -1,6 +1,10 @@
 'use client';
 
 import {
+  pendingSaveRemovalErrorMessage,
+  pendingSaveStorageErrorMessage,
+} from '@/lib/services/pending-save-command-storage';
+import {
   useEffect,
   useRef,
   useState,
@@ -10,6 +14,7 @@ import { Star, X } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/auth-context';
 import {
   createRideLog,
+  canDiscardRideLogSave,
   RideLogSaveError,
   RIDE_LOG_SAVE_TIMEOUT_MS,
   submitCrowdReport,
@@ -18,6 +23,15 @@ import {
   isValidRideWaitTime,
   RIDE_WAIT_TIME_RANGE_MESSAGE,
 } from '@/lib/wait-time-contract';
+import {
+  clearPendingRideSaveCommand,
+  createPendingRideSaveCommand,
+  type PendingRideSaveCommand,
+  persistPendingRideSaveCommand,
+  restorePendingRideSaveCommand,
+  rideCommandData,
+  rideSaveContext,
+} from '@/lib/services/pending-ride-save-command';
 
 interface TimerCompleteSheetProps {
   elapsedMinutes: number;
@@ -37,13 +51,6 @@ const FOCUSABLE_SELECTOR = [
   'a[href]',
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
-
-function createRequestId(): string {
-  if (typeof globalThis.crypto?.randomUUID === 'function') {
-    return globalThis.crypto.randomUUID();
-  }
-  return `ride-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-}
 
 function withCloseTimeout(close: () => void | Promise<void>): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -74,18 +81,22 @@ export default function TimerCompleteSheet({
   const [saving, setSaving] = useState(false);
   const [saveConfirmed, setSaveConfirmed] = useState(false);
   const [commandFrozen, setCommandFrozen] = useState(false);
+  const [discardAllowed, setDiscardAllowed] = useState(false);
   const [error, setError] = useState('');
   const savingRef = useRef(false);
   const saveConfirmedRef = useRef(false);
+  const crowdReportSubmittedRef = useRef(false);
+  const committedNoticeRef = useRef('');
   const sheetRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const saveButtonRef = useRef<HTMLButtonElement>(null);
   const restoreActionFocusRef = useRef(false);
-  const saveCommandRef = useRef<{
-    userId: string;
-    data: Parameters<typeof createRideLog>[1];
-    requestId: string;
-  } | null>(null);
+  const saveCommandRef = useRef<PendingRideSaveCommand | null>(null);
+  const commandOwnerUidRef = useRef<string | null>(null);
+  const pendingContext = rideSaveContext('timer', `${parkId}:${attractionId}`);
+  const normalizedElapsedMinutes = elapsedMinutes > 0 && elapsedMinutes < 2
+    ? 2
+    : elapsedMinutes;
 
   useEffect(() => {
     const previouslyFocused = document.activeElement instanceof HTMLElement
@@ -99,6 +110,35 @@ export default function TimerCompleteSheet({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      if (saveCommandRef.current) {
+        setError('Your session expired. Sign in to the same account to retry this pending ride save.');
+      }
+      return;
+    }
+    if (commandOwnerUidRef.current && commandOwnerUidRef.current !== user.uid) {
+      saveCommandRef.current = null;
+      commandOwnerUidRef.current = null;
+      setCommandFrozen(false);
+      setError('');
+    }
+    let cancelled = false;
+    void restorePendingRideSaveCommand(user.uid, pendingContext).then((restored) => {
+      if (cancelled || saveCommandRef.current) return;
+      saveCommandRef.current = restored;
+      commandOwnerUidRef.current = restored ? user.uid : null;
+      setCommandFrozen(Boolean(restored));
+      if (!restored) return;
+      setRating(restored.data.rating);
+      setNotes(restored.data.notes);
+      setError('This ride save was not confirmed. Retry will reconcile the same request.');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingContext, user?.uid]);
 
   useEffect(() => {
     if (saving || !restoreActionFocusRef.current) return;
@@ -119,10 +159,12 @@ export default function TimerCompleteSheet({
   };
 
   const submitReportAfterConfirmedSave = () => {
+    if (crowdReportSubmittedRef.current) return;
+    crowdReportSubmittedRef.current = true;
     void submitCrowdReport({
       parkId,
       attractionId,
-      waitTimeMinutes: elapsedMinutes,
+      waitTimeMinutes: normalizedElapsedMinutes,
     }).catch((reportError) => {
       console.warn('[TimerCompleteSheet] Ride saved; crowd report failed:', reportError);
     });
@@ -133,7 +175,60 @@ export default function TimerCompleteSheet({
     sheetRef.current?.focus({ preventScroll: true });
   };
 
-  const handleSave = async (skipExtras = false) => {
+  const clearFrozenCommand = async () => {
+    if (commandOwnerUidRef.current && saveCommandRef.current) {
+      const removed = await clearPendingRideSaveCommand(
+        commandOwnerUidRef.current,
+        pendingContext,
+        saveCommandRef.current.requestId,
+      );
+      if (!removed.ok) {
+        setError(pendingSaveRemovalErrorMessage('ride save', removed));
+        return false;
+      }
+    }
+    saveCommandRef.current = null;
+    commandOwnerUidRef.current = null;
+    setCommandFrozen(false);
+    return true;
+  };
+
+  const finishCommittedSave = async () => {
+    const cleared = await clearFrozenCommand();
+    if (!cleared) {
+      setError((current) => (
+        `${current} The ride is saved; use Finish Cleanup without saving it again.`
+      ).trim());
+      return false;
+    }
+    setError(committedNoticeRef.current);
+    submitReportAfterConfirmedSave();
+    await closeAfterSave();
+    return true;
+  };
+
+  async function handleDismiss() {
+    if (savingRef.current) {
+      sheetRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (saveConfirmedRef.current) {
+      await handleSave();
+      return;
+    }
+    if (discardAllowed) {
+      if (!await clearFrozenCommand()) return;
+      await closeAfterSave();
+      return;
+    }
+    if (commandFrozen) {
+      await closeAfterSave();
+      return;
+    }
+    await handleSave(true);
+  }
+
+  async function handleSave(skipExtras = false) {
     if (savingRef.current) {
       sheetRef.current?.focus({ preventScroll: true });
       return;
@@ -144,7 +239,7 @@ export default function TimerCompleteSheet({
       setSaving(true);
       setError('');
       try {
-        await closeAfterSave();
+        await finishCommittedSave();
       } finally {
         savingRef.current = false;
         setSaving(false);
@@ -153,9 +248,10 @@ export default function TimerCompleteSheet({
     }
     if (!user) {
       setError('Your session expired. Sign in again before saving this ride.');
+      if (!saveCommandRef.current) setDiscardAllowed(true);
       return;
     }
-    if (!isValidRideWaitTime(elapsedMinutes)) {
+    if (!isValidRideWaitTime(normalizedElapsedMinutes)) {
       setError(RIDE_WAIT_TIME_RANGE_MESSAGE);
       return;
     }
@@ -165,28 +261,37 @@ export default function TimerCompleteSheet({
     setSaving(true);
     setError('');
     if (!saveCommandRef.current) {
-      saveCommandRef.current = {
-        userId: user.uid,
-        data: {
+      saveCommandRef.current = createPendingRideSaveCommand({
           parkId,
           attractionId,
           parkName,
           attractionName,
           rodeAt: new Date(),
-          waitTimeMinutes: elapsedMinutes,
+          waitTimeMinutes: normalizedElapsedMinutes,
           attractionClosed: false,
           source: 'timer',
           rating: skipExtras ? null : rating,
           notes: skipExtras ? '' : notes,
-        },
-        requestId: createRequestId(),
-      };
+        }, undefined);
+      const persisted = await persistPendingRideSaveCommand(
+        user.uid,
+        pendingContext,
+        saveCommandRef.current,
+      );
+      if (!persisted.ok) {
+        saveCommandRef.current = null;
+        setError(pendingSaveStorageErrorMessage('save this ride', persisted));
+        savingRef.current = false;
+        setSaving(false);
+        return;
+      }
+      commandOwnerUidRef.current = user.uid;
       setCommandFrozen(true);
     }
     const command = saveCommandRef.current;
 
     try {
-      await createRideLog(command.userId, command.data, undefined, {
+      await createRideLog(user.uid, rideCommandData(command), command.tripId, {
         requestId: command.requestId,
         timeoutMs: RIDE_LOG_SAVE_TIMEOUT_MS,
         waitForTripStats: true,
@@ -194,9 +299,8 @@ export default function TimerCompleteSheet({
 
       saveConfirmedRef.current = true;
       setSaveConfirmed(true);
-      submitReportAfterConfirmedSave();
-
-      await closeAfterSave();
+      committedNoticeRef.current = '';
+      await finishCommittedSave();
     } catch (saveError) {
       if (
         saveError instanceof RideLogSaveError
@@ -205,9 +309,13 @@ export default function TimerCompleteSheet({
       ) {
         saveConfirmedRef.current = true;
         setSaveConfirmed(true);
+        committedNoticeRef.current = saveError.message;
         setError(saveError.message);
-        submitReportAfterConfirmedSave();
+        await finishCommittedSave();
       } else {
+        const definitiveFailure = canDiscardRideLogSave(saveError);
+        if (definitiveFailure) await clearFrozenCommand();
+        setDiscardAllowed(definitiveFailure);
         setError(
           saveError instanceof RideLogSaveError
             ? saveError.message
@@ -218,7 +326,7 @@ export default function TimerCompleteSheet({
       savingRef.current = false;
       setSaving(false);
     }
-  };
+  }
 
   const getFocusableElements = (): HTMLElement[] => (
     Array.from(sheetRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? [])
@@ -233,7 +341,7 @@ export default function TimerCompleteSheet({
         sheetRef.current?.focus({ preventScroll: true });
         return;
       }
-      void handleSave(true);
+      void handleDismiss();
       return;
     }
 
@@ -265,7 +373,7 @@ export default function TimerCompleteSheet({
       <div
         aria-hidden="true"
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={saving ? undefined : () => handleSave(true)}
+        onClick={saving ? undefined : () => void handleDismiss()}
       />
 
       {/* Sheet */}
@@ -283,11 +391,13 @@ export default function TimerCompleteSheet({
         <button
           ref={closeButtonRef}
           type="button"
-          onClick={() => handleSave(true)}
+          onClick={() => void handleDismiss()}
           disabled={saving}
           aria-label={
             saveConfirmed
               ? 'Close ride completion dialog'
+              : discardAllowed
+                ? 'Discard failed ride save and close'
               : commandFrozen && !saving
                 ? 'Retry saving ride and close'
                 : 'Save ride without rating or notes and close'
@@ -366,6 +476,21 @@ export default function TimerCompleteSheet({
           </div>
         )}
 
+        {commandFrozen && saveCommandRef.current && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold">Pending save for {saveCommandRef.current.data.attractionName}</p>
+            <p>
+              {saveCommandRef.current.data.parkName || saveCommandRef.current.data.parkId}
+              {' · '}
+              {saveCommandRef.current.data.waitTimeMinutes === null
+                ? 'Unknown wait'
+                : `${saveCommandRef.current.data.waitTimeMinutes} min wait`}
+              {' · '}
+              {new Date(saveCommandRef.current.data.rodeAt).toLocaleString()}
+            </p>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex gap-3">
           {!saveConfirmed && (
@@ -389,13 +514,23 @@ export default function TimerCompleteSheet({
               saving
                 ? (saveConfirmed ? 'Closing...' : 'Saving...')
                 : saveConfirmed
-                  ? 'Close'
+                  ? commandFrozen ? 'Finish Cleanup' : 'Close'
                   : commandFrozen
                     ? 'Retry Save'
                     : 'Save 🎉'
             }
           </button>
         </div>
+        {discardAllowed && !saveConfirmed && (
+          <button
+            type="button"
+            onClick={() => void handleDismiss()}
+            disabled={saving}
+            className="mt-3 w-full rounded-xl border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
+          >
+            Discard failed save & close
+          </button>
+        )}
       </div>
     </div>
   );

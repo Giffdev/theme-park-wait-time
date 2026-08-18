@@ -52,6 +52,18 @@
       ]
     },
     {
+      "source": "/api/ride-logs",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, max-age=0" }
+      ]
+    },
+    {
+      "source": "/api/trip-commands",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, max-age=0" }
+      ]
+    },
+    {
       "source": "/api/parks/(.*)/schedule",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, max-age=0" }

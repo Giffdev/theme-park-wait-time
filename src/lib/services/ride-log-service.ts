@@ -8,12 +8,11 @@ import {
   whereConstraint,
   limitConstraint,
   dateToTimestamp,
-  getServerTimestamp,
 } from '@/lib/firebase/firestore';
-import { auth, db } from '@/lib/firebase/config';
-import { getActiveTrip, updateTripStats } from '@/lib/services/trip-service';
+import { auth } from '@/lib/firebase/config';
+import { getActiveTrip } from '@/lib/services/trip-service';
 import type { RideLog, RideLogCreateData, RideLogUpdateData } from '@/types/ride-log';
-import { doc, runTransaction, type QueryConstraint } from 'firebase/firestore';
+import { increment, type QueryConstraint } from 'firebase/firestore';
 import {
   isValidReportedWaitTime,
   isValidRideWaitTime,
@@ -41,12 +40,12 @@ export interface GetRideLogsOptions {
 
 export const RIDE_LOG_SAVE_TIMEOUT_MS = 10_000;
 const ACTIVE_TRIP_LOOKUP_TIMEOUT_MS = 3_000;
-const TRIP_STATS_TIMEOUT_MS = 5_000;
 const CROWD_REPORT_TIMEOUT_MS = 5_000;
 
 export type RideLogSaveErrorCode =
   | 'auth-required'
   | 'invalid-data'
+  | 'conflicting-replay'
   | 'timeout'
   | 'write-failed'
   | 'post-write-refresh-failed';
@@ -101,32 +100,6 @@ export interface AddRideLogOptions {
 }
 
 const inFlightRideLogs = new Map<string, Promise<string>>();
-
-interface StoredRequestRide {
-  tripId?: string | null;
-}
-
-interface PreparedRideLogCommand {
-  readonly resolvedTripId: string | null;
-  readonly writeData: Record<string, unknown>;
-}
-
-interface ConfirmedRideLogWrite {
-  readonly logId: string;
-  readonly resolvedTripId: string | null;
-}
-
-interface RideLogRequestState {
-  readonly userId: string;
-  readonly requestId: string;
-  readonly data: RideLogCreateData;
-  readonly tripId: string | null | undefined;
-  existingLookup?: Promise<StoredRequestRide | null>;
-  preparedCommand?: Promise<PreparedRideLogCommand>;
-  confirmedWrite?: Promise<ConfirmedRideLogWrite>;
-}
-
-const rideLogRequestStates = new Map<string, RideLogRequestState>();
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -203,135 +176,101 @@ function remainingTime(deadline: number, stageMaximum: number): number {
   return Math.max(1, Math.min(stageMaximum, deadline - Date.now()));
 }
 
-function getStoredTripId(data: StoredRequestRide | undefined): string | null {
-  return typeof data?.tripId === 'string' && data.tripId ? data.tripId : null;
-}
-
-function getOrCreateRequestState(
-  userId: string,
+async function postRideCommand(
   data: RideLogCreateData,
   tripId: string | null | undefined,
   requestId: string,
-): RideLogRequestState {
-  const requestKey = `${userId}:${requestId}`;
-  const existing = rideLogRequestStates.get(requestKey);
-  if (existing) return existing;
-
-  validateRideLog(userId, data, requestId);
-  const state: RideLogRequestState = {
-    userId,
-    requestId,
-    data: {
-      ...data,
-      rodeAt: new Date(data.rodeAt.getTime()),
-    },
-    tripId,
-  };
-  rideLogRequestStates.set(requestKey, state);
-  return state;
-}
-
-function lookupExistingRequestRide(
-  state: RideLogRequestState,
-): Promise<StoredRequestRide | null> {
-  if (state.existingLookup) return state.existingLookup;
-
-  const lookup = getDocument<StoredRequestRide>(
-    rideLogsPath(state.userId),
-    state.requestId,
-  );
-  state.existingLookup = lookup;
-  void lookup.then(
-    () => {
-      if (state.existingLookup === lookup) state.existingLookup = undefined;
-    },
-    () => {
-      if (state.existingLookup === lookup) state.existingLookup = undefined;
-    },
-  );
-  return lookup;
-}
-
-function prepareRideLogCommand(
-  state: RideLogRequestState,
-): Promise<PreparedRideLogCommand> {
-  if (state.preparedCommand) return state.preparedCommand;
-
-  const preparation = (async () => {
-    let resolvedTripId: string | null = null;
-    if (state.tripId !== undefined) {
-      resolvedTripId = state.tripId;
-    } else if (state.data.tripId !== undefined) {
-      resolvedTripId = state.data.tripId ?? null;
-    } else {
-      const activeTrip = await getActiveTrip(state.userId);
-      resolvedTripId = activeTrip?.id ?? null;
-    }
-
-    return {
-      resolvedTripId,
-      writeData: {
-        ...state.data,
-        rodeAt: dateToTimestamp(state.data.rodeAt),
-        tripId: resolvedTripId,
-        clientRequestId: state.requestId,
-        createdAt: getServerTimestamp(),
-        updatedAt: getServerTimestamp(),
-      },
+  timeoutMs: number,
+): Promise<{ id: string; tripId: string | null; statsUpdated: boolean }> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new RideLogSaveError('auth-required', 'Sign in before saving this ride.');
+  }
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const requestPromise = (async () => {
+      const idToken = await currentUser.getIdToken();
+      return fetch('/api/ride-logs', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requestId,
+          parkId: data.parkId,
+          attractionId: data.attractionId,
+          parkName: data.parkName,
+          attractionName: data.attractionName,
+          rodeAt: data.rodeAt.toISOString(),
+          waitTimeMinutes: data.waitTimeMinutes,
+          attractionClosed: data.attractionClosed,
+          source: data.source,
+          rating: data.rating,
+          notes: data.notes,
+          ...(tripId !== undefined || data.tripId !== undefined
+            ? { tripId: tripId !== undefined ? tripId : data.tripId }
+            : {}),
+        }),
+        signal: controller.signal,
+      });
+    })();
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new RideLogSaveError(
+          'timeout',
+          'Saving the ride took too long. It was not confirmed; retrying is safe.',
+        ));
+      }, timeoutMs);
+    });
+    const response = await Promise.race([requestPromise, deadline]);
+    const body = await response.json().catch(() => ({})) as {
+      id?: string;
+      tripId?: string | null;
+      statsUpdated?: boolean;
+      error?: string;
     };
-  })();
-
-  state.preparedCommand = preparation;
-  void preparation.catch(() => {
-    if (state.preparedCommand === preparation) {
-      state.preparedCommand = undefined;
+    if (response.status === 409) {
+      throw new RideLogSaveError(
+        'conflicting-replay',
+        body.error ?? 'This request ID is bound to a different ride.',
+        undefined,
+        undefined,
+        'definitive-non-commit',
+      );
     }
-  });
-  return preparation;
-}
-
-function confirmRequestRideWrite(
-  state: RideLogRequestState,
-  command: PreparedRideLogCommand,
-): Promise<ConfirmedRideLogWrite> {
-  if (state.confirmedWrite) return state.confirmedWrite;
-
-  const write = runTransaction(db, async (transaction) => {
-    const documentRef = doc(db, rideLogsPath(state.userId), state.requestId);
-    const existingSnapshot = await transaction.get(documentRef);
-    if (existingSnapshot.exists()) {
-      return {
-        logId: state.requestId,
-        resolvedTripId: getStoredTripId(existingSnapshot.data() as StoredRequestRide),
-      };
+    if (!response.ok) {
+      throw new RideLogSaveError(
+        response.status === 401 ? 'auth-required' : response.status < 500 ? 'invalid-data' : 'write-failed',
+        body.error ?? 'The ride save was not confirmed. Retry with the same request ID.',
+        undefined,
+        undefined,
+        response.status < 500 ? 'definitive-non-commit' : 'ambiguous',
+      );
     }
-
-    transaction.set(documentRef, command.writeData);
     return {
-      logId: state.requestId,
-      resolvedTripId: command.resolvedTripId,
+      id: body.id ?? requestId,
+      tripId: body.tripId ?? null,
+      statsUpdated: body.statsUpdated !== false,
     };
-  });
-
-  state.confirmedWrite = write;
-  void write.catch(() => {
-    if (state.confirmedWrite === write) {
-      state.confirmedWrite = undefined;
+  } catch (error) {
+    if (error instanceof RideLogSaveError) throw error;
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new RideLogSaveError(
+        'timeout',
+        'Saving the ride took too long. It was not confirmed; retrying is safe.',
+      );
     }
-  });
-  return write;
-}
-
-function confirmExistingRequestRide(
-  state: RideLogRequestState,
-  existing: StoredRequestRide,
-): ConfirmedRideLogWrite {
-  const confirmed = {
-    logId: state.requestId,
-    resolvedTripId: getStoredTripId(existing),
-  };
-  state.confirmedWrite = Promise.resolve(confirmed);
-  return confirmed;
+    throw new RideLogSaveError(
+      'write-failed',
+      'The ride save was not confirmed. Check your connection and retry.',
+      error,
+    );
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**
@@ -346,6 +285,8 @@ export async function addRideLog(
   options: AddRideLogOptions = {},
 ): Promise<string> {
   const requestKey = options.requestId ? `${userId}:${options.requestId}` : null;
+  if (requestKey) assertAuthenticatedUser(userId);
+  validateRideLog(userId, data, options.requestId);
   if (requestKey) {
     const existing = inFlightRideLogs.get(requestKey);
     if (existing) return existing;
@@ -382,62 +323,16 @@ async function saveRideLog(
   let resolvedTripId: string | null = null;
 
   if (options.requestId) {
-    const state = getOrCreateRequestState(userId, data, tripId, options.requestId);
-    let failureOutcome: RideLogSaveOutcome = 'ambiguous';
-    try {
-      let confirmed: ConfirmedRideLogWrite;
-      if (state.confirmedWrite) {
-        confirmed = await withTimeout(
-          state.confirmedWrite,
-          remainingTime(deadline, timeoutMs),
-          'Saving the ride took too long. It was not confirmed; retrying is safe.',
-        );
-      } else {
-        const existing = await withTimeout(
-          lookupExistingRequestRide(state),
-          remainingTime(deadline, timeoutMs),
-          'Saving the ride took too long while checking for an earlier attempt. Please retry.',
-        );
-
-        if (existing) {
-          confirmed = confirmExistingRequestRide(state, existing);
-        } else {
-          failureOutcome = 'definitive-non-commit';
-          const command = await withTimeout(
-            prepareRideLogCommand(state),
-            remainingTime(deadline, ACTIVE_TRIP_LOOKUP_TIMEOUT_MS),
-            'Saving took too long while checking your active trip. Please retry.',
-            'definitive-non-commit',
-          );
-          assertAuthenticatedUser(userId);
-          failureOutcome = 'ambiguous';
-          confirmed = await withTimeout(
-            confirmRequestRideWrite(state, command),
-            remainingTime(deadline, timeoutMs),
-            'Saving the ride took too long. It was not confirmed; retrying is safe.',
-          );
-        }
-      }
-
-      logId = confirmed.logId;
-      resolvedTripId = confirmed.resolvedTripId;
-    } catch (error) {
-      if (error instanceof RideLogSaveError) throw error;
-      if (!auth.currentUser || auth.currentUser.uid !== userId) {
-        throw new RideLogSaveError(
-          'auth-required',
-          'Your session expired before the ride could be saved. Sign in and retry.',
-          error,
-        );
-      }
+    const saved = await postRideCommand(data, tripId, options.requestId, timeoutMs);
+    logId = saved.id;
+    resolvedTripId = saved.tripId;
+    if (resolvedTripId && options.waitForTripStats && !saved.statsUpdated) {
       throw new RideLogSaveError(
-        'write-failed',
-        'Firestore rejected the ride save. Check your connection and try again.',
-        error,
+        'post-write-refresh-failed',
+        'Ride saved. The trip summary could not refresh, but retrying will not duplicate this ride.',
         undefined,
-        failureOutcome === 'definitive-non-commit'
-          ? failureOutcome
-          : writeFailureOutcome(error),
+        logId,
+        'committed',
       );
     }
   } else {
@@ -485,34 +380,6 @@ async function saveRideLog(
         undefined,
         writeFailureOutcome(error),
       );
-    }
-  }
-
-  // Trip stats are derived data. Callers that need a visible terminal status
-  // may wait for the bounded refresh; others keep the non-blocking behavior.
-  if (resolvedTripId) {
-    const statsRefresh = withTimeout(
-      updateTripStats(userId, resolvedTripId),
-      TRIP_STATS_TIMEOUT_MS,
-      'Trip summary refresh timed out.',
-    );
-
-    if (options.waitForTripStats) {
-      try {
-        await statsRefresh;
-      } catch (error) {
-        throw new RideLogSaveError(
-          'post-write-refresh-failed',
-          'Ride saved. The trip summary could not refresh, but retrying will not duplicate this ride.',
-          error,
-          logId,
-          'committed',
-        );
-      }
-    } else {
-      void statsRefresh.catch((error) => {
-        console.warn('[addRideLog] Ride saved; trip stats refresh failed:', error);
-      });
     }
   }
 
@@ -585,7 +452,10 @@ export async function updateRideLog(
   if (data.rodeAt) {
     updateData.rodeAt = dateToTimestamp(data.rodeAt);
   }
-  return updateDocument(rideLogsPath(userId), logId, updateData);
+  return updateDocument(rideLogsPath(userId), logId, {
+    ...updateData,
+    revision: increment(1),
+  });
 }
 
 /** Delete a ride log entry. */

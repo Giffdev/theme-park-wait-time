@@ -1,6 +1,18 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  createPendingRideSaveCommand,
+  persistPendingRideSaveCommand,
+  rideSaveContext,
+} from '@/lib/services/pending-ride-save-command';
+import {
+  configurePendingSaveCommandMemoryStorageForTests,
+  configurePendingSaveCommandRemovalFailureForTests,
+  resetPendingSaveCommandStorageForTests,
+} from '@/lib/services/pending-save-command-storage';
+
+configurePendingSaveCommandMemoryStorageForTests();
 
 const mockGetTrip = vi.fn();
 const mockGetTripRideLogs = vi.fn();
@@ -151,8 +163,11 @@ async function openRide(name: string) {
 }
 
 describe('trip ride-log production page save contract', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await resetPendingSaveCommandStorageForTests();
+    configurePendingSaveCommandRemovalFailureForTests(null);
     vi.clearAllMocks();
+    localStorage.clear();
     mockGetTrip.mockResolvedValue(trip);
     mockGetTripRideLogs.mockResolvedValue([]);
     mockCreateRideLog.mockResolvedValue('log-1');
@@ -166,6 +181,10 @@ describe('trip ride-log production page save contract', () => {
         return [];
       },
     );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('exits the pending state after a successful save', async () => {
@@ -201,6 +220,47 @@ describe('trip ride-log production page save contract', () => {
     expect(mockCreateRideLog).toHaveBeenCalledTimes(2);
     expect(mockCreateRideLog.mock.calls[1][3].requestId)
       .toBe(mockCreateRideLog.mock.calls[0][3].requestId);
+    expect(mockCreateRideLog.mock.calls[1][1].rodeAt.toISOString())
+      .toBe(mockCreateRideLog.mock.calls[0][1].rodeAt.toISOString());
+  });
+
+  it('finishes cleanup after commit without creating the ride twice', async () => {
+    configurePendingSaveCommandRemovalFailureForTests(() => {
+      throw new Error('cleanup failed');
+    });
+    render(<TripLogRidePage />);
+
+    fireEvent.click(await openRide('Space Mountain'));
+    expect(await screen.findByRole('button', { name: /Finish Cleanup/i })).toBeEnabled();
+    expect(screen.getByText(/ride is saved/i)).toBeInTheDocument();
+    expect(mockCreateRideLog).toHaveBeenCalledTimes(1);
+
+    configurePendingSaveCommandRemovalFailureForTests(null);
+    fireEvent.click(screen.getByRole('button', { name: /Finish Cleanup/i }));
+    expect(await screen.findByText(/Space Mountain logged!/i)).toBeInTheDocument();
+    expect(mockCreateRideLog).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores the exact frozen ride command after reload', async () => {
+    mockCreateRideLog.mockRejectedValueOnce(Object.assign(new Error('offline'), {
+      outcome: 'ambiguous',
+    }));
+    const firstRender = render(<TripLogRidePage />);
+    fireEvent.click(await openRide('Space Mountain'));
+    await screen.findByText(/Failed to save ride log/i);
+    const firstRequestId = mockCreateRideLog.mock.calls[0][3].requestId;
+    const firstRodeAt = mockCreateRideLog.mock.calls[0][1].rodeAt.toISOString();
+    firstRender.unmount();
+
+    mockCreateRideLog.mockResolvedValueOnce('reconciled');
+    render(<TripLogRidePage />);
+    const retry = await screen.findByRole('button', { name: /Retry Save/i });
+    fireEvent.click(retry);
+    await screen.findByText(/Space Mountain logged!/i);
+
+    expect(mockCreateRideLog.mock.calls[1][3].requestId).toBe(firstRequestId);
+    expect(mockCreateRideLog.mock.calls[1][1].rodeAt.toISOString()).toBe(firstRodeAt);
+    expect(localStorage.length).toBe(0);
   });
 
   it('surfaces a timed-out save distinctly and enables retry', async () => {
@@ -215,6 +275,88 @@ describe('trip ride-log production page save contract', () => {
     expect(screen.getByRole('button', { name: /Retry Save/i })).toBeEnabled();
   });
 
+  it('exits Saving at the page deadline when the save dependency never settles', async () => {
+    mockCreateRideLog.mockReturnValue(new Promise(() => {}));
+    const command = createPendingRideSaveCommand({
+      parkId: 'magic-kingdom',
+      attractionId: 'space-mountain',
+      parkName: 'Magic Kingdom',
+      attractionName: 'Space Mountain',
+      rodeAt: new Date('2026-08-18T16:00:00.000Z'),
+      waitTimeMinutes: null,
+      attractionClosed: false,
+      source: 'manual',
+      rating: null,
+      notes: '',
+    }, 'trip-1');
+    await persistPendingRideSaveCommand(
+      'user-123',
+      rideSaveContext('trip', 'trip-1'),
+      command,
+    );
+    render(<TripLogRidePage />);
+
+    const submit = await screen.findByRole('button', { name: /Retry Save/i });
+    vi.useFakeTimers();
+    fireEvent.click(submit);
+
+    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled();
+    expect(mockCreateRideLog).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_001);
+    });
+
+    expect(screen.queryByRole('button', { name: 'Saving...' })).not.toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: /Retry Save/i });
+    expect(retry).toBeEnabled();
+    expect(screen.getByText(/reuse this save request/i)).toBeInTheDocument();
+
+    const firstRequestId = mockCreateRideLog.mock.calls[0][3].requestId;
+    fireEvent.click(retry);
+    expect(mockCreateRideLog).toHaveBeenCalledTimes(2);
+    expect(mockCreateRideLog.mock.calls[1][3].requestId).toBe(firstRequestId);
+  });
+
+  it('surfaces a late successful commit after the page deadline', async () => {
+    const save = deferred<string>();
+    mockCreateRideLog.mockReturnValue(save.promise);
+    const command = createPendingRideSaveCommand({
+      parkId: 'magic-kingdom',
+      attractionId: 'space-mountain',
+      parkName: 'Magic Kingdom',
+      attractionName: 'Space Mountain',
+      rodeAt: new Date('2026-08-18T16:00:00.000Z'),
+      waitTimeMinutes: null,
+      attractionClosed: false,
+      source: 'manual',
+      rating: null,
+      notes: '',
+    }, 'trip-1');
+    await persistPendingRideSaveCommand(
+      'user-123',
+      rideSaveContext('trip', 'trip-1'),
+      command,
+    );
+    render(<TripLogRidePage />);
+
+    const submit = await screen.findByRole('button', { name: /Retry Save/i });
+    vi.useFakeTimers();
+    fireEvent.click(submit);
+    expect(mockCreateRideLog).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_001);
+    });
+    expect(screen.getByRole('button', { name: /Retry Save/i })).toBeEnabled();
+
+    vi.useRealTimers();
+    await act(async () => save.resolve('log-late'));
+
+    expect(await screen.findByText(/Space Mountain logged!/i)).toBeInTheDocument();
+    expect(screen.queryByText(/reuse this save request/i)).not.toBeInTheDocument();
+  });
+
   it('does not create duplicate writes when Save is double-clicked', async () => {
     const save = deferred<string>();
     mockCreateRideLog.mockReturnValue(save.promise);
@@ -224,7 +366,7 @@ describe('trip ride-log production page save contract', () => {
     fireEvent.click(submit);
     fireEvent.click(submit);
 
-    expect(mockCreateRideLog).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockCreateRideLog).toHaveBeenCalledTimes(1));
     await act(async () => save.resolve('log-1'));
   });
 
@@ -264,7 +406,7 @@ describe('trip ride-log production page save contract', () => {
     expect(epcot).toBeEnabled();
   });
 
-  it('can discard a failed save, restore controls, and start with a new request ID', async () => {
+  it('clears a definitively rejected command and starts with a new request ID', async () => {
     mockCreateRideLog
       .mockRejectedValueOnce(Object.assign(new Error('invalid request'), {
         outcome: 'definitive-non-commit',
@@ -276,11 +418,8 @@ describe('trip ride-log production page save contract', () => {
     expect(await screen.findByText(/Failed to save ride log/i)).toBeInTheDocument();
     const firstRequestId = mockCreateRideLog.mock.calls[0][3].requestId;
 
-    fireEvent.click(screen.getByRole('button', { name: /Discard failed save & start over/i }));
-    expect(screen.queryByText(/Failed to save ride log/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'EPCOT' })).toBeEnabled();
-
-    fireEvent.click(await openRide('Space Mountain'));
+    fireEvent.click(screen.getByRole('button', { name: /Log Ride/i }));
     await screen.findByText(/Space Mountain logged!/i);
     const secondRequestId = mockCreateRideLog.mock.calls[1][3].requestId;
     expect(secondRequestId).not.toBe(firstRequestId);
@@ -304,6 +443,23 @@ describe('trip ride-log production page save contract', () => {
     expect(mockCreateRideLog.mock.calls[1][3].requestId).toBe(firstRequestId);
   });
 
+  it('blocks closing or changing attractions while an ambiguous command is pending', async () => {
+    mockCreateRideLog.mockRejectedValueOnce(Object.assign(new Error('network unavailable'), {
+      outcome: 'ambiguous',
+    }));
+    render(<TripLogRidePage />);
+
+    fireEvent.click(await openRide('Space Mountain'));
+    await screen.findByText(/Failed to save ride log/i);
+
+    expect(screen.getByRole('button', { name: /Pending save must be resumed/i })).toBeDisabled();
+    expect(screen.getByText(/Space Mountain/i, { selector: 'h2' })).toBeInTheDocument();
+    expect(screen.getByText(/Magic Kingdom.*Unknown wait/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'EPCOT' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Retry Save/i })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /Test Track/i })).not.toBeInTheDocument();
+  });
+
   it('defaults to the most recently logged park in the same trip and day', async () => {
     mockGetTripRideLogs.mockResolvedValue([
       { id: 'newest', parkId: 'epcot', rodeAt: todayAt(15) },
@@ -319,7 +475,9 @@ describe('trip ride-log production page save contract', () => {
   it('clears the stale attraction on park switch and changes the next default only after a successful save', async () => {
     const logs = [{ id: 'mk-log', parkId: 'magic-kingdom', rodeAt: todayAt(10) }];
     mockGetTripRideLogs.mockImplementation(async () => logs);
-    mockCreateRideLog.mockRejectedValueOnce(new Error('offline'));
+    mockCreateRideLog.mockRejectedValueOnce(Object.assign(new Error('invalid request'), {
+      outcome: 'definitive-non-commit',
+    }));
 
     const first = render(<TripLogRidePage />);
     await openRide('Space Mountain');
@@ -368,5 +526,85 @@ describe('trip ride-log production page save contract', () => {
     render(<TripLogRidePage />);
 
     expect(await screen.findByRole('button', { name: /Space Mountain/i })).toBeInTheDocument();
+  });
+
+  it('ignores a stale attraction completion after the park changes', async () => {
+    const magicKingdom = deferred<typeof attractions['magic-kingdom']>();
+    const epcot = deferred<typeof attractions.epcot>();
+    mockGetCollection.mockImplementation(
+      (path: string, constraints?: Array<{ value?: string }>) => {
+        if (path === 'parks') return Promise.resolve(parks);
+        if (constraints?.[0]?.value === 'magic-kingdom') return magicKingdom.promise;
+        if (constraints?.[0]?.value === 'epcot') return epcot.promise;
+        return Promise.resolve([]);
+      },
+    );
+    render(<TripLogRidePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'EPCOT' }));
+    await act(async () => epcot.resolve(attractions.epcot));
+    expect(await screen.findByRole('button', { name: /Test Track/i })).toBeInTheDocument();
+
+    await act(async () => magicKingdom.resolve(attractions['magic-kingdom']));
+    expect(screen.queryByRole('button', { name: /Space Mountain/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Test Track/i })).toBeInTheDocument();
+  });
+
+  it('shows a confirmed empty attraction result instead of Loading', async () => {
+    mockGetCollection.mockImplementation(
+      async (path: string) => path === 'parks' ? parks : [],
+    );
+    render(<TripLogRidePage />);
+
+    expect(await screen.findByText('No attractions are available.')).toBeInTheDocument();
+    expect(screen.queryByText('Loading attractions...')).not.toBeInTheDocument();
+  });
+
+  it('keeps park and attraction failures independent', async () => {
+    mockGetCollection.mockImplementation(
+      async (path: string, constraints?: Array<{ value?: string }>) => {
+        if (path === 'parks') throw new Error('parks offline');
+        const selected = constraints?.[0]?.value as keyof typeof attractions;
+        return attractions[selected] ?? [];
+      },
+    );
+    render(<TripLogRidePage />);
+
+    expect(await screen.findByText(/Parks could not be loaded/i)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Space Mountain/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Attractions could not be loaded/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Retry park loading/i })).toBeEnabled();
+  });
+
+  it('times out a never-settling attraction request with terminal retry UI', async () => {
+    mockGetCollection.mockImplementation(
+      (path: string) => path === 'parks' ? Promise.resolve(parks) : new Promise(() => {}),
+    );
+    render(<TripLogRidePage />);
+
+    expect(await screen.findByText(/Attractions could not be loaded/i, {}, {
+      timeout: 9_000,
+    })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Retry attraction loading/i })).toBeEnabled();
+    expect(screen.queryByText('Loading attractions...')).not.toBeInTheDocument();
+  }, 10_000);
+
+  it('recovers an attraction rejection with an attraction-only retry', async () => {
+    let attractionAttempts = 0;
+    mockGetCollection.mockImplementation(
+      async (path: string, constraints?: Array<{ value?: string }>) => {
+        if (path === 'parks') return parks;
+        attractionAttempts += 1;
+        if (attractionAttempts === 1) throw new Error('attractions offline');
+        const selected = constraints?.[0]?.value as keyof typeof attractions;
+        return attractions[selected] ?? [];
+      },
+    );
+    render(<TripLogRidePage />);
+
+    expect(await screen.findByText(/Attractions could not be loaded/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Retry attraction loading/i }));
+    expect(await screen.findByRole('button', { name: /Space Mountain/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Attractions could not be loaded/i)).not.toBeInTheDocument();
   });
 });

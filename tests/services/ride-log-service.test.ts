@@ -20,9 +20,9 @@ const mockServerTimestamp = { _type: 'serverTimestamp' };
 const mockGetActiveTrip = vi.fn();
 const mockUpdateTripStats = vi.fn();
 const mockFirestoreDoc = vi.fn((...path: unknown[]) => ({ path }));
-const mockTransactionGet = vi.fn();
-const mockTransactionSet = vi.fn();
-const mockRunTransaction = vi.fn();
+const mockSetDoc = vi.fn();
+const mockIncrement = vi.fn((amount: number) => ({ increment: amount }));
+const mockClientTimestamp = { seconds: 1714400000, nanoseconds: 0 };
 const { mockAuth } = vi.hoisted(() => ({
   mockAuth: {
     currentUser: {
@@ -43,12 +43,13 @@ vi.mock('@/lib/firebase/firestore', () => ({
   limitConstraint: (...args: unknown[]) => mockLimitConstraint(...args),
   dateToTimestamp: (d: unknown) => mockDateToTimestamp(d),
   getServerTimestamp: vi.fn(() => mockServerTimestamp),
-  timestampNow: vi.fn(() => ({ seconds: 1714400000, nanoseconds: 0 })),
+  timestampNow: vi.fn(() => mockClientTimestamp),
 }));
 
 vi.mock('firebase/firestore', () => ({
   doc: (...args: unknown[]) => mockFirestoreDoc(...args),
-  runTransaction: (...args: unknown[]) => mockRunTransaction(...args),
+  increment: (amount: number) => mockIncrement(amount),
+  setDoc: (...args: unknown[]) => mockSetDoc(...args),
 }));
 
 vi.mock('@/lib/firebase/config', () => ({
@@ -98,22 +99,21 @@ describe('ride-log-service', () => {
     mockUpdateTripStats.mockResolvedValue(undefined);
     mockGetDocument.mockResolvedValue(null);
     mockGetCollection.mockResolvedValue([]);
-    mockTransactionGet.mockResolvedValue({
-      exists: () => false,
-      data: () => undefined,
-    });
-    mockRunTransaction.mockImplementation(
-      async (
-        _db: unknown,
-        update: (transaction: {
-          get: typeof mockTransactionGet;
-          set: typeof mockTransactionSet;
-        }) => Promise<unknown>,
-      ) => update({
-        get: mockTransactionGet,
-        set: mockTransactionSet,
-      }),
-    );
+    mockSetDoc.mockResolvedValue(undefined);
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        requestId: string;
+        tripId?: string | null;
+      };
+      return {
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          id: request.requestId,
+          tripId: request.tripId ?? null,
+        }),
+      };
+    }));
   });
 
   afterEach(() => {
@@ -152,7 +152,8 @@ describe('ride-log-service', () => {
       expect(mockDateToTimestamp).toHaveBeenCalledWith(mockRideLogInput.rodeAt);
     });
 
-    it('creates a stable document once for retry-safe saves', async () => {
+    it('sends stable saves to the authenticated server endpoint', async () => {
+      const fetchMock = vi.mocked(fetch);
       const result = await addRideLog(
         userId,
         mockRideLogInput,
@@ -160,186 +161,71 @@ describe('ride-log-service', () => {
         { requestId: 'ride-request-1234' },
       );
 
-      expect(mockFirestoreDoc).toHaveBeenCalledWith(
-        {},
-        collectionPath,
-        'ride-request-1234',
-      );
-      expect(mockTransactionSet).toHaveBeenCalledWith(
-        expect.objectContaining({
-          path: [{}, collectionPath, 'ride-request-1234'],
-        }),
-        expect.objectContaining({
-          parkId: 'magic-kingdom',
-          clientRequestId: 'ride-request-1234',
-          createdAt: mockServerTimestamp,
-          updatedAt: mockServerTimestamp,
-        }),
-      );
+      expect(fetchMock).toHaveBeenCalledWith('/api/ride-logs', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"requestId":"ride-request-1234"'),
+      }));
       expect(mockAddDocument).not.toHaveBeenCalled();
       expect(result).toBe('ride-request-1234');
     });
 
-    it('confirms an existing request without overwriting it or resolving a new trip', async () => {
-      mockGetDocument.mockResolvedValue({
-        id: 'ride-request-existing',
-        tripId: 'trip-original',
-        parkId: 'magic-kingdom',
-        attractionId: 'space-mountain',
+    it('writes first when read dependencies reject or never resolve', async () => {
+      const exhausted = Object.assign(new Error('RESOURCE_EXHAUSTED'), {
+        code: 'resource-exhausted',
       });
-
+      mockGetDocument.mockRejectedValue(exhausted);
+      mockGetActiveTrip.mockReturnValue(new Promise(() => {}));
       await expect(addRideLog(
         userId,
+        mockRideLogInput,
+        'trip-original',
         {
-          ...mockRideLogInput,
-          rodeAt: new Date('2026-04-30T18:00:00Z'),
-          rating: 1,
-          notes: 'Changed replay',
+          requestId: 'ride-request-read-exhausted',
         },
-        undefined,
-        {
-          requestId: 'ride-request-existing',
-          waitForTripStats: true,
-        },
-      )).resolves.toBe('ride-request-existing');
+      )).resolves.toBe('ride-request-read-exhausted');
 
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(mockGetDocument).not.toHaveBeenCalled();
       expect(mockGetActiveTrip).not.toHaveBeenCalled();
-      expect(mockRunTransaction).not.toHaveBeenCalled();
-      expect(mockTransactionSet).not.toHaveBeenCalled();
-      expect(mockUpdateTripStats).toHaveBeenCalledWith(userId, 'trip-original');
     });
 
-    it('preserves a concurrent winner when Firestore retries the transaction callback', async () => {
-      const requestId = 'ride-request-raced-confirmation';
-      const winningStoredPayload = {
-        parkId: 'epcot',
-        attractionId: 'guardians-of-the-galaxy',
-        parkName: 'EPCOT',
-        attractionName: 'Guardians of the Galaxy',
-        rodeAt: new Date('2026-04-28T16:15:00Z'),
-        waitTimeMinutes: 20,
-        attractionClosed: false,
-        source: 'manual',
-        rating: 5,
-        notes: 'Immutable winning payload',
-        tripId: 'trip-winning',
-        clientRequestId: requestId,
-        createdAt: { _type: 'winning-created-at' },
-        updatedAt: { _type: 'winning-updated-at' },
-      };
-      const attemptReadStates: string[] = [];
-      const transactionAttempts: Array<Array<{
-        reference: unknown;
-        data: Record<string, unknown>;
-      }>> = [];
-      let storedPayload: Record<string, unknown> | undefined;
-
-      mockGetDocument.mockResolvedValue(null);
-      mockGetActiveTrip.mockResolvedValue({ id: 'trip-losing', status: 'active' });
-      mockRunTransaction.mockImplementation(
-        async (
-          _db: unknown,
-          update: (transaction: {
-            get: typeof mockTransactionGet;
-            set: typeof mockTransactionSet;
-          }) => Promise<unknown>,
-        ) => {
-          const runAttempt = async (
-            readState: string,
-            snapshot: {
-              exists: () => boolean;
-              data: () => Record<string, unknown> | undefined;
-            },
-          ) => {
-            const writes: Array<{
-              reference: unknown;
-              data: Record<string, unknown>;
-            }> = [];
-            attemptReadStates.push(readState);
-            const result = await update({
-              get: vi.fn().mockResolvedValue(snapshot),
-              set: vi.fn((reference: unknown, data: Record<string, unknown>) => {
-                writes.push({ reference, data });
-                mockTransactionSet(reference, data);
-              }),
-            });
-            transactionAttempts.push(writes);
-            return result;
-          };
-
-          await runAttempt('absent', {
-            exists: () => false,
-            data: () => undefined,
-          });
-
-          // A competing transaction commits before this attempt can commit, so
-          // Firestore discards its queued set and retries the callback.
-          storedPayload = winningStoredPayload;
-          const retryResult = await runAttempt('winner', {
-            exists: () => true,
-            data: () => storedPayload,
-          });
-
-          const retryWrites = transactionAttempts[1];
-          if (retryWrites.length > 0) {
-            storedPayload = retryWrites[retryWrites.length - 1].data;
-          }
-          return retryResult;
-        },
+    it('rejects a different payload under the same stable request ID', async () => {
+      const requestId = 'ride-request-conflict';
+      await addRideLog(
+        userId,
+        mockRideLogInput,
+        'trip-original',
+        { requestId },
       );
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: vi.fn().mockResolvedValue({ error: 'different payload' }),
+      } as unknown as Response);
 
       await expect(addRideLog(
         userId,
-        {
-          ...mockRideLogInput,
-          rodeAt: new Date('2026-04-30T18:00:00Z'),
-          rating: 1,
-          notes: 'Losing payload must not overwrite',
-        },
-        undefined,
-        {
-          requestId,
-          waitForTripStats: true,
-        },
-      )).resolves.toBe(requestId);
-
-      expect(mockGetDocument).toHaveBeenCalledWith(collectionPath, requestId);
-      expect(mockRunTransaction).toHaveBeenCalledTimes(1);
-      expect(attemptReadStates).toEqual(['absent', 'winner']);
-      expect(transactionAttempts).toHaveLength(2);
-      expect(transactionAttempts[0]).toHaveLength(1);
-      expect(transactionAttempts[0][0].data).toEqual(expect.objectContaining({
-        tripId: 'trip-losing',
-        rating: 1,
-        notes: 'Losing payload must not overwrite',
-        createdAt: mockServerTimestamp,
-        updatedAt: mockServerTimestamp,
-      }));
-      expect(transactionAttempts[1]).toHaveLength(0);
-      expect(storedPayload).toEqual(winningStoredPayload);
-      expect(mockUpdateTripStats).toHaveBeenCalledWith(userId, 'trip-winning');
+        { ...mockRideLogInput, notes: 'Changed replay' },
+        'trip-original',
+        { requestId },
+      )).rejects.toMatchObject({
+        code: 'conflicting-replay',
+        outcome: 'definitive-non-commit',
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(fetch).toHaveBeenCalledTimes(2);
     });
 
     it('coalesces duplicate in-flight saves with the same request ID', async () => {
       let resolveWrite!: () => void;
-      mockRunTransaction.mockImplementation(
-        async (
-          _db: unknown,
-          update: (transaction: {
-            get: typeof mockTransactionGet;
-            set: typeof mockTransactionSet;
-          }) => Promise<unknown>,
-        ) => {
-          const result = await update({
-            get: mockTransactionGet,
-            set: mockTransactionSet,
-          });
-          await new Promise<void>((resolve) => {
-            resolveWrite = resolve;
-          });
-          return result;
-        },
-      );
+      vi.mocked(fetch).mockImplementation(() => new Promise<Response>((resolve) => {
+        resolveWrite = () => resolve({
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({ id: 'ride-request-duplicate', tripId: null }),
+        } as unknown as Response);
+      }));
 
       const first = addRideLog(
         userId,
@@ -354,12 +240,39 @@ describe('ride-log-service', () => {
         { requestId: 'ride-request-duplicate' },
       );
 
-      await vi.waitFor(() => expect(mockRunTransaction).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
       resolveWrite();
       await expect(Promise.all([first, second])).resolves.toEqual([
         'ride-request-duplicate',
         'ride-request-duplicate',
       ]);
+    });
+
+    it('bounds token acquisition and clears coalescing so retry can reconcile', async () => {
+      vi.useFakeTimers();
+      mockAuth.currentUser!.getIdToken.mockReturnValueOnce(new Promise(() => {}));
+
+      const first = addRideLog(
+        userId,
+        mockRideLogInput,
+        null,
+        { requestId: 'ride-request-token-timeout', timeoutMs: 50 },
+      );
+      const rejection = expect(first).rejects.toMatchObject({
+        code: 'timeout',
+        outcome: 'ambiguous',
+      });
+      await vi.advanceTimersByTimeAsync(51);
+      await rejection;
+
+      mockAuth.currentUser!.getIdToken.mockResolvedValueOnce('retry-token');
+      await expect(addRideLog(
+        userId,
+        mockRideLogInput,
+        null,
+        { requestId: 'ride-request-token-timeout', timeoutMs: 50 },
+      )).resolves.toBe('ride-request-token-timeout');
+      expect(fetch).toHaveBeenCalledTimes(1);
     });
 
     it('times out a hanging active-trip lookup before any write starts', async () => {
@@ -380,7 +293,7 @@ describe('ride-log-service', () => {
 
       await rejection;
       expect(mockAddDocument).not.toHaveBeenCalled();
-      expect(mockTransactionSet).not.toHaveBeenCalled();
+      expect(mockSetDoc).not.toHaveBeenCalled();
       await expect(save).rejects.toMatchObject({
         outcome: 'definitive-non-commit',
       });
@@ -414,7 +327,7 @@ describe('ride-log-service', () => {
           outcome: 'definitive-non-commit',
         });
         expect(mockAddDocument).not.toHaveBeenCalled();
-        expect(mockTransactionSet).not.toHaveBeenCalled();
+        expect(mockSetDoc).not.toHaveBeenCalled();
       },
     );
 
@@ -444,9 +357,7 @@ describe('ride-log-service', () => {
     });
 
     it('classifies an unavailable write as ambiguous and keeps the request identity retryable', async () => {
-      mockRunTransaction.mockRejectedValueOnce(Object.assign(new Error('offline'), {
-        code: 'unavailable',
-      }));
+      vi.mocked(fetch).mockRejectedValueOnce(new Error('offline'));
 
       await expect(addRideLog(
         userId,
@@ -459,72 +370,63 @@ describe('ride-log-service', () => {
       });
     });
 
-    it('does not turn a confirmed ride write into failure when trip stats hang', async () => {
-      vi.useFakeTimers();
+    it('does not invoke legacy client trip stats after a confirmed ride write', async () => {
       mockGetActiveTrip.mockResolvedValue({ id: 'trip-active', status: 'active' });
-      mockUpdateTripStats.mockReturnValue(new Promise(() => {}));
       mockAddDocument.mockResolvedValue({ id: 'log-confirmed' });
 
       await expect(addRideLog(userId, mockRideLogInput)).resolves.toBe('log-confirmed');
 
       expect(mockAddDocument).toHaveBeenCalledTimes(1);
-      expect(mockUpdateTripStats).toHaveBeenCalledWith(userId, 'trip-active');
-      await vi.advanceTimersByTimeAsync(5_001);
+      expect(mockUpdateTripStats).not.toHaveBeenCalled();
     });
 
-    it('reports bounded partial success when an awaited trip-stat refresh hangs', async () => {
-      vi.useFakeTimers();
-      mockGetActiveTrip.mockResolvedValue({ id: 'trip-active', status: 'active' });
-      mockUpdateTripStats.mockReturnValue(new Promise(() => {}));
+    it('reports explicit partial success when the server stats refresh fails', async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          id: 'ride-request-partial',
+          tripId: 'trip-active',
+          statsUpdated: false,
+        }),
+      } as unknown as Response);
 
-      const save = addRideLog(
+      await expect(addRideLog(
         userId,
         mockRideLogInput,
-        undefined,
+        'trip-active',
         {
           requestId: 'ride-request-partial',
           waitForTripStats: true,
         },
-      );
-      const rejection = expect(save).rejects.toMatchObject({
+      )).rejects.toMatchObject({
         code: 'post-write-refresh-failed',
         savedLogId: 'ride-request-partial',
         message: expect.stringMatching(/Ride saved/i),
       });
 
-      await vi.advanceTimersByTimeAsync(5_001);
-
-      await rejection;
-      expect(mockTransactionSet).toHaveBeenCalledTimes(1);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(mockUpdateTripStats).not.toHaveBeenCalled();
     });
 
-    it('replays the immutable first command after an ambiguous timeout', async () => {
+    it('reuses one write for a same-payload retry after an ambiguous timeout', async () => {
       vi.useFakeTimers();
       let resolveWrite!: () => void;
-      mockGetActiveTrip.mockResolvedValue({ id: 'trip-original', status: 'active' });
-      mockRunTransaction.mockImplementation(
-        async (
-          _db: unknown,
-          update: (transaction: {
-            get: typeof mockTransactionGet;
-            set: typeof mockTransactionSet;
-          }) => Promise<unknown>,
-        ) => {
-          const result = await update({
-            get: mockTransactionGet,
-            set: mockTransactionSet,
-          });
-          await new Promise<void>((resolve) => {
-            resolveWrite = resolve;
-          });
-          return result;
-        },
-      );
+      vi.mocked(fetch).mockImplementation(() => new Promise<Response>((resolve) => {
+        resolveWrite = () => resolve({
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({
+            id: 'ride-request-timeout-replay',
+            tripId: 'trip-original',
+          }),
+        } as unknown as Response);
+      }));
 
       const first = addRideLog(
         userId,
         mockRideLogInput,
-        undefined,
+        'trip-original',
         {
           requestId: 'ride-request-timeout-replay',
           timeoutMs: 50,
@@ -537,16 +439,10 @@ describe('ride-log-service', () => {
       await vi.advanceTimersByTimeAsync(51);
       await firstRejection;
 
-      mockGetActiveTrip.mockResolvedValue({ id: 'trip-changed', status: 'active' });
       const retry = addRideLog(
         userId,
-        {
-          ...mockRideLogInput,
-          rodeAt: new Date('2026-05-01T09:30:00Z'),
-          rating: 1,
-          notes: 'Changed after timeout',
-        },
-        undefined,
+        mockRideLogInput,
+        'trip-original',
         {
           requestId: 'ride-request-timeout-replay',
           timeoutMs: 50,
@@ -554,23 +450,14 @@ describe('ride-log-service', () => {
         },
       );
 
-      expect(mockRunTransaction).toHaveBeenCalledTimes(1);
-      expect(mockGetActiveTrip).toHaveBeenCalledTimes(1);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(mockGetActiveTrip).not.toHaveBeenCalled();
       resolveWrite();
 
       await expect(retry).resolves.toBe('ride-request-timeout-replay');
-      expect(mockTransactionSet).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          rodeAt: mockRideLogInput.rodeAt,
-          tripId: 'trip-original',
-          rating: 4,
-          notes: 'Great ride!',
-          createdAt: mockServerTimestamp,
-          updatedAt: mockServerTimestamp,
-        }),
-      );
-      expect(mockUpdateTripStats).toHaveBeenCalledWith(userId, 'trip-original');
+      expect(mockUpdateTripStats).not.toHaveBeenCalled();
     });
 
     it('exposes typed save errors for callers', () => {
@@ -662,7 +549,11 @@ describe('ride-log-service', () => {
       expect(mockUpdateDocument).toHaveBeenCalledWith(
         collectionPath,
         'log-1',
-        expect.objectContaining({ rating: 5, notes: 'Updated notes' }),
+        expect.objectContaining({
+          rating: 5,
+          notes: 'Updated notes',
+          revision: { increment: 1 },
+        }),
       );
     });
 

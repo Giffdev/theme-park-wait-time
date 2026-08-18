@@ -5,6 +5,18 @@ import { getActiveTrip, getTripRideLogs } from '@/lib/services/trip-service';
 import type { RideLog } from '@/types/ride-log';
 
 type RideLogWithId = RideLog & { id: string };
+export const ACTIVE_RIDE_PARK_READ_TIMEOUT_MS = 8_000;
+export type ActiveRideParkErrorKind = 'active-trip' | 'recent-rides';
+
+function withReadDeadline<T>(operation: Promise<T>, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ACTIVE_RIDE_PARK_READ_TIMEOUT_MS);
+  });
+  return Promise.race([operation, deadline]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 
 export function toLocalDateKey(value: Date | string | number = new Date()): string {
   const date = value instanceof Date ? value : new Date(value);
@@ -52,7 +64,9 @@ export function useActiveRidePark({
   const [recentParkId, setRecentParkId] = useState<string | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<ActiveRideParkErrorKind | null>(null);
   const [retryVersion, setRetryVersion] = useState(0);
+  const [standaloneVersion, setStandaloneVersion] = useState<number | null>(null);
 
   useEffect(() => {
     if (!enabled || !userId) {
@@ -63,12 +77,29 @@ export function useActiveRidePark({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setErrorKind(null);
     setRecentParkId(null);
 
     const load = async () => {
-      const activeTrip = tripId
-        ? { id: tripId, name: tripName }
-        : await getActiveTrip(userId);
+      let activeTrip: { id: string; name?: string | null } | null;
+      try {
+        activeTrip = tripId
+          ? { id: tripId, name: tripName }
+          : standaloneVersion === retryVersion
+            ? null
+            : await withReadDeadline(
+              getActiveTrip(userId),
+              'Active trip lookup timed out.',
+            );
+      } catch {
+        if (!cancelled) {
+          setResolvedTripId(null);
+          setResolvedTripName(null);
+          setErrorKind('active-trip');
+          setError('Could not check for an active trip. Retry, or explicitly log this ride as standalone.');
+        }
+        return;
+      }
 
       if (cancelled) return;
       setResolvedTripId(activeTrip?.id ?? null);
@@ -79,12 +110,20 @@ export function useActiveRidePark({
         return;
       }
 
-      const logs = await getTripRideLogs(
-        userId,
-        activeTrip.id,
-      );
-      if (!cancelled) {
-        setRecentParkId(getMostRecentRideParkId(logs, dateKey));
+      try {
+        const logs = await withReadDeadline(
+          getTripRideLogs(userId, activeTrip.id),
+          'Recent ride lookup timed out.',
+        );
+        if (!cancelled) {
+          setRecentParkId(getMostRecentRideParkId(logs, dateKey));
+        }
+      } catch {
+        if (!cancelled) {
+          setRecentParkId(null);
+          setErrorKind('recent-rides');
+          setError('Could not load recent rides for this trip. Choose a park explicitly, or retry.');
+        }
       }
     };
 
@@ -94,10 +133,11 @@ export function useActiveRidePark({
           setResolvedTripId(tripId ?? null);
           setResolvedTripName(tripName);
           setRecentParkId(null);
+          setErrorKind(tripId ? 'recent-rides' : 'active-trip');
           setError(
             tripId
-              ? 'Could not load recent rides for this trip. Retry before logging.'
-              : 'Could not check for an active trip. Retry before choosing standalone logging.',
+              ? 'Could not load recent rides for this trip. Choose a park explicitly, or retry.'
+              : 'Could not check for an active trip. Retry, or explicitly log this ride as standalone.',
           );
         }
       })
@@ -108,7 +148,7 @@ export function useActiveRidePark({
     return () => {
       cancelled = true;
     };
-  }, [dateKey, enabled, retryVersion, tripId, tripName, userId]);
+  }, [dateKey, enabled, retryVersion, standaloneVersion, tripId, tripName, userId]);
 
   return {
     tripId: resolvedTripId,
@@ -117,6 +157,18 @@ export function useActiveRidePark({
     setRecentParkId,
     loading,
     error,
-    retry: () => setRetryVersion((value) => value + 1),
+    errorKind,
+    retry: () => {
+      setStandaloneVersion(null);
+      setRetryVersion((value) => value + 1);
+    },
+    continueStandalone: () => {
+      setResolvedTripId(null);
+      setResolvedTripName(null);
+      setRecentParkId(null);
+      setError(null);
+      setErrorKind(null);
+      setStandaloneVersion(retryVersion);
+    },
   };
 }
