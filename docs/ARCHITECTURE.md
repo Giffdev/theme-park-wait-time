@@ -935,6 +935,20 @@ outcome. Trip creation uses the same pattern. Ambiguous commands are retained
 in bounded, seven-day browser storage scoped by authenticated UID and operation
 context; success or definitive rejection removes them.
 
+Trip creation ambiguity is reconciled automatically. After the UI deadline or
+on reload, the client uses authenticated
+`GET /api/trip-commands?requestId=<stable-id>` to read only the caller-owned
+command and target documents. The endpoint returns `committed`, `not-found`, or
+the structural states `target-only`, `command-only`, and `payload-conflict`;
+Firestore read failures return retryable `pending`. `not-found` causes a replay
+of the original payload with the same request ID, never a new command.
+Structural states are unsafe rather than definitive rejection: the browser
+retains the frozen command, blocks a new request ID, and directs the user to
+retry confirmation or contact support. Cached-token stalls and HTTP 401
+responses trigger a bounded forced token refresh. The server logs only a
+truncated SHA-256 request hash plus authentication, parsing, Firestore, and
+total timings—never payloads or user identifiers.
+
 All four production ride writers (unified sheet, manual form, timer completion,
 and trip ride page) use the same complete-command service. The stored command
 includes the request ID, trip association, and immutable `rodeAt` timestamp, so

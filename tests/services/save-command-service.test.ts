@@ -39,6 +39,13 @@ const { documents, queryResults, firestoreControl, mockAdminDb } = vi.hoisted(()
     documents: stored,
     queryResults: queuedQueries,
     mockAdminDb: {
+      getAll: async (...refs: Array<{ path: string }>) => {
+        control.readAttempts += refs.length;
+        if (control.exhaustReads) {
+          throw Object.assign(new Error('RESOURCE_EXHAUSTED'), { code: 8 });
+        }
+        return refs.map((ref) => makeSnapshot(ref.path));
+      },
       doc: (path: string) => ({
         path,
         get: async () => {
@@ -134,10 +141,12 @@ vi.mock('firebase-admin/firestore', () => ({
 import {
   SaveCommandAmbiguousError,
   SaveCommandConflictError,
+  getTripCommandStatus,
   saveRideCommand,
   saveTripCommand,
 } from '@/lib/services/save-command-service';
 import { InvalidFirestorePathSegmentError } from '@/lib/server/firestore-path';
+import { tripCommandFingerprint } from '@/lib/services/trip-command-fingerprint';
 
 const rideCommand = {
   requestId: 'ride-request-durable',
@@ -177,6 +186,76 @@ describe('durable save commands', () => {
     firestoreControl.transactionAttempts = 0;
     firestoreControl.exhaustReads = false;
     firestoreControl.nextBatchError = null;
+  });
+
+  it('classifies committed, not-found, and each structural trip state', async () => {
+    const expectedFingerprint = await tripCommandFingerprint(tripCommand);
+    expect(await getTripCommandStatus(
+      'user-123',
+      'trip-status-missing',
+      expectedFingerprint,
+    )).toBe('not-found');
+
+    documents.set('users/user-123/tripCreateCommands/trip-status-committed', {
+      targetId: 'trip-status-committed',
+      fingerprint: expectedFingerprint,
+    });
+    documents.set('users/user-123/trips/trip-status-committed', { name: 'redacted' });
+    expect(await getTripCommandStatus(
+      'user-123',
+      'trip-status-committed',
+      expectedFingerprint,
+    )).toBe('committed');
+
+    documents.set('users/user-123/trips/trip-status-target-only', { name: 'redacted' });
+    expect(await getTripCommandStatus(
+      'user-123',
+      'trip-status-target-only',
+      expectedFingerprint,
+    ))
+      .toBe('target-only');
+
+    documents.set('users/user-123/tripCreateCommands/trip-status-command-only', {
+      targetId: 'trip-status-command-only',
+      fingerprint: expectedFingerprint,
+    });
+    expect(await getTripCommandStatus(
+      'user-123',
+      'trip-status-command-only',
+      expectedFingerprint,
+    ))
+      .toBe('command-only');
+
+    documents.set('users/user-123/tripCreateCommands/trip-status-payload-conflict', {
+      targetId: 'different-target',
+      fingerprint: expectedFingerprint,
+    });
+    documents.set('users/user-123/trips/trip-status-payload-conflict', { name: 'redacted' });
+    expect(await getTripCommandStatus(
+      'user-123',
+      'trip-status-payload-conflict',
+      expectedFingerprint,
+    ))
+      .toBe('payload-conflict');
+
+    documents.set('users/user-123/tripCreateCommands/trip-status-fingerprint-conflict', {
+      targetId: 'trip-status-fingerprint-conflict',
+      fingerprint: expectedFingerprint,
+    });
+    documents.set('users/user-123/trips/trip-status-fingerprint-conflict', {
+      name: 'redacted',
+    });
+    expect(await getTripCommandStatus(
+      'user-123',
+      'trip-status-fingerprint-conflict',
+      await tripCommandFingerprint({ ...tripCommand, name: 'Different Trip' }),
+    )).toBe('payload-conflict');
+  });
+
+  it('leaves trip status read quota exhaustion retryable to the route', async () => {
+    firestoreControl.exhaustReads = true;
+    await expect(getTripCommandStatus('user-123', 'trip-status-quota', 'a'.repeat(64)))
+      .rejects.toMatchObject({ code: 8 });
   });
 
   it('commits first ride and trip creates atomically without any Firestore read', async () => {

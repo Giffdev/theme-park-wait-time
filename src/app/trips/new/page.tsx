@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/auth-context';
-import { createTrip } from '@/lib/services/trip-service';
+import { createTrip, reconcileTripCreation } from '@/lib/services/trip-service';
 import type { TripCreateData } from '@/types/trip';
 import {
   loadPendingSaveCommand,
@@ -16,6 +16,8 @@ import {
 
 const TRIP_CREATE_UI_DEADLINE_MS = 12_000;
 const TRIP_CREATE_SERVICE_TIMEOUT_MS = 30_000;
+const TRIP_CONFIRM_TIMEOUT_MS = 8_000;
+const TRIP_CONFIRM_RETRY_DELAYS_MS = [0, 1_000, 2_000, 4_000, 8_000];
 const TRIP_CREATE_CONTEXT = 'trip:create';
 
 interface PendingTripCommand {
@@ -74,16 +76,23 @@ function withTripCreateUiDeadline<T>(promise: Promise<T>): Promise<T> {
 export default function CreateTripPage() {
   const { user, loading: authLoading } = useAuth();
   const userId = user?.uid;
-  const router = useRouter();
+  const { push } = useRouter();
 
   const [tripName, setTripName] = useState('');
   const [startDate, setStartDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [storageReady, setStorageReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState('');
   const submittingRef = useRef(false);
   const pendingCommandRef = useRef<PendingTripCommand | null>(null);
+  const confirmationRunRef = useRef(0);
+  const confirmationAbortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(false);
+  const currentUserIdRef = useRef(userId);
   const [pendingCommand, setPendingCommand] = useState<PendingTripCommand | null>(null);
   const [completedTripId, setCompletedTripId] = useState<string | null>(null);
+  currentUserIdRef.current = userId;
 
   const setFrozenCommand = useCallback((command: PendingTripCommand | null) => {
     pendingCommandRef.current = command;
@@ -91,7 +100,151 @@ export default function CreateTripPage() {
   }, []);
 
   useEffect(() => {
-    if (!userId) return;
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      confirmationRunRef.current += 1;
+      confirmationAbortRef.current?.abort();
+    };
+  }, []);
+
+  const isConfirmationCurrent = useCallback((
+    runId: number,
+    ownerUid: string,
+    requestId: string,
+  ) => mountedRef.current
+    && confirmationRunRef.current === runId
+    && currentUserIdRef.current === ownerUid
+    && pendingCommandRef.current?.requestId === requestId, []);
+
+  // Auto-suggest name from date
+  const suggestedName = (() => {
+    const d = new Date(startDate + 'T00:00:00');
+    return `Trip · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  })();
+
+  const finishConfirmedTrip = useCallback(async (
+    command: PendingTripCommand,
+    tripId: string,
+    ownerUid: string,
+    runId: number,
+  ) => {
+    if (!isConfirmationCurrent(runId, ownerUid, command.requestId)) return;
+    setCompletedTripId(tripId);
+    if (!isConfirmationCurrent(runId, ownerUid, command.requestId)) return;
+    const removed = await removePendingSaveCommand(
+      ownerUid,
+      TRIP_CREATE_CONTEXT,
+      command.requestId,
+      () => isConfirmationCurrent(runId, ownerUid, command.requestId),
+    );
+    if (!isConfirmationCurrent(runId, ownerUid, command.requestId)) return;
+    if (!removed.ok) {
+      setConfirming(false);
+      setError(
+        `${pendingSaveRemovalErrorMessage('trip creation', removed)} `
+        + 'The trip is created; use Finish Cleanup without creating it again.',
+      );
+      return;
+    }
+    confirmationRunRef.current += 1;
+    confirmationAbortRef.current?.abort();
+    setFrozenCommand(null);
+    setCompletedTripId(null);
+    setConfirming(false);
+    push(`/trips/${tripId}`);
+  }, [isConfirmationCurrent, push, setFrozenCommand]);
+
+  const confirmCommand = useCallback(async (command: PendingTripCommand) => {
+    const ownerUid = currentUserIdRef.current;
+    if (!ownerUid || pendingCommandRef.current?.requestId !== command.requestId) return;
+    confirmationAbortRef.current?.abort();
+    const controller = new AbortController();
+    confirmationAbortRef.current = controller;
+    const runId = ++confirmationRunRef.current;
+    setConfirming(true);
+    setError('Still confirming… This page will safely reuse the same trip request.');
+    for (const delayMs of TRIP_CONFIRM_RETRY_DELAYS_MS) {
+      if (delayMs > 0) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, delayMs);
+          controller.signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            resolve();
+          }, { once: true });
+        });
+      }
+      if (!isConfirmationCurrent(runId, ownerUid, command.requestId)) return;
+      try {
+        const tripId = await reconcileTripCreation(
+          ownerUid,
+          command.data,
+          command.requestId,
+          TRIP_CONFIRM_TIMEOUT_MS,
+          controller.signal,
+        );
+        if (!isConfirmationCurrent(runId, ownerUid, command.requestId)) return;
+        await finishConfirmedTrip(command, tripId, ownerUid, runId);
+        return;
+      } catch (confirmationError) {
+        if (!isConfirmationCurrent(runId, ownerUid, command.requestId)) return;
+        const outcome = confirmationError
+          && typeof confirmationError === 'object'
+          && 'outcome' in confirmationError
+          ? confirmationError.outcome
+          : 'ambiguous';
+        const code = confirmationError
+          && typeof confirmationError === 'object'
+          && 'code' in confirmationError
+          ? confirmationError.code
+          : undefined;
+        if (code === 'conflicting-replay') {
+          setConfirming(false);
+          setError(
+            confirmationError instanceof Error
+              ? confirmationError.message
+              : 'This trip request has conflicting server state. Retry this request or contact support; do not start a new trip request.',
+          );
+          return;
+        }
+        if (outcome === 'definitive-non-commit') {
+          if (!isConfirmationCurrent(runId, ownerUid, command.requestId)) return;
+          const removed = await removePendingSaveCommand(
+            ownerUid,
+            TRIP_CREATE_CONTEXT,
+            command.requestId,
+            () => isConfirmationCurrent(runId, ownerUid, command.requestId),
+          );
+          if (!isConfirmationCurrent(runId, ownerUid, command.requestId)) return;
+          if (removed.ok) setFrozenCommand(null);
+          setConfirming(false);
+          setError(
+            confirmationError instanceof Error
+              ? confirmationError.message
+              : 'This trip was not created. You can safely start a new request.',
+          );
+          return;
+        }
+      }
+    }
+    if (isConfirmationCurrent(runId, ownerUid, command.requestId)) {
+      setConfirming(false);
+      setError(
+        'Trip creation is still not confirmed. Confirm Again will safely check and replay '
+        + 'the same request without creating a duplicate.',
+      );
+    }
+  }, [finishConfirmedTrip, isConfirmationCurrent, setFrozenCommand]);
+
+  useEffect(() => {
+    if (!userId) {
+      setStorageReady(false);
+      return;
+    }
+    setStorageReady(false);
+    setConfirming(false);
+    submittingRef.current = false;
+    setSubmitting(false);
     setFrozenCommand(null);
     setCompletedTripId(null);
     let cancelled = false;
@@ -110,21 +263,27 @@ export default function CreateTripPage() {
       setFrozenCommand(restored);
       setTripName(restored.data.name);
       setStartDate(restored.data.startDate);
-      setError('This trip creation was not confirmed. Retry will reconcile the same request.');
+      void confirmCommand(restored);
+    }).catch(() => {
+      if (!cancelled) {
+        setError('Pending trip confirmation could not be restored. Reload to try again.');
+      }
+    }).finally(() => {
+      if (!cancelled) setStorageReady(true);
     });
     return () => {
       cancelled = true;
+      confirmationRunRef.current += 1;
+      confirmationAbortRef.current?.abort();
     };
-  }, [setFrozenCommand, userId]);
-
-  // Auto-suggest name from date
-  const suggestedName = (() => {
-    const d = new Date(startDate + 'T00:00:00');
-    return `Trip · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-  })();
+  }, [confirmCommand, setFrozenCommand, userId]);
 
   const handleSubmit = async () => {
     if (!user) return;
+    if (pendingCommand && !completedTripId) {
+      void confirmCommand(pendingCommand);
+      return;
+    }
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSubmitting(true);
@@ -153,13 +312,20 @@ export default function CreateTripPage() {
         setSubmitting(false);
         return;
       }
+      if (!mountedRef.current || currentUserIdRef.current !== user.uid) {
+        submittingRef.current = false;
+        if (mountedRef.current) setSubmitting(false);
+        return;
+      }
       setFrozenCommand(command);
     }
     const requestId = command.requestId;
     const commandOwnerUid = user.uid;
+    confirmationAbortRef.current?.abort();
+    const runId = ++confirmationRunRef.current;
     try {
       if (completedTripId) {
-        await completeTrip(completedTripId);
+        await finishConfirmedTrip(command, completedTripId, commandOwnerUid, runId);
         return;
       }
       const createPromise = createTrip(user.uid, command.data, {
@@ -167,29 +333,16 @@ export default function CreateTripPage() {
         timeoutMs: TRIP_CREATE_SERVICE_TIMEOUT_MS,
       });
       async function completeTrip(tripId: string) {
-        if (pendingCommandRef.current?.requestId !== requestId) return;
-        setCompletedTripId(tripId);
-        const removed = await removePendingSaveCommand(
-          commandOwnerUid,
-          TRIP_CREATE_CONTEXT,
-          requestId,
-        );
-        if (!removed.ok) {
-          setError(
-            `${pendingSaveRemovalErrorMessage('trip creation', removed)} `
-            + 'The trip is created; use Finish Cleanup without creating it again.',
-          );
-          return;
-        }
-        setFrozenCommand(null);
-        setCompletedTripId(null);
-        router.push(`/trips/${tripId}`);
+        if (!isConfirmationCurrent(runId, commandOwnerUid, requestId)) return;
+        await finishConfirmedTrip(command, tripId, commandOwnerUid, runId);
       }
       try {
         await completeTrip(await withTripCreateUiDeadline(createPromise));
       } catch (createError) {
         if (createError instanceof TripCreateUiDeadlineError) {
           void createPromise.then(completeTrip, () => {});
+          void confirmCommand(command);
+          return;
         }
         throw createError;
       }
@@ -199,13 +352,20 @@ export default function CreateTripPage() {
         ? err.outcome
         : 'ambiguous';
       if (outcome === 'definitive-non-commit') {
+        if (!isConfirmationCurrent(runId, commandOwnerUid, requestId)) return;
         const removed = await removePendingSaveCommand(
-          user.uid,
+          commandOwnerUid,
           TRIP_CREATE_CONTEXT,
           requestId,
+          () => isConfirmationCurrent(runId, commandOwnerUid, requestId),
         );
+        if (!isConfirmationCurrent(runId, commandOwnerUid, requestId)) return;
         if (removed.ok) setFrozenCommand(null);
         else setError(pendingSaveRemovalErrorMessage('trip creation', removed));
+      }
+      if (outcome === 'ambiguous') {
+        void confirmCommand(command);
+        return;
       }
       setError(
         err instanceof Error
@@ -294,7 +454,11 @@ export default function CreateTripPage() {
         </div>
 
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className={`rounded-lg border px-4 py-3 text-sm ${
+            confirming
+              ? 'border-amber-200 bg-amber-50 text-amber-800'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}>
             {error}
           </div>
         )}
@@ -302,14 +466,18 @@ export default function CreateTripPage() {
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={submitting}
+          disabled={!storageReady || submitting || confirming}
           className="w-full rounded-lg bg-indigo-600 px-4 py-3.5 text-base font-semibold text-white shadow-md hover:bg-indigo-700 disabled:opacity-50 transition-colors"
         >
-          {submitting
+          {!storageReady
+            ? 'Restoring…'
+            : confirming
+            ? 'Still confirming…'
+            : submitting
             ? (completedTripId ? 'Finishing Cleanup...' : 'Creating...')
             : completedTripId
               ? 'Finish Cleanup'
-              : commandFrozen ? 'Retry Create Trip' : 'Start Trip →'}
+              : commandFrozen ? 'Confirm Again' : 'Start Trip →'}
         </button>
       </div>
     </div>

@@ -3,6 +3,8 @@ import { initializeFirestore, getFirestore, type Firestore } from 'firebase-admi
 import * as path from 'path';
 import * as fs from 'fs';
 
+const initializationStartedAt = performance.now();
+
 function getServiceAccount(): object {
   // Try env var first (JSON string)
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
@@ -47,4 +49,5 @@ try {
 }
 
 export const adminDb: Firestore = adminDbInstance;
+export const adminInitializationMs = Math.round(performance.now() - initializationStartedAt);
 export { adminApp };

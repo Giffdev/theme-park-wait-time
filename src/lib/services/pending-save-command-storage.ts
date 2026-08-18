@@ -53,7 +53,7 @@ export type PendingSaveRemovalResult =
   | { ok: true; removed: boolean }
   | {
       ok: false;
-      reason: 'unavailable' | 'read-failed' | 'mismatch' | 'write-failed';
+      reason: 'unavailable' | 'read-failed' | 'mismatch' | 'stale' | 'write-failed';
       existingRequestId?: string;
     };
 
@@ -63,6 +63,15 @@ let testMemoryEntries: Map<string, StoredEntry> | null = null;
 let testMemoryTombstones: Map<string, CompletionTombstone> | null = null;
 let afterMigrationForTests: (() => void) | null = null;
 let removalFailureForTests: (() => void) | null = null;
+let removalDelayForTests: (() => Promise<void>) | null = null;
+let removalMidTransactionDelayForTests: (() => Promise<void>) | null = null;
+
+class StalePendingSaveRemovalError extends Error {
+  constructor() {
+    super('Pending save removal is stale');
+    this.name = 'StalePendingSaveRemovalError';
+  }
+}
 
 function databaseName(): string {
   return databaseNameOverride ?? PRODUCTION_DATABASE_NAME;
@@ -232,6 +241,44 @@ function requestPromise<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
+function keepTransactionAliveUntil<T>(
+  store: IDBObjectStore,
+  pending: Promise<T>,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let value: T;
+    let failure: unknown;
+    pending.then(
+      (result) => {
+        value = result;
+        settled = true;
+      },
+      (error) => {
+        failure = error;
+        settled = true;
+      },
+    );
+
+    const pump = () => {
+      const request = store.get(['__transaction-keepalive__', '__transaction-keepalive__']);
+      request.onsuccess = () => {
+        if (!settled) {
+          pump();
+        } else if (failure !== undefined) {
+          reject(failure);
+        } else {
+          resolve(value);
+        }
+      };
+      request.onerror = () => reject(
+        request.error ?? new Error('IndexedDB transaction keepalive failed'),
+      );
+    };
+    pump();
+  });
+}
+
 async function runUidTransaction<T>(
   uid: string,
   operation: (
@@ -240,6 +287,7 @@ async function runUidTransaction<T>(
     tombstoneStore: IDBObjectStore,
     tombstones: CompletionTombstone[],
     now: number,
+    transaction: IDBTransaction,
   ) => Promise<T> | T,
 ): Promise<T> {
   const database = await openDatabase();
@@ -290,11 +338,15 @@ async function runUidTransaction<T>(
             tombstoneStore.delete([invalid.uid, invalid.context, invalid.requestId]);
           }
         }
-        result = await operation(store, entries, tombstoneStore, tombstones, now);
+        result = await operation(store, entries, tombstoneStore, tombstones, now, transaction);
       })
       .catch((error) => {
         operationError = error;
-        transaction.abort();
+        try {
+          transaction.abort();
+        } catch {
+          // The transaction may already have been aborted by the operation.
+        }
       });
 
     transaction.oncomplete = () => resolve(result);
@@ -496,7 +548,9 @@ export async function removePendingSaveCommand(
   uid: string,
   context: string,
   requestId: string,
+  isCurrent: () => boolean = () => true,
 ): Promise<PendingSaveRemovalResult> {
+  await removalDelayForTests?.();
   if (testMemoryEntries) {
     const key = memoryKey(uid, context);
     const existing = testMemoryEntries.get(key);
@@ -509,6 +563,7 @@ export async function removePendingSaveCommand(
         existingRequestId: existingRequestId ?? undefined,
       } as PendingSaveRemovalResult;
     }
+    if (!isCurrent()) return { ok: false, reason: 'stale' };
     try {
       removalFailureForTests?.();
     } catch {
@@ -536,6 +591,7 @@ export async function removePendingSaveCommand(
       tombstoneStore,
       tombstones,
       now,
+      transaction,
     ) => {
       await migrateLegacyEntries(uid, store, entries, tombstones, legacy);
       const existing = entries.find((entry) => entry.context === context);
@@ -550,6 +606,7 @@ export async function removePendingSaveCommand(
           existingRequestId: existingRequestId ?? undefined,
         } as PendingSaveRemovalResult;
       }
+      if (!isCurrent()) return { ok: false, reason: 'stale' } as PendingSaveRemovalResult;
       const tombstone: CompletionTombstone = {
         uid,
         context,
@@ -574,13 +631,37 @@ export async function removePendingSaveCommand(
         }
       }
       await requestPromise(tombstoneStore.put(tombstone));
+      if (removalMidTransactionDelayForTests) {
+        await keepTransactionAliveUntil(store, removalMidTransactionDelayForTests());
+      }
+      if (!isCurrent()) {
+        transaction.abort();
+        throw new StalePendingSaveRemovalError();
+      }
       await requestPromise(store.delete([uid, context]));
+      await new Promise<void>((resolve, reject) => {
+        const guardRequest = store.get([uid, context]);
+        guardRequest.onsuccess = () => {
+          if (!isCurrent()) {
+            transaction.abort();
+            reject(new StalePendingSaveRemovalError());
+            return;
+          }
+          resolve();
+        };
+        guardRequest.onerror = () => reject(
+          guardRequest.error ?? new Error('IndexedDB currentness guard failed'),
+        );
+      });
       removalFailureForTests?.();
       return { ok: true, removed: true } as PendingSaveRemovalResult;
     });
     afterMigrationForTests?.();
     return result;
-  } catch {
+  } catch (error) {
+    if (error instanceof StalePendingSaveRemovalError) {
+      return { ok: false, reason: 'stale' };
+    }
     return { ok: false, reason: 'write-failed' };
   }
 }
@@ -630,4 +711,16 @@ export function configurePendingSaveCommandRemovalFailureForTests(
   callback: (() => void) | null,
 ): void {
   removalFailureForTests = callback;
+}
+
+export function configurePendingSaveCommandRemovalDelayForTests(
+  callback: (() => Promise<void>) | null,
+): void {
+  removalDelayForTests = callback;
+}
+
+export function configurePendingSaveCommandRemovalMidTransactionDelayForTests(
+  callback: (() => Promise<void>) | null,
+): void {
+  removalMidTransactionDelayForTests = callback;
 }

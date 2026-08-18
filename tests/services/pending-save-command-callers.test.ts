@@ -40,15 +40,26 @@ describe('pending save command caller contracts', () => {
     const persistence = text.indexOf('await storePendingSaveCommand(');
     const rejection = text.indexOf('if (!persisted.ok)', persistence);
     const network = text.indexOf('createTrip(', rejection);
-    const removal = text.indexOf('await removePendingSaveCommand(', network);
-    const navigation = text.indexOf('router.push(', removal);
+    const completion = text.indexOf('const finishConfirmedTrip');
+    const removal = text.indexOf('await removePendingSaveCommand(', completion);
+    const navigation = text.indexOf('push(', removal);
 
     expect(persistence).toBeGreaterThan(-1);
     expect(rejection).toBeGreaterThan(persistence);
     expect(text.slice(rejection, network)).toContain('return;');
     expect(network).toBeGreaterThan(rejection);
-    expect(removal).toBeGreaterThan(network);
+    expect(removal).toBeGreaterThan(completion);
     expect(text.slice(removal, navigation)).toContain('requestId');
     expect(navigation).toBeGreaterThan(removal);
+    expect(text.slice(network)).toContain(
+      'finishConfirmedTrip(command, tripId, commandOwnerUid, runId)',
+    );
+    const reconciliation = text.indexOf('await reconcileTripCreation(');
+    const reconciledCompletion = text.indexOf(
+      'await finishConfirmedTrip(command, tripId, ownerUid, runId)',
+      reconciliation,
+    );
+    expect(text.slice(reconciliation, reconciledCompletion))
+      .toContain('isConfirmationCurrent(runId, ownerUid, command.requestId)');
   });
 });

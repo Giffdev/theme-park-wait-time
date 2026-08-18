@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const mockAuthenticate = vi.fn();
 const mockSaveRide = vi.fn();
 const mockSaveTrip = vi.fn();
+const mockGetTripStatus = vi.fn();
 
 vi.mock('@/lib/server/authenticated-json', () => {
   class RequestError extends Error {
@@ -31,6 +32,10 @@ vi.mock('@/lib/server/authenticated-json', () => {
   };
 });
 
+vi.mock('@/lib/firebase/admin', () => ({
+  adminInitializationMs: 3,
+}));
+
 vi.mock('@/lib/services/save-command-service', () => {
   class SaveCommandConflictError extends Error {
     constructor(message: string) {
@@ -47,14 +52,16 @@ vi.mock('@/lib/services/save-command-service', () => {
   return {
     SaveCommandAmbiguousError,
     SaveCommandConflictError,
+    getTripCommandStatus: (...args: unknown[]) => mockGetTripStatus(...args),
     saveRideCommand: (...args: unknown[]) => mockSaveRide(...args),
     saveTripCommand: (...args: unknown[]) => mockSaveTrip(...args),
   };
 });
 
 import { POST as saveRide } from '@/app/api/ride-logs/route';
-import { POST as saveTrip } from '@/app/api/trip-commands/route';
+import { GET as getTripStatus, POST as saveTrip } from '@/app/api/trip-commands/route';
 import { RequestError } from '@/lib/server/authenticated-json';
+import { SaveCommandConflictError } from '@/lib/services/save-command-service';
 
 function request(path: string, body: unknown) {
   return new NextRequest(`http://localhost:3000${path}`, {
@@ -62,6 +69,14 @@ function request(path: string, body: unknown) {
     body: JSON.stringify(body),
     headers: { 'content-type': 'application/json' },
   });
+}
+
+function statusRequest(
+  requestId = 'trip-request-route',
+  fingerprint = 'a'.repeat(64),
+) {
+  const query = new URLSearchParams({ requestId, fingerprint });
+  return new NextRequest(`http://localhost:3000/api/trip-commands?${query.toString()}`);
 }
 
 const validRide = {
@@ -97,6 +112,7 @@ describe('authenticated save command routes', () => {
     mockAuthenticate.mockResolvedValue('user-123');
     mockSaveRide.mockResolvedValue({ result: 'created', tripId: null });
     mockSaveTrip.mockResolvedValue('created');
+    mockGetTripStatus.mockResolvedValue('not-found');
   });
 
   it('rejects unauthenticated ride saves before writing', async () => {
@@ -195,5 +211,65 @@ describe('authenticated save command routes', () => {
       endDate: '2028-02-29',
     }));
     expect(response.status).toBe(200);
+  });
+
+  it('reports create conflicts as unsafe and retryable without server details', async () => {
+    mockSaveTrip.mockRejectedValue(new SaveCommandConflictError('private classification detail'));
+    const response = await saveTrip(request('/api/trip-commands', validTrip));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: expect.stringMatching(/contact support.*do not start a new trip request/i),
+      outcome: 'ambiguous',
+      retryable: true,
+    });
+  });
+
+  it.each([
+    'committed',
+    'not-found',
+    'target-only',
+    'command-only',
+    'payload-conflict',
+  ])(
+    'returns the authenticated trip command status %s',
+    async (status) => {
+      mockGetTripStatus.mockResolvedValue(status);
+      const response = await getTripStatus(statusRequest());
+      expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
+      await expect(response.json()).resolves.toMatchObject({ status });
+      expect(mockGetTripStatus).toHaveBeenCalledWith(
+        'user-123',
+        'trip-request-route',
+        'a'.repeat(64),
+      );
+    },
+  );
+
+  it('keeps a read-quota status failure retryable', async () => {
+    mockGetTripStatus.mockRejectedValue(Object.assign(new Error('quota'), {
+      code: 8,
+    }));
+    const response = await getTripStatus(statusRequest());
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ status: 'pending', retryable: true });
+  });
+
+  it('protects trip status with authentication and request ID validation', async () => {
+    mockAuthenticate.mockRejectedValueOnce(new RequestError(401, 'Invalid token'));
+    expect((await getTripStatus(statusRequest())).status).toBe(401);
+    expect((await getTripStatus(statusRequest('bad/path'))).status).toBe(400);
+    expect((await getTripStatus(statusRequest('trip-request-route', 'bad'))).status).toBe(400);
+  });
+
+  it('binds status lookup to the authenticated UID', async () => {
+    mockAuthenticate.mockResolvedValueOnce('different-user');
+    await getTripStatus(statusRequest());
+    expect(mockGetTripStatus).toHaveBeenCalledWith(
+      'different-user',
+      'trip-request-route',
+      'a'.repeat(64),
+    );
   });
 });

@@ -57,6 +57,8 @@ vi.mock('firebase/firestore', () => ({
 
 import {
   createTrip,
+  getTripCreationStatus,
+  reconcileTripCreation,
   getTrips,
   getTrip,
   updateTrip,
@@ -110,7 +112,7 @@ describe('trip-service', () => {
       return {
         ok: true,
         status: 200,
-        json: vi.fn().mockResolvedValue({ id: request.requestId }),
+        json: vi.fn().mockResolvedValue({ id: request.requestId, result: 'created' }),
       };
     }));
     mockTransactionGet.mockResolvedValue({
@@ -217,6 +219,58 @@ describe('trip-service', () => {
       expect(mockAddDocument).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['missing ID', { result: 'created' }],
+      ['mismatched ID', { id: 'different-trip-id', result: 'created' }],
+      ['wrong result', { id: 'trip-request-invalid-success', result: 'pending' }],
+    ])('keeps a 200 POST with %s ambiguous for status reconciliation', async (_label, body) => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(body),
+      } as unknown as Response);
+
+      await expect(createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-invalid-success',
+      })).rejects.toMatchObject({
+        code: 'write-failed',
+        outcome: 'ambiguous',
+      });
+    });
+
+    it('keeps malformed POST success JSON ambiguous for status reconciliation', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockRejectedValue(new SyntaxError('invalid JSON')),
+      } as unknown as Response);
+
+      await expect(createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-malformed-success',
+      })).rejects.toMatchObject({
+        code: 'write-failed',
+        outcome: 'ambiguous',
+      });
+    });
+
+    it('does not accept a well-formed success body under an arbitrary 2xx status', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: vi.fn().mockResolvedValue({
+          id: 'trip-request-wrong-status',
+          result: 'created',
+        }),
+      } as unknown as Response);
+
+      await expect(createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-wrong-status',
+      })).rejects.toMatchObject({
+        code: 'write-failed',
+        outcome: 'ambiguous',
+      });
+    });
+
     it('bounds a never-resolving trip transaction with an ambiguous outcome', async () => {
       vi.useFakeTimers();
       vi.mocked(fetch).mockReturnValue(new Promise(() => {}));
@@ -235,12 +289,69 @@ describe('trip-service', () => {
       await rejection;
     });
 
-    it('bounds token acquisition and allows a fresh reconciliation retry', async () => {
+    it('forces an auth refresh when cached token acquisition stalls', async () => {
       vi.useFakeTimers();
       mockAuth.currentUser!.getIdToken.mockReturnValueOnce(new Promise(() => {}));
 
-      const first = createTrip(userId, mockTripInput, {
+      const create = createTrip(userId, mockTripInput, {
         requestId: 'trip-request-token-timeout',
+        timeoutMs: 50,
+      });
+      await vi.advanceTimersByTimeAsync(26);
+      await expect(create).resolves.toBe('trip-request-token-timeout');
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(mockAuth.currentUser!.getIdToken).toHaveBeenNthCalledWith(2, true);
+    });
+
+    it('refreshes an expired token and safely replays the initial POST', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: vi.fn().mockResolvedValue({ error: 'expired' }),
+        } as unknown as Response)
+        .mockImplementationOnce(async (_input, init) => {
+          const request = JSON.parse(String(init?.body)) as { requestId: string };
+          return {
+            ok: true,
+            status: 200,
+            json: vi.fn().mockResolvedValue({ id: request.requestId, result: 'created' }),
+          } as unknown as Response;
+        });
+
+      await expect(createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-post-auth-refresh',
+      })).resolves.toBe('trip-request-post-auth-refresh');
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(mockAuth.currentUser!.getIdToken).toHaveBeenLastCalledWith(true);
+      expect(fetch).toHaveBeenLastCalledWith('/api/trip-commands', expect.objectContaining({
+        body: expect.stringContaining('"requestId":"trip-request-post-auth-refresh"'),
+      }));
+    });
+
+    it('bounds a never-settling forced refresh after POST 401 and clears in-flight state', async () => {
+      vi.useFakeTimers();
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: vi.fn().mockResolvedValue({ error: 'expired' }),
+        } as unknown as Response)
+        .mockImplementationOnce(async (_input, init) => {
+          const request = JSON.parse(String(init?.body)) as { requestId: string };
+          return {
+            ok: true,
+            status: 200,
+            json: vi.fn().mockResolvedValue({ id: request.requestId, result: 'created' }),
+          } as unknown as Response;
+        });
+      mockAuth.currentUser!.getIdToken
+        .mockResolvedValueOnce('cached-token')
+        .mockReturnValueOnce(new Promise(() => {}))
+        .mockResolvedValueOnce('fresh-cached-token');
+
+      const first = createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-refresh-deadline',
         timeoutMs: 50,
       });
       const rejection = expect(first).rejects.toMatchObject({
@@ -250,12 +361,11 @@ describe('trip-service', () => {
       await vi.advanceTimersByTimeAsync(51);
       await rejection;
 
-      mockAuth.currentUser!.getIdToken.mockResolvedValueOnce('retry-token');
       await expect(createTrip(userId, mockTripInput, {
-        requestId: 'trip-request-token-timeout',
+        requestId: 'trip-request-refresh-deadline',
         timeoutMs: 50,
-      })).resolves.toBe('trip-request-token-timeout');
-      expect(fetch).toHaveBeenCalledTimes(1);
+      })).resolves.toBe('trip-request-refresh-deadline');
+      expect(fetch).toHaveBeenCalledTimes(2);
     });
 
     it('rejects a conflicting payload under the same durable trip request ID', async () => {
@@ -287,7 +397,7 @@ describe('trip-service', () => {
         timeoutMs: 50,
       })).rejects.toMatchObject({
         code: 'conflicting-replay',
-        outcome: 'definitive-non-commit',
+        outcome: 'ambiguous',
       });
     });
 
@@ -300,7 +410,7 @@ describe('trip-service', () => {
           return {
             ok: true,
             status: 200,
-            json: vi.fn().mockResolvedValue({ id: request.requestId }),
+            json: vi.fn().mockResolvedValue({ id: request.requestId, result: 'replayed' }),
           } as unknown as Response;
         });
 
@@ -329,6 +439,195 @@ describe('trip-service', () => {
         outcome: 'definitive-non-commit',
       });
       expect(mockRunTransaction).not.toHaveBeenCalled();
+    });
+
+    it('confirms an exact committed request ID without replaying the POST', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          status: 'committed',
+          id: 'trip-request-committed',
+        }),
+      } as unknown as Response);
+
+      await expect(reconcileTripCreation(
+        userId,
+        mockTripInput,
+        'trip-request-committed',
+      )).resolves.toBe('trip-request-committed');
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining('requestId=trip-request-committed'),
+        expect.objectContaining({ method: 'GET' }),
+      );
+      const statusUrl = new URL(String(vi.mocked(fetch).mock.calls[0][0]), 'http://localhost');
+      expect([...statusUrl.searchParams.keys()].sort()).toEqual(['fingerprint', 'requestId']);
+      expect(statusUrl.searchParams.get('fingerprint')).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it.each([
+      ['missing ID', undefined],
+      ['mismatched ID', 'trip-request-different'],
+      ['malformed numeric ID', 42],
+      ['malformed object ID', { requestId: 'trip-request-committed-invalid' }],
+    ])('keeps committed status with %s ambiguous and does not replay', async (_label, id) => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(
+          id === undefined ? { status: 'committed' } : { status: 'committed', id },
+        ),
+      } as unknown as Response);
+
+      await expect(reconcileTripCreation(
+        userId,
+        mockTripInput,
+        'trip-request-committed-invalid',
+      )).rejects.toMatchObject({
+        code: 'write-failed',
+        outcome: 'ambiguous',
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('replays the same ID after a definitive not-found status', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({ status: 'not-found' }),
+        } as unknown as Response)
+        .mockImplementationOnce(async (_input, init) => {
+          const request = JSON.parse(String(init?.body)) as { requestId: string };
+          return {
+            ok: true,
+            status: 200,
+            json: vi.fn().mockResolvedValue({ id: request.requestId, result: 'created' }),
+          } as unknown as Response;
+        });
+
+      await expect(reconcileTripCreation(
+        userId,
+        mockTripInput,
+        'trip-request-not-found',
+      )).resolves.toBe('trip-request-not-found');
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch).toHaveBeenLastCalledWith('/api/trip-commands', expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"requestId":"trip-request-not-found"'),
+      }));
+    });
+
+    it('keeps pending and read-quota status outcomes retryable', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: vi.fn().mockResolvedValue({ status: 'pending', retryable: true }),
+      } as unknown as Response);
+
+      await expect(reconcileTripCreation(
+        userId,
+        mockTripInput,
+        'trip-request-read-quota',
+      )).rejects.toMatchObject({
+        outcome: 'ambiguous',
+      });
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ['malformed 200', 200, {}],
+      ['redirect', 302, { status: 'not-found' }],
+      ['proxy 403', 403, { error: 'forbidden' }],
+      ['stale deployment 404', 404, { error: 'missing route' }],
+      ['unexpected 418', 418, { error: 'teapot' }],
+      ['unexpected 500', 500, { error: 'failure' }],
+    ])('keeps %s status response ambiguous', async (_label, status, body) => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: status >= 200 && status < 300,
+        status,
+        json: vi.fn().mockResolvedValue(body),
+      } as unknown as Response);
+
+      await expect(reconcileTripCreation(
+        userId,
+        mockTripInput,
+        `trip-request-unexpected-${status}`,
+      )).rejects.toMatchObject({
+        outcome: 'ambiguous',
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('bounds a never-settling malformed status body as ambiguous', async () => {
+      vi.useFakeTimers();
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockReturnValue(new Promise(() => {})),
+      } as unknown as Response);
+
+      const reconciliation = reconcileTripCreation(
+        userId,
+        mockTripInput,
+        'trip-request-hanging-status-body',
+        50,
+      );
+      const rejection = expect(reconciliation).rejects.toMatchObject({
+        code: 'timeout',
+        outcome: 'ambiguous',
+      });
+      await vi.advanceTimersByTimeAsync(51);
+      await rejection;
+    });
+
+    it.each(['target-only', 'command-only', 'payload-conflict'] as const)(
+      'keeps %s status unsafe without replaying or permitting discard',
+      async (status) => {
+        vi.mocked(fetch).mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({ status }),
+        } as unknown as Response);
+
+        await expect(reconcileTripCreation(
+          userId,
+          mockTripInput,
+          `trip-request-${status}`,
+        )).rejects.toMatchObject({
+          code: 'conflicting-replay',
+          outcome: 'ambiguous',
+          message: expect.stringMatching(/contact support/i),
+        });
+        expect(fetch).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('refreshes an expired token while checking status', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          json: vi.fn().mockResolvedValue({ error: 'expired' }),
+        } as unknown as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({
+            status: 'committed',
+            id: 'trip-request-auth-refresh',
+          }),
+        } as unknown as Response);
+
+      await expect(getTripCreationStatus(
+        userId,
+        mockTripInput,
+        'trip-request-auth-refresh',
+      )).resolves.toBe('committed');
+      expect(mockAuth.currentUser!.getIdToken).toHaveBeenLastCalledWith(true);
+      expect(fetch).toHaveBeenCalledTimes(2);
     });
   });
 

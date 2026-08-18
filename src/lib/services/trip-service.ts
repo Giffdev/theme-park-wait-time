@@ -14,6 +14,7 @@ import { getParkById } from '@/lib/parks';
 import type { Trip, TripCreateData, TripUpdateData, TripStats } from '@/types/trip';
 import type { RideLog } from '@/types/ride-log';
 import type { QueryConstraint } from 'firebase/firestore';
+import { tripCommandFingerprint } from '@/lib/services/trip-command-fingerprint';
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -73,6 +74,13 @@ export interface CreateTripOptions {
 }
 
 export type TripCreateOutcome = 'definitive-non-commit' | 'ambiguous';
+export type TripCreationStatus =
+  | 'committed'
+  | 'pending'
+  | 'not-found'
+  | 'target-only'
+  | 'command-only'
+  | 'payload-conflict';
 
 export class TripCreateError extends Error {
   readonly code: 'auth-required' | 'invalid-data' | 'conflicting-replay' | 'timeout' | 'write-failed';
@@ -94,6 +102,32 @@ export class TripCreateError extends Error {
 }
 
 const inFlightTripCreates = new Map<string, Promise<string>>();
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
+
+async function getIdTokenWithRefreshDeadline(
+  currentUser: NonNullable<typeof auth.currentUser>,
+  timeoutMs: number,
+): Promise<string> {
+  const cachedBudget = Math.min(4_000, Math.max(25, Math.floor(timeoutMs / 2)));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      currentUser.getIdToken(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new TripCreateError(
+          'timeout',
+          'Authentication refresh is taking longer than expected.',
+          'ambiguous',
+        )), cachedBudget);
+      }),
+    ]);
+  } catch (error) {
+    if (!(error instanceof TripCreateError) || error.code !== 'timeout') throw error;
+    return currentUser.getIdToken(true);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function assertTripCreateAuth(userId: string): void {
   if (!auth.currentUser || auth.currentUser.uid !== userId) {
@@ -109,6 +143,7 @@ async function postTripCommand(
     data: TripCreateData,
     requestId: string,
     timeoutMs: number,
+    externalSignal?: AbortSignal,
   ): Promise<string> {
     const currentUser = auth.currentUser;
     if (!currentUser) {
@@ -119,10 +154,13 @@ async function postTripCommand(
       );
     }
     const controller = new AbortController();
+    const abortFromCaller = () => controller.abort();
+    if (externalSignal?.aborted) controller.abort();
+    else externalSignal?.addEventListener('abort', abortFromCaller, { once: true });
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
         const requestPromise = (async () => {
-          const idToken = await currentUser.getIdToken();
+          const idToken = await getIdTokenWithRefreshDeadline(currentUser, timeoutMs);
           return fetch('/api/trip-commands', {
             method: 'POST',
             headers: {
@@ -153,23 +191,65 @@ async function postTripCommand(
           ));
         }, timeoutMs);
       });
-      const response = await Promise.race([requestPromise, deadline]);
-      const body = await response.json().catch(() => ({})) as { id?: string; error?: string };
+      const boundedRequest = (async () => {
+        let response = await requestPromise;
+        if (response.status === 401) {
+          const refreshedToken = await currentUser.getIdToken(true);
+          response = await fetch('/api/trip-commands', {
+            method: 'POST',
+            headers: {
+              Authorization: ['Bearer', refreshedToken].join(' '),
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              requestId,
+              name: data.name,
+              startDate: data.startDate,
+              endDate: data.endDate,
+              parkIds: data.parkIds ?? [],
+              parkNames: data.parkNames ?? {},
+              status: data.status,
+              shareId: data.shareId ?? null,
+              notes: data.notes,
+            }),
+            signal: controller.signal,
+          });
+        }
+        const body = await response.json().catch(() => null) as {
+          id?: unknown;
+          result?: unknown;
+          error?: string;
+        } | null;
+        return { response, body };
+      })();
+      const { response, body } = await Promise.race([boundedRequest, deadline]);
       if (response.status === 409) {
         throw new TripCreateError(
           'conflicting-replay',
-          body.error ?? 'This request ID is bound to a different trip.',
-          'definitive-non-commit',
+          body?.error ?? 'This trip request has conflicting server state. Retry the same request ID or contact support; do not start a new trip request.',
+          'ambiguous',
         );
       }
       if (!response.ok) {
         throw new TripCreateError(
-          response.status === 401 ? 'auth-required' : response.status < 500 ? 'invalid-data' : 'write-failed',
-          body.error ?? 'Trip creation was not confirmed. Retry with the same trip ID.',
-          response.status < 500 ? 'definitive-non-commit' : 'ambiguous',
+          response.status === 401 ? 'auth-required' : 'write-failed',
+          body?.error ?? 'Trip creation was not confirmed. Retry with the same trip ID.',
+          'ambiguous',
         );
       }
-      return body.id ?? requestId;
+      const validSuccess = response.status === 200
+        && body !== null
+        && typeof body === 'object'
+        && body.id === requestId
+        && (body.result === 'created' || body.result === 'replayed');
+      if (!validSuccess) {
+        throw new TripCreateError(
+          'write-failed',
+          'Trip creation returned an unrecognized confirmation. Retry will reconcile the same trip ID.',
+          'ambiguous',
+        );
+      }
+      return requestId;
     } catch (error) {
       if (error instanceof TripCreateError) throw error;
       if (error instanceof Error && error.name === 'AbortError') {
@@ -187,8 +267,158 @@ async function postTripCommand(
         error,
       );
     } finally {
-    if (timer) clearTimeout(timer);
+      if (timer) clearTimeout(timer);
+      externalSignal?.removeEventListener('abort', abortFromCaller);
   }
+}
+
+export async function getTripCreationStatus(
+  userId: string,
+  data: TripCreateData,
+  requestId: string,
+  timeoutMs = 8_000,
+  externalSignal?: AbortSignal,
+): Promise<TripCreationStatus> {
+  if (!REQUEST_ID_PATTERN.test(requestId)) {
+    throw new TripCreateError(
+      'invalid-data',
+      'The trip creation request ID is invalid.',
+      'definitive-non-commit',
+    );
+  }
+  const currentUser = auth.currentUser;
+  if (!currentUser || currentUser.uid !== userId) {
+    throw new TripCreateError(
+      'auth-required',
+      'Your session expired. Sign in again to continue confirming this trip.',
+      'ambiguous',
+    );
+  }
+
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  if (externalSignal?.aborted) controller.abort();
+  else externalSignal?.addEventListener('abort', abortFromCaller, { once: true });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new TripCreateError(
+          'timeout',
+          'Trip creation status is still pending. Automatic confirmation will retry.',
+          'ambiguous',
+        ));
+      }, timeoutMs);
+    });
+    const send = async (forceRefresh: boolean): Promise<Response> => {
+      const idToken = forceRefresh
+        ? await currentUser.getIdToken(true)
+        : await getIdTokenWithRefreshDeadline(currentUser, timeoutMs);
+      const fingerprint = await tripCommandFingerprint(data);
+      const query = new URLSearchParams({ requestId, fingerprint });
+      return fetch(`/api/trip-commands?${query.toString()}`, {
+        method: 'GET',
+        headers: {
+          Authorization: ['Bearer', idToken].join(' '),
+          Accept: 'application/json',
+        },
+        signal: controller.signal,
+      });
+    };
+    const requestPromise = (async () => {
+      let response = await send(false);
+      if (response.status === 401) response = await send(true);
+      const body = await response.json().catch(() => ({})) as {
+        status?: TripCreationStatus;
+        id?: unknown;
+        error?: string;
+      };
+      return { response, body };
+    })();
+    const { response, body } = await Promise.race([requestPromise, deadline]);
+    if (response.status === 401) {
+      throw new TripCreateError(
+        'auth-required',
+        'Your session expired. Sign in again to continue confirming this trip.',
+        'ambiguous',
+      );
+    }
+    if (response.status === 503 && body.status === 'pending') return 'pending';
+    if (response.status !== 200 || !body.status
+        || ![
+          'committed',
+          'pending',
+          'not-found',
+          'target-only',
+          'command-only',
+          'payload-conflict',
+        ].includes(body.status)) {
+      throw new TripCreateError(
+        'write-failed',
+        body.error ?? 'Trip creation status could not be confirmed yet.',
+        'ambiguous',
+      );
+    }
+    if (body.status === 'committed'
+        && (typeof body.id !== 'string'
+          || !REQUEST_ID_PATTERN.test(body.id)
+          || body.id !== requestId)) {
+      throw new TripCreateError(
+        'write-failed',
+        'Trip creation status could not be confirmed yet. Automatic confirmation will retry.',
+        'ambiguous',
+      );
+    }
+    return body.status;
+  } catch (error) {
+    if (error instanceof TripCreateError) throw error;
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new TripCreateError(
+        'timeout',
+        'Trip creation status is still pending. Automatic confirmation will retry.',
+        'ambiguous',
+        error,
+      );
+    }
+    throw new TripCreateError(
+      'write-failed',
+      'Trip creation status could not be confirmed yet. Automatic confirmation will retry.',
+      'ambiguous',
+      error,
+    );
+  } finally {
+    if (timer) clearTimeout(timer);
+    externalSignal?.removeEventListener('abort', abortFromCaller);
+  }
+}
+
+export async function reconcileTripCreation(
+  userId: string,
+  data: TripCreateData,
+  requestId: string,
+  timeoutMs = 8_000,
+  signal?: AbortSignal,
+): Promise<string> {
+  const status = await getTripCreationStatus(userId, data, requestId, timeoutMs, signal);
+  if (status === 'committed') return requestId;
+  if (status === 'target-only'
+      || status === 'command-only'
+      || status === 'payload-conflict') {
+    throw new TripCreateError(
+      'conflicting-replay',
+      'This trip request has conflicting server state. Keep this page and request ID, retry confirmation, and contact support if it persists. Do not start a new trip request.',
+      'ambiguous',
+    );
+  }
+  if (status === 'pending') {
+    throw new TripCreateError(
+      'write-failed',
+      'Trip creation is still being confirmed. Automatic confirmation will retry.',
+      'ambiguous',
+    );
+  }
+  return postTripCommand(data, requestId, timeoutMs, signal);
 }
 
 /** Create a new trip for the user. Returns the new document ID. */
@@ -198,7 +428,7 @@ export async function createTrip(
   options: CreateTripOptions = {},
 ): Promise<string> {
   assertTripCreateAuth(userId);
-  if (options.requestId && !/^[A-Za-z0-9_-]{8,128}$/.test(options.requestId)) {
+  if (options.requestId && !REQUEST_ID_PATTERN.test(options.requestId)) {
     throw new TripCreateError(
       'invalid-data',
       'The trip creation request ID is invalid.',

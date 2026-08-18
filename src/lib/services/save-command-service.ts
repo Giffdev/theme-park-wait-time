@@ -2,6 +2,10 @@ import { createHash } from 'crypto';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
 import { assertFirestorePathSegment } from '@/lib/server/firestore-path';
+import {
+  canonicalTripCommandPayload,
+  tripCommandFingerprint,
+} from '@/lib/services/trip-command-fingerprint';
 
 export class SaveCommandConflictError extends Error {
   constructor(message: string) {
@@ -118,21 +122,6 @@ function normalizedRidePayload(command: RideSaveCommand) {
     rating: command.rating,
     notes: command.notes,
     ...(command.tripId === undefined ? {} : { tripId: command.tripId }),
-  };
-}
-
-function normalizedTripPayload(command: TripSaveCommand) {
-  return {
-    name: command.name,
-    startDate: command.startDate,
-    endDate: command.endDate,
-    parkIds: [...command.parkIds],
-    parkNames: Object.fromEntries(
-      Object.entries(command.parkNames).sort(([left], [right]) => left.localeCompare(right)),
-    ),
-    status: command.status,
-    shareId: command.shareId,
-    notes: command.notes,
   };
 }
 
@@ -305,8 +294,8 @@ export async function saveTripCommand(
   assertFirestorePathSegment(uid, 'authenticated user ID');
   assertFirestorePathSegment(command.requestId, 'trip request ID');
   if (command.shareId) assertFirestorePathSegment(command.shareId, 'share ID');
-  const payload = normalizedTripPayload(command);
-  const commandFingerprint = fingerprint(payload);
+  const payload = canonicalTripCommandPayload(command);
+  const commandFingerprint = await tripCommandFingerprint(command);
   const commandRef = adminDb.doc(`users/${uid}/tripCreateCommands/${command.requestId}`);
   const tripRef = adminDb.doc(`users/${uid}/trips/${command.requestId}`);
   const shareRef = command.shareId ? adminDb.doc(`sharedTrips/${command.shareId}`) : null;
@@ -377,4 +366,32 @@ export async function saveTripCommand(
       );
     }
   }
+}
+
+export type TripCommandStatus =
+  | 'committed'
+  | 'not-found'
+  | 'target-only'
+  | 'command-only'
+  | 'payload-conflict';
+
+export async function getTripCommandStatus(
+  uid: string,
+  requestId: string,
+  expectedFingerprint: string,
+): Promise<TripCommandStatus> {
+  assertFirestorePathSegment(uid, 'authenticated user ID');
+  assertFirestorePathSegment(requestId, 'trip request ID');
+  const commandRef = adminDb.doc(`users/${uid}/tripCreateCommands/${requestId}`);
+  const tripRef = adminDb.doc(`users/${uid}/trips/${requestId}`);
+  const [commandSnapshot, tripSnapshot] = await adminDb.getAll(commandRef, tripRef);
+
+  if (!commandSnapshot.exists && !tripSnapshot.exists) return 'not-found';
+  if (!commandSnapshot.exists) return 'target-only';
+  if (!tripSnapshot.exists) return 'command-only';
+  if (commandSnapshot.get('targetId') !== requestId
+      || commandSnapshot.get('fingerprint') !== expectedFingerprint) {
+    return 'payload-conflict';
+  }
+  return 'committed';
 }

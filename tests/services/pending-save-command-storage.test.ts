@@ -2,7 +2,9 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   configurePendingSaveCommandAfterMigrationForTests,
+  configurePendingSaveCommandRemovalDelayForTests,
   configurePendingSaveCommandRemovalFailureForTests,
+  configurePendingSaveCommandRemovalMidTransactionDelayForTests,
   configurePendingSaveCommandStorageForTests,
   loadPendingSaveCommand,
   removePendingSaveCommand,
@@ -22,6 +24,13 @@ const valid = (value: unknown): value is { requestId: string; notes?: string } =
   && typeof (value as { requestId?: unknown }).requestId === 'string'
 );
 
+function requestPromiseForTest<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 configurePendingSaveCommandStorageForTests('pending-save-storage-unit');
 
 describe('pending save command storage', () => {
@@ -29,6 +38,8 @@ describe('pending save command storage', () => {
     vi.restoreAllMocks();
     configurePendingSaveCommandAfterMigrationForTests(null);
     configurePendingSaveCommandRemovalFailureForTests(null);
+    configurePendingSaveCommandRemovalDelayForTests(null);
+    configurePendingSaveCommandRemovalMidTransactionDelayForTests(null);
     await resetPendingSaveCommandStorageForTests();
     localStorage.clear();
   });
@@ -85,11 +96,69 @@ describe('pending save command storage', () => {
         reason: 'mismatch',
         existingRequestId: 'ride-winner',
       });
+
     expect(await loadPendingSaveCommand('user-a', 'ride:trip-1', valid)).toEqual(winner);
 
     expect(await removePendingSaveCommand('user-a', 'ride:trip-1', 'ride-winner'))
       .toEqual({ ok: true, removed: true });
     expect(await loadPendingSaveCommand('user-a', 'ride:trip-1', valid)).toBeNull();
+  });
+
+  it('enforces a caller currentness guard before deletion and tombstoning', async () => {
+    const command = { requestId: 'ride-currentness', notes: 'must remain' };
+    await storePendingSaveCommand('user-a', 'ride:trip-1', command);
+
+    expect(await removePendingSaveCommand(
+      'user-a',
+      'ride:trip-1',
+      command.requestId,
+      () => false,
+    )).toEqual({ ok: false, reason: 'stale' });
+    expect(await loadPendingSaveCommand('user-a', 'ride:trip-1', valid)).toEqual(command);
+  });
+
+  it('aborts an IndexedDB removal if currentness changes between its writes', async () => {
+    const command = { requestId: 'ride-mid-transaction', notes: 'must remain' };
+    await storePendingSaveCommand('user-a', 'ride:trip-1', command);
+    let releasePause!: () => void;
+    const pause = new Promise<void>((resolve) => {
+      releasePause = resolve;
+    });
+    let reachedPause!: () => void;
+    const paused = new Promise<void>((resolve) => {
+      reachedPause = resolve;
+    });
+    configurePendingSaveCommandRemovalMidTransactionDelayForTests(async () => {
+      reachedPause();
+      await pause;
+    });
+    let current = true;
+
+    const removal = removePendingSaveCommand(
+      'user-a',
+      'ride:trip-1',
+      command.requestId,
+      () => current,
+    );
+    await paused;
+    current = false;
+    releasePause();
+
+    await expect(removal).resolves.toEqual({ ok: false, reason: 'stale' });
+    expect(await loadPendingSaveCommand('user-a', 'ride:trip-1', valid)).toEqual(command);
+
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('pending-save-storage-unit', 2);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const tombstones = await requestPromiseForTest(
+      database.transaction('completion-tombstones', 'readonly')
+        .objectStore('completion-tombstones')
+        .getAll(),
+    );
+    database.close();
+    expect(tombstones).toEqual([]);
   });
 
   it('isolates commands by UID and context', async () => {

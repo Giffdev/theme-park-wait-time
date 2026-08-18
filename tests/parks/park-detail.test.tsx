@@ -10,9 +10,19 @@
  * - Has a refresh button to reload wait time data
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 
 // Mock next/link
 vi.mock('next/link', () => ({
@@ -65,6 +75,12 @@ vi.mock('@/lib/parks/park-registry', () => ({
   getParkBySlug: (slug: string) => {
     if (slug === 'magic-kingdom') return { id: 'magic-kingdom', slug };
     if (slug === 'epcot') return { id: 'epcot', slug };
+    if (slug === 'disney-california-adventure') {
+      return { id: '832fcd51-ea19-4e77-85c7-75d5843b127c', slug };
+    }
+    if (slug === 'disneyland') {
+      return { id: '7340550b-c14d-4def-80bb-acdb51d49a66', slug };
+    }
     return undefined;
   },
   DESTINATION_FAMILIES: [{
@@ -111,6 +127,23 @@ const mockEpcot = {
   slug: 'epcot',
   destinationName: 'Walt Disney World',
   destinationId: 'wdw',
+};
+
+const californiaAdventureUuid = '832fcd51-ea19-4e77-85c7-75d5843b127c';
+const mockCaliforniaAdventure = {
+  id: californiaAdventureUuid,
+  name: 'Disney California Adventure',
+  slug: 'disney-california-adventure',
+  destinationName: 'Disneyland Resort',
+  destinationId: 'bfc89fd6-314d-44b4-b89e-df1a89cf991e',
+};
+const disneylandUuid = '7340550b-c14d-4def-80bb-acdb51d49a66';
+const mockDisneyland = {
+  id: disneylandUuid,
+  name: 'Disneyland',
+  slug: 'disneyland',
+  destinationName: 'Disneyland Resort',
+  destinationId: 'bfc89fd6-314d-44b4-b89e-df1a89cf991e',
 };
 
 const mockEpcotAttractions = [
@@ -366,6 +399,39 @@ describe('Park Detail Page', () => {
       )).toHaveLength(1);
     });
 
+    it('labels a recent API fallback snapshot stale when response metadata says it is stale', async () => {
+      const user = userEvent.setup();
+      const recentWaitTimes = mockWaitTimes.map((entry) => ({
+        ...entry,
+        fetchedAt: new Date().toISOString(),
+      }));
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') return Promise.resolve([mockPark]);
+        if (collectionPath === 'attractions') return Promise.resolve(mockAttractions);
+        if (collectionPath === 'waitTimes/magic-kingdom/current') return Promise.resolve(recentWaitTimes);
+        return Promise.resolve([]);
+      });
+
+      render(<ParkDetailPage />);
+      await screen.findByRole('button', { name: /Space Mountain, operating, 60 minute wait/i });
+
+      mockFetch.mockImplementation((url: string) => Promise.resolve(
+        url === '/api/wait-times?parkId=magic-kingdom'
+          ? {
+              ok: true,
+              json: () => Promise.resolve({
+                stale: true,
+                parkMeta: { 'magic-kingdom': { stale: true } },
+                parks: { 'magic-kingdom': recentWaitTimes },
+              }),
+            }
+          : { ok: true, json: () => Promise.resolve(mockSchedule) }
+      ));
+      await user.click(screen.getByRole('button', { name: /Refresh Wait Times/i }));
+
+      expect((await screen.findAllByText(/Stale snapshot/i)).length).toBeGreaterThan(0);
+    });
+
     it('shows "Refreshing..." during refresh', async () => {
       const user = userEvent.setup();
 
@@ -433,6 +499,11 @@ describe('Park Detail Page', () => {
         .mockResolvedValueOnce([mockPark])
         .mockResolvedValueOnce(mockAttractions)
         .mockRejectedValueOnce(Object.assign(new Error('Missing permission'), { code: 'permission-denied' }));
+      mockFetch.mockImplementation((url: string) => Promise.resolve(
+        url.includes('/api/wait-times')
+          ? { ok: false, status: 503 }
+          : { ok: true, json: () => Promise.resolve(mockSchedule) }
+      ));
 
       render(<ParkDetailPage />);
 
@@ -447,12 +518,259 @@ describe('Park Detail Page', () => {
         .mockResolvedValueOnce([mockPark])
         .mockResolvedValueOnce(mockAttractions)
         .mockResolvedValueOnce([]);
+      mockFetch.mockImplementation((url: string) => Promise.resolve(
+        url.includes('/api/wait-times')
+          ? { ok: false, status: 503 }
+          : { ok: true, json: () => Promise.resolve(mockSchedule) }
+      ));
 
       render(<ParkDetailPage />);
 
-      expect(await screen.findByText('No current wait-time snapshot is available')).toBeInTheDocument();
-      expect(screen.getByText(/won’t label missing waits as live/i)).toBeInTheDocument();
+      expect((await screen.findAllByText('Couldn’t load current wait times')).length).toBeGreaterThan(0);
+      expect(screen.getByRole('button', { name: 'Retry wait times' })).toBeInTheDocument();
       expect(screen.getAllByText('Unavailable')).toHaveLength(4);
+    });
+
+    it('bootstraps an empty California Adventure snapshot without showing a terminal unavailable state', async () => {
+      mockUseParams.mockReturnValue({ parkId: 'disney-california-adventure' });
+      const freshWaitTimes = mockWaitTimes.map((entry) => ({
+        ...entry,
+        fetchedAt: new Date().toISOString(),
+      }));
+      let resolveWaitTimes!: (response: {
+        ok: boolean;
+        json: () => Promise<unknown>;
+      }) => void;
+      const waitTimesResponse = new Promise<{
+        ok: boolean;
+        json: () => Promise<unknown>;
+      }>((resolve) => {
+        resolveWaitTimes = resolve;
+      });
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') return Promise.resolve([mockCaliforniaAdventure]);
+        if (collectionPath === 'attractions') return Promise.resolve(mockAttractions);
+        if (collectionPath === `waitTimes/${californiaAdventureUuid}/current`) return Promise.resolve([]);
+        return Promise.resolve([]);
+      });
+      mockFetch.mockImplementation((url: string) => (
+        url === `/api/wait-times?parkId=${californiaAdventureUuid}`
+          ? waitTimesResponse
+          : Promise.resolve({ ok: true, json: () => Promise.resolve(mockSchedule) })
+      ));
+
+      render(<ParkDetailPage />);
+
+      expect(await screen.findByRole('heading', { name: 'Disney California Adventure' })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          `/api/wait-times?parkId=${californiaAdventureUuid}`,
+          { cache: 'no-store', signal: expect.any(AbortSignal) },
+        );
+      });
+      expect(screen.getAllByText(/Loading wait times/i).length).toBeGreaterThan(0);
+      expect(screen.queryByRole('button', { name: 'Retry wait times' })).not.toBeInTheDocument();
+      expect(screen.queryByText('No current wait-time snapshot is available')).not.toBeInTheDocument();
+
+      resolveWaitTimes({
+        ok: true,
+        json: () => Promise.resolve({
+          stale: false,
+          parkMeta: {
+            [californiaAdventureUuid]: {
+              stale: false,
+              source: 'upstream',
+              fetchedAt: new Date().toISOString(),
+              ageSeconds: 0,
+            },
+          },
+          parks: { [californiaAdventureUuid]: freshWaitTimes },
+        }),
+      });
+
+      expect(await screen.findByRole('button', {
+        name: /Space Mountain, operating, 60 minute wait/i,
+      })).toBeInTheDocument();
+      expect(screen.queryByText(/Couldn.t reach the wait-time feed/i)).not.toBeInTheDocument();
+    });
+
+    it('keeps stale Disneyland data visible while its live refresh completes', async () => {
+      mockUseParams.mockReturnValue({ parkId: 'disneyland' });
+      const staleWaitTimes = mockWaitTimes.map((entry) => ({
+        ...entry,
+        fetchedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      }));
+      const freshWaitTimes = staleWaitTimes.map((entry) => ({
+        ...entry,
+        waitMinutes: entry.attractionId === 'space-mountain' ? 12 : entry.waitMinutes,
+        fetchedAt: new Date().toISOString(),
+      }));
+      let resolveWaitTimes!: (response: {
+        ok: boolean;
+        json: () => Promise<unknown>;
+      }) => void;
+      const waitTimesResponse = new Promise<{
+        ok: boolean;
+        json: () => Promise<unknown>;
+      }>((resolve) => {
+        resolveWaitTimes = resolve;
+      });
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') return Promise.resolve([mockDisneyland]);
+        if (collectionPath === 'attractions') return Promise.resolve(mockAttractions);
+        if (collectionPath === `waitTimes/${disneylandUuid}/current`) return Promise.resolve(staleWaitTimes);
+        return Promise.resolve([]);
+      });
+      mockFetch.mockImplementation((url: string) => (
+        url === `/api/wait-times?parkId=${disneylandUuid}`
+          ? waitTimesResponse
+          : Promise.resolve({ ok: true, json: () => Promise.resolve(mockSchedule) })
+      ));
+
+      render(<ParkDetailPage />);
+
+      expect(await screen.findByRole('button', {
+        name: /Space Mountain, operating, 60 minute wait/i,
+      })).toBeInTheDocument();
+      expect(await screen.findByText('Refreshing wait times…')).toBeInTheDocument();
+      expect(screen.getAllByText(/Stale snapshot/i).length).toBeGreaterThan(0);
+      expect(screen.queryByRole('button', { name: 'Retry wait times' })).not.toBeInTheDocument();
+
+      resolveWaitTimes({
+        ok: true,
+        json: () => Promise.resolve({
+          stale: false,
+          parks: { [disneylandUuid]: freshWaitTimes },
+        }),
+      });
+
+      expect(await screen.findByRole('button', {
+        name: /Space Mountain, operating, 12 minute wait/i,
+      })).toBeInTheDocument();
+      expect(screen.queryByText('Refreshing wait times…')).not.toBeInTheDocument();
+    });
+
+    it('retries a transient cold-start API failure once and then renders recovered data', async () => {
+      const freshWaitTimes = mockWaitTimes.map((entry) => ({
+        ...entry,
+        fetchedAt: new Date().toISOString(),
+      }));
+      mockGetCollection
+        .mockResolvedValueOnce([mockPark])
+        .mockResolvedValueOnce(mockAttractions)
+        .mockResolvedValueOnce([]);
+      let waitTimeAttempts = 0;
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/wait-times?parkId=magic-kingdom') {
+          waitTimeAttempts += 1;
+          return Promise.resolve(waitTimeAttempts === 1
+            ? { ok: false, status: 503 }
+            : {
+                ok: true,
+                json: () => Promise.resolve({
+                  stale: false,
+                  parks: { 'magic-kingdom': freshWaitTimes },
+                }),
+              });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(mockSchedule) });
+      });
+
+      render(<ParkDetailPage />);
+
+      expect(await screen.findByRole('button', {
+        name: /Space Mountain, operating, 60 minute wait/i,
+      })).toBeInTheDocument();
+      expect(waitTimeAttempts).toBe(2);
+      expect(screen.queryByRole('button', { name: 'Retry wait times' })).not.toBeInTheDocument();
+    });
+
+    it('does not let an older failed Firestore load overwrite a newer successful refresh', async () => {
+      const user = userEvent.setup();
+      let rejectInitialRead!: (reason: unknown) => void;
+      const initialRead = new Promise<typeof mockWaitTimes>((_, reject) => {
+        rejectInitialRead = reject;
+      });
+      const freshWaitTimes = mockWaitTimes.map((entry) => ({
+        ...entry,
+        waitMinutes: entry.attractionId === 'space-mountain' ? 12 : entry.waitMinutes,
+        fetchedAt: new Date().toISOString(),
+      }));
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') return Promise.resolve([mockPark]);
+        if (collectionPath === 'attractions') return Promise.resolve(mockAttractions);
+        if (collectionPath === 'waitTimes/magic-kingdom/current') return initialRead;
+        return Promise.resolve([]);
+      });
+      mockFetch.mockImplementation((url: string) => Promise.resolve(
+        url === '/api/wait-times?parkId=magic-kingdom'
+          ? {
+              ok: true,
+              json: () => Promise.resolve({
+                stale: false,
+                parks: { 'magic-kingdom': freshWaitTimes },
+              }),
+            }
+          : { ok: true, json: () => Promise.resolve(mockSchedule) }
+      ));
+
+      render(<ParkDetailPage />);
+      await screen.findByRole('heading', { name: 'Magic Kingdom' });
+      await user.click(screen.getByRole('button', { name: /Refresh Wait Times/i }));
+      expect(await screen.findByRole('button', {
+        name: /Space Mountain, operating, 12 minute wait/i,
+      })).toBeInTheDocument();
+
+      rejectInitialRead(new Error('older Firestore request failed'));
+
+      await waitFor(() => {
+        expect(screen.queryByText(/Couldn.t load current wait times/i)).not.toBeInTheDocument();
+      });
+      expect(screen.getByRole('button', {
+        name: /Space Mountain, operating, 12 minute wait/i,
+      })).toBeInTheDocument();
+    });
+
+    it('shows a terminal retryable cold-start error and recovers when Retry succeeds', async () => {
+      const user = userEvent.setup();
+      const freshWaitTimes = mockWaitTimes.map((entry) => ({
+        ...entry,
+        fetchedAt: new Date().toISOString(),
+      }));
+      mockGetCollection
+        .mockResolvedValueOnce([mockPark])
+        .mockResolvedValueOnce(mockAttractions)
+        .mockResolvedValueOnce([]);
+      let shouldFail = true;
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/wait-times?parkId=magic-kingdom') {
+          return Promise.resolve(shouldFail
+            ? { ok: false, status: 503 }
+            : {
+                ok: true,
+                json: () => Promise.resolve({
+                  stale: false,
+                  parks: { 'magic-kingdom': freshWaitTimes },
+                }),
+              });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(mockSchedule) });
+      });
+
+      render(<ParkDetailPage />);
+
+      const retry = await screen.findByRole('button', { name: 'Retry wait times' });
+      expect(mockFetch.mock.calls.filter(
+        (call) => call[0] === '/api/wait-times?parkId=magic-kingdom'
+      )).toHaveLength(2);
+
+      shouldFail = false;
+      await user.click(retry);
+
+      expect(await screen.findByRole('button', {
+        name: /Space Mountain, operating, 60 minute wait/i,
+      })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Retry wait times' })).not.toBeInTheDocument();
     });
 
     it('explains an upstream refresh failure while preserving the current snapshot', async () => {
@@ -739,6 +1057,158 @@ describe('Park Detail Page', () => {
       expect(mockFetch.mock.calls.some(
         (call) => call[0] === '/api/wait-times?parkId=magic-kingdom'
       )).toBe(false);
+    });
+
+    it('ignores a late A1 success after A→B→A2 completes', async () => {
+      const firstMagicPark = deferred<typeof mockPark[]>();
+      let magicParkReads = 0;
+      mockGetCollection.mockImplementation((collectionPath: string, constraints?: unknown[][]) => {
+        if (collectionPath === 'parks') {
+          const slug = constraints?.[0]?.[2];
+          if (slug === 'epcot') return Promise.resolve([mockEpcot]);
+          magicParkReads += 1;
+          return magicParkReads === 1
+            ? firstMagicPark.promise
+            : Promise.resolve([{ ...mockPark, name: 'Magic Kingdom A2' }]);
+        }
+        if (collectionPath === 'attractions') {
+          return Promise.resolve(constraints?.[0]?.[2] === 'epcot'
+            ? mockEpcotAttractions
+            : mockAttractions);
+        }
+        if (collectionPath === 'waitTimes/epcot/current') return Promise.resolve(mockEpcotWaitTimes);
+        if (collectionPath === 'waitTimes/magic-kingdom/current') return Promise.resolve(mockWaitTimes);
+        return Promise.resolve([]);
+      });
+
+      const { rerender } = render(<ParkDetailPage />);
+      await waitFor(() => expect(magicParkReads).toBe(1));
+      mockUseParams.mockReturnValue({ parkId: 'epcot' });
+      rerender(<ParkDetailPage />);
+      expect(await screen.findByRole('heading', { name: 'EPCOT' })).toBeInTheDocument();
+      mockUseParams.mockReturnValue({ parkId: 'magic-kingdom' });
+      rerender(<ParkDetailPage />);
+      expect(await screen.findByRole('heading', { name: 'Magic Kingdom A2' })).toBeInTheDocument();
+
+      firstMagicPark.resolve([{ ...mockPark, name: 'Obsolete Magic Kingdom A1' }]);
+      await waitFor(() => {
+        expect(screen.queryByRole('heading', { name: 'Obsolete Magic Kingdom A1' }))
+          .not.toBeInTheDocument();
+      });
+      expect(screen.getByRole('heading', { name: 'Magic Kingdom A2' })).toBeInTheDocument();
+    });
+
+    it('does not let a late A1 failure stop A2 loading or set a same-route error', async () => {
+      const firstMagicPark = deferred<typeof mockPark[]>();
+      const secondMagicPark = deferred<typeof mockPark[]>();
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      let magicParkReads = 0;
+      mockGetCollection.mockImplementation((collectionPath: string, constraints?: unknown[][]) => {
+        if (collectionPath === 'parks') {
+          const slug = constraints?.[0]?.[2];
+          if (slug === 'epcot') return Promise.resolve([mockEpcot]);
+          magicParkReads += 1;
+          return magicParkReads === 1 ? firstMagicPark.promise : secondMagicPark.promise;
+        }
+        if (collectionPath === 'attractions') return Promise.resolve(mockAttractions);
+        if (collectionPath === 'waitTimes/magic-kingdom/current') return Promise.resolve(mockWaitTimes);
+        if (collectionPath === 'waitTimes/epcot/current') return Promise.resolve(mockEpcotWaitTimes);
+        return Promise.resolve([]);
+      });
+
+      const { container, rerender } = render(<ParkDetailPage />);
+      await waitFor(() => expect(magicParkReads).toBe(1));
+      mockUseParams.mockReturnValue({ parkId: 'epcot' });
+      rerender(<ParkDetailPage />);
+      expect(await screen.findByRole('heading', { name: 'EPCOT' })).toBeInTheDocument();
+      mockUseParams.mockReturnValue({ parkId: 'magic-kingdom' });
+      rerender(<ParkDetailPage />);
+      await waitFor(() => expect(magicParkReads).toBe(2));
+
+      firstMagicPark.reject(new Error('obsolete A1 failure'));
+      await waitFor(() => {
+        expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
+      });
+      expect(screen.queryByRole('heading', { name: 'Park details unavailable' }))
+        .not.toBeInTheDocument();
+
+      secondMagicPark.resolve([{ ...mockPark, name: 'Magic Kingdom A2' }]);
+      expect(await screen.findByRole('heading', { name: 'Magic Kingdom A2' })).toBeInTheDocument();
+      consoleSpy.mockRestore();
+    });
+
+    it('cancels an A1 cold-start retry after A→B→A2 supersedes it', async () => {
+      const firstMagicRefresh = deferred<Response>();
+      let magicWaitReads = 0;
+      let magicRefreshCalls = 0;
+      const freshWaitTimes = mockWaitTimes.map((entry) => ({
+        ...entry,
+        fetchedAt: new Date().toISOString(),
+      }));
+      mockGetCollection.mockImplementation((collectionPath: string, constraints?: unknown[][]) => {
+        if (collectionPath === 'parks') {
+          return Promise.resolve([constraints?.[0]?.[2] === 'epcot' ? mockEpcot : mockPark]);
+        }
+        if (collectionPath === 'attractions') {
+          return Promise.resolve(constraints?.[0]?.[2] === 'epcot'
+            ? mockEpcotAttractions
+            : mockAttractions);
+        }
+        if (collectionPath === 'waitTimes/epcot/current') return Promise.resolve(mockEpcotWaitTimes);
+        if (collectionPath === 'waitTimes/magic-kingdom/current') {
+          magicWaitReads += 1;
+          return Promise.resolve(magicWaitReads === 1 ? [] : freshWaitTimes);
+        }
+        return Promise.resolve([]);
+      });
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/wait-times?parkId=magic-kingdom') {
+          magicRefreshCalls += 1;
+          return magicRefreshCalls === 1
+            ? firstMagicRefresh.promise
+            : Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve({
+                  stale: false,
+                  parks: { 'magic-kingdom': freshWaitTimes },
+                }),
+              });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(mockSchedule) });
+      });
+
+      const { rerender } = render(<ParkDetailPage />);
+      await waitFor(() => {
+        expect(mockFetch.mock.calls.filter(
+          (call) => call[0] === '/api/wait-times?parkId=magic-kingdom',
+        )).toHaveLength(1);
+      });
+      mockUseParams.mockReturnValue({ parkId: 'epcot' });
+      rerender(<ParkDetailPage />);
+      expect(await screen.findByRole('heading', { name: 'EPCOT' })).toBeInTheDocument();
+      mockUseParams.mockReturnValue({ parkId: 'magic-kingdom' });
+      rerender(<ParkDetailPage />);
+      expect(await screen.findByRole('heading', { name: 'Magic Kingdom' })).toBeInTheDocument();
+      expect(await screen.findByRole('button', {
+        name: /Space Mountain, operating, 60 minute wait/i,
+      })).toBeInTheDocument();
+
+      const requestsBeforeA1Failure = mockFetch.mock.calls.filter(
+        (call) => call[0] === '/api/wait-times?parkId=magic-kingdom',
+      ).length;
+      await act(async () => {
+        firstMagicRefresh.reject(new Error('obsolete A1 refresh failure'));
+        await Promise.resolve();
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(mockFetch.mock.calls.filter(
+        (call) => call[0] === '/api/wait-times?parkId=magic-kingdom',
+      )).toHaveLength(requestsBeforeA1Failure);
+      expect(screen.queryByRole('button', { name: 'Retry wait times' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {
+        name: /Space Mountain, operating, 60 minute wait/i,
+      })).toBeInTheDocument();
     });
 
     it('deduplicates a manual refresh that overlaps the automatic stale-arrival refresh', async () => {

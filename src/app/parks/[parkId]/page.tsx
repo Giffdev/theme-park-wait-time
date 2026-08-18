@@ -54,6 +54,10 @@ interface WaitTimeEntry {
   operatingHours?: OperatingHoursEntry[] | null;
 }
 
+const COLD_START_ATTEMPTS = 2;
+const COLD_START_RETRY_DELAY_MS = 250;
+const WAIT_TIMES_REQUEST_TIMEOUT_MS = 15_000;
+
 function waitTimesFromApiPayload(payload: unknown, parkUuid: string): WaitTimeEntry[] | null {
   if (!payload || typeof payload !== 'object') return null;
   const parks = (payload as { parks?: unknown }).parks;
@@ -199,6 +203,7 @@ export default function ParkDetailPage() {
   const [attractionsLoading, setAttractionsLoading] = useState(false);
   const [waitTimesLoading, setWaitTimesLoading] = useState(true);
   const [waitTimesIssue, setWaitTimesIssue] = useState<WaitTimesIssue | null>(null);
+  const [waitTimesSourceStale, setWaitTimesSourceStale] = useState(false);
   // Schedule (park hours) loads fully independently of wait times — its own
   // hang/failure must never block waitTimesLoading from settling or wait
   // times from rendering.
@@ -226,8 +231,31 @@ export default function ParkDetailPage() {
   const [now, setNow] = useState(() => Date.now());
   const [quickLogOpen, setQuickLogOpen] = useState(false);
   const activeRouteRef = useRef(parkId);
-  const refreshRequestsRef = useRef(new Map<string, Promise<void>>());
+  const initializationRef = useRef({ route: '', generation: 0 });
+  if (initializationRef.current.route !== parkId) {
+    initializationRef.current = {
+      route: parkId,
+      generation: initializationRef.current.generation + 1,
+    };
+  }
+  const refreshRequestsRef = useRef(new Map<string, {
+    requestedRoute: string;
+    initializationGeneration: number;
+    requestVersion: number;
+    promise: Promise<void>;
+  }>());
+  const waitTimesRequestVersionRef = useRef(0);
+  const hasUsableWaitTimesRef = useRef(false);
+  const initialWaitTimesErrorRef = useRef<unknown>(null);
   activeRouteRef.current = parkId;
+  const isCurrentInitialization = useCallback((
+    requestedRoute: string,
+    initializationGeneration: number,
+  ) => (
+    activeRouteRef.current === requestedRoute
+    && initializationRef.current.route === requestedRoute
+    && initializationRef.current.generation === initializationGeneration
+  ), []);
 
   // Tick every 30s so relative time stays fresh
   useEffect(() => {
@@ -252,7 +280,7 @@ export default function ParkDetailPage() {
       .filter((timestamp) => !isNaN(timestamp));
     const providerUpdatedAt = providerTimestamps.length > 0 ? Math.max(...providerTimestamps) : null;
     const ageMin = Math.max(0, Math.floor((now - capturedAt) / 60_000));
-    const isStale = ageMin >= 2;
+    const isStale = waitTimesSourceStale || ageMin >= 2;
     let label: string;
     if (ageMin < 1) {
       label = 'Captured just now';
@@ -269,7 +297,7 @@ export default function ParkDetailPage() {
       capturedAt,
       providerUpdatedAt,
     };
-  }, [waitTimes, now]);
+  }, [waitTimes, waitTimesSourceStale, now]);
 
   const scheduleStatus = useMemo<'open' | 'closed' | 'unknown'>(() => {
     if (!schedule?.segments?.length) return 'unknown';
@@ -286,60 +314,68 @@ export default function ParkDetailPage() {
   // Phase 1a: Resolve the park document only. Kept separate from attractions so
   // a park that exists but has an unseeded/inaccessible attraction directory
   // still renders as a found park instead of a blanket "unavailable" error.
-  const fetchPark = useCallback(async () => {
+  const fetchPark = useCallback(async (
+    requestedRoute = parkId,
+    initializationGeneration = initializationRef.current.generation,
+  ) => {
     if (!parkId) return null;
-    const requestedRoute = parkId;
+    if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return null;
     setLoading(true);
     setCoreError(null);
     try {
-      const registryPark = getParkBySlug(parkId);
+      const registryPark = getParkBySlug(requestedRoute);
       let parkDoc = registryPark
         ? await getDocument<Park>('parks', registryPark.id)
         : null;
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return null;
       if (!parkDoc) {
         const parkDocs = await getCollection<Park>('parks', [
-          whereConstraint('slug', '==', parkId),
+          whereConstraint('slug', '==', requestedRoute),
         ]);
-        parkDoc = selectCurrentParkDocument(parkDocs, parkId) ?? null;
+        if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return null;
+        parkDoc = selectCurrentParkDocument(parkDocs, requestedRoute) ?? null;
       }
-      if (activeRouteRef.current !== requestedRoute) return null;
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return null;
       setPark(parkDoc);
       setLoading(false);
       return parkDoc;
     } catch (error) {
       console.error('Failed to fetch park core data:', error);
-      if (activeRouteRef.current !== requestedRoute) return null;
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return null;
       setCoreError('We couldn’t load this park. Check your connection and try again.');
       setLoading(false);
       return null;
     }
-  }, [parkId]);
+  }, [isCurrentInitialization, parkId]);
 
   // Phase 1b: Load the attraction directory for a resolved park. Failures here
   // are classified independently — a genuine backend failure must never be
   // hidden or silently presented as an empty (invented) attraction list.
-  const fetchAttractions = useCallback(async (parkUuid: string, requestedRoute = parkId) => {
-    if (activeRouteRef.current === requestedRoute) {
-      setAttractionsLoading(true);
-      setAttractionsIssue(null);
-    }
+  const fetchAttractions = useCallback(async (
+    parkUuid: string,
+    requestedRoute = parkId,
+    initializationGeneration = initializationRef.current.generation,
+  ) => {
+    if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return null;
+    setAttractionsLoading(true);
+    setAttractionsIssue(null);
     try {
       const attractionDocs = await getCollection<Attraction>('attractions', [whereConstraint('parkId', '==', parkUuid)]);
-      if (activeRouteRef.current !== requestedRoute) return attractionDocs;
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return attractionDocs;
       setAttractions(attractionDocs);
       return attractionDocs;
     } catch (error) {
       console.error('Failed to fetch attractions:', error);
-      if (activeRouteRef.current !== requestedRoute) return null;
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return null;
       setAttractions([]);
       setAttractionsIssue(describeAttractionsError(error));
       return null;
     } finally {
-      if (activeRouteRef.current === requestedRoute) {
+      if (isCurrentInitialization(requestedRoute, initializationGeneration)) {
         setAttractionsLoading(false);
       }
     }
-  }, [parkId]);
+  }, [isCurrentInitialization, parkId]);
 
   // Phase 2: Load wait times only. This is intentionally decoupled from the
   // schedule fetch (see `fetchSchedule` below) — a hung or failed
@@ -351,148 +387,286 @@ export default function ParkDetailPage() {
       requestedRoute?: string;
       showLoading?: boolean;
       throwOnError?: boolean;
+      reportError?: boolean;
+      requestVersion?: number;
+      initializationGeneration?: number;
     },
   ) => {
     const targetPark = parkDoc || park;
     if (!targetPark) return null;
     const requestedRoute = options?.requestedRoute ?? parkId;
     const showLoading = options?.showLoading ?? true;
-    if (activeRouteRef.current === requestedRoute) {
-      if (showLoading) setWaitTimesLoading(true);
-      setWaitTimesIssue(null);
-    }
+    const initializationGeneration = options?.initializationGeneration
+      ?? initializationRef.current.generation;
+    if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return null;
+    const requestVersion = options?.requestVersion ?? ++waitTimesRequestVersionRef.current;
+    if (showLoading) setWaitTimesLoading(true);
+    if (options?.reportError !== false) setWaitTimesIssue(null);
     try {
       const parkUuid = targetPark.id;
       const waitDocs = await getCollection<WaitTimeEntry>(`waitTimes/${parkUuid}/current`);
-      if (activeRouteRef.current !== requestedRoute) return waitDocs;
+      if (
+        !isCurrentInitialization(requestedRoute, initializationGeneration)
+        || waitTimesRequestVersionRef.current !== requestVersion
+      ) return waitDocs;
       setWaitTimes(waitDocs);
+      hasUsableWaitTimesRef.current = waitDocs.length > 0;
+      setWaitTimesSourceStale(false);
       return waitDocs;
     } catch (error) {
       console.error('Failed to fetch wait times:', error);
-      if (activeRouteRef.current !== requestedRoute) return null;
-      setWaitTimesIssue(describeWaitTimesError(error));
+      if (
+        !isCurrentInitialization(requestedRoute, initializationGeneration)
+        || waitTimesRequestVersionRef.current !== requestVersion
+      ) return null;
+      if (options?.reportError === false) initialWaitTimesErrorRef.current = error;
+      if (options?.reportError !== false) setWaitTimesIssue(describeWaitTimesError(error));
       if (options?.throwOnError) throw error;
       return null;
     } finally {
-      if (showLoading && activeRouteRef.current === requestedRoute) {
+      if (
+        showLoading
+        && isCurrentInitialization(requestedRoute, initializationGeneration)
+        && waitTimesRequestVersionRef.current === requestVersion
+      ) {
         setWaitTimesLoading(false);
       }
     }
-  }, [park, parkId]);
+  }, [isCurrentInitialization, park, parkId]);
 
   // Schedule (park hours) is supplemental metadata fetched independently of
   // wait times, bounded by its own timeout so a backend hang can never
   // cascade into the wait-time UI. Last-known schedule is preserved on
   // failure; a distinct `scheduleIssue` drives a retryable UI state instead
   // of an indefinite loading skeleton.
-  const fetchSchedule = useCallback(async (parkUuid: string, requestedRoute = parkId) => {
-    if (activeRouteRef.current === requestedRoute) {
-      setScheduleLoading(true);
-      setScheduleIssue(null);
-    }
+  const fetchSchedule = useCallback(async (
+    parkUuid: string,
+    requestedRoute = parkId,
+    initializationGeneration = initializationRef.current.generation,
+  ) => {
+    if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return null;
+    setScheduleLoading(true);
+    setScheduleIssue(null);
     try {
       const res = await fetch(`/api/park-schedule?parkId=${parkUuid}`, {
         cache: 'no-store',
         signal: AbortSignal.timeout(10_000),
       });
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return null;
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`);
       }
       const scheduleData = await res.json();
-      if (activeRouteRef.current !== requestedRoute) return scheduleData;
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return scheduleData;
       setSchedule(scheduleData);
       return scheduleData;
     } catch (error) {
       console.error('Failed to fetch park schedule:', error);
-      if (activeRouteRef.current !== requestedRoute) return null;
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return null;
       setScheduleIssue(describeScheduleError(error));
       return null;
     } finally {
-      if (activeRouteRef.current === requestedRoute) {
+      if (isCurrentInitialization(requestedRoute, initializationGeneration)) {
         setScheduleLoading(false);
       }
     }
-  }, [parkId]);
+  }, [isCurrentInitialization, parkId]);
 
-  const refreshWaitTimesFromSource = useCallback((targetPark: Park, requestedRoute = parkId) => {
+  const refreshWaitTimesFromSource = useCallback((
+    targetPark: Park,
+    requestedRoute = parkId,
+    initializationGeneration = initializationRef.current.generation,
+  ) => {
+    if (!isCurrentInitialization(requestedRoute, initializationGeneration)) {
+      return Promise.resolve();
+    }
     const existing = refreshRequestsRef.current.get(targetPark.id);
-    if (existing) return existing;
+    if (
+      existing
+      && existing.requestedRoute === requestedRoute
+      && existing.initializationGeneration === initializationGeneration
+      && existing.requestVersion === waitTimesRequestVersionRef.current
+    ) return existing.promise;
+    if (!isCurrentInitialization(requestedRoute, initializationGeneration)) {
+      return Promise.resolve();
+    }
+    const requestVersion = ++waitTimesRequestVersionRef.current;
 
     const refreshPromise: Promise<void> = (async () => {
       const res = await fetch(`/api/wait-times?parkId=${targetPark.id}`, {
         cache: 'no-store',
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(WAIT_TIMES_REQUEST_TIMEOUT_MS),
       });
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`);
       }
 
       const payload = await res.json();
-      if (activeRouteRef.current !== requestedRoute) return;
+      if (
+        !isCurrentInitialization(requestedRoute, initializationGeneration)
+        || waitTimesRequestVersionRef.current !== requestVersion
+      ) return;
 
       const upstreamWaitTimes = waitTimesFromApiPayload(payload, targetPark.id);
       if (upstreamWaitTimes !== null) {
+        if (upstreamWaitTimes.length === 0) {
+          throw new Error('Server returned no usable wait-time snapshot.');
+        }
         setWaitTimes(upstreamWaitTimes);
+        hasUsableWaitTimesRef.current = upstreamWaitTimes.length > 0;
+        const responseMeta = (payload as {
+          stale?: unknown;
+          parkMeta?: Record<string, { stale?: unknown }>;
+        });
+        setWaitTimesSourceStale(
+          responseMeta.stale === true || responseMeta.parkMeta?.[targetPark.id]?.stale === true
+        );
         setWaitTimesIssue(null);
+        setWaitTimesLoading(false);
         return;
       }
 
       // Backward-compatible fallback for an older API response that did not
       // include park entries. Current responses are applied directly because
       // persistence is intentionally deferred and may not be readable yet.
-      await fetchWaitTimes(targetPark, {
+      const persistedEntries = await fetchWaitTimes(targetPark, {
         requestedRoute,
         showLoading: false,
         throwOnError: true,
+        requestVersion,
+        initializationGeneration,
       });
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
+      if (!persistedEntries || persistedEntries.length === 0) {
+        throw new Error('Server returned no usable wait-time snapshot.');
+      }
     })().finally(() => {
-      if (refreshRequestsRef.current.get(targetPark.id) === refreshPromise) {
+      if (refreshRequestsRef.current.get(targetPark.id)?.promise === refreshPromise) {
         refreshRequestsRef.current.delete(targetPark.id);
       }
     });
 
-    refreshRequestsRef.current.set(targetPark.id, refreshPromise);
+    refreshRequestsRef.current.set(targetPark.id, {
+      requestedRoute,
+      initializationGeneration,
+      requestVersion,
+      promise: refreshPromise,
+    });
     return refreshPromise;
-  }, [fetchWaitTimes, parkId]);
+  }, [fetchWaitTimes, isCurrentInitialization, parkId]);
+
+  const refreshColdStartWithRetry = useCallback(async (
+    targetPark: Park,
+    requestedRoute: string,
+    initializationGeneration: number,
+  ) => {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= COLD_START_ATTEMPTS; attempt++) {
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
+      try {
+        await refreshWaitTimesFromSource(
+          targetPark,
+          requestedRoute,
+          initializationGeneration,
+        );
+        if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
+        return;
+      } catch (error) {
+        if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
+        lastError = error;
+        if (attempt < COLD_START_ATTEMPTS) {
+          if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
+          await new Promise((resolve) => setTimeout(resolve, COLD_START_RETRY_DELAY_MS));
+          if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
+        }
+      }
+    }
+    throw lastError;
+  }, [isCurrentInitialization, refreshWaitTimesFromSource]);
 
   useEffect(() => {
     const requestedRoute = parkId;
+    const initializationGeneration = initializationRef.current.generation;
 
     async function initLoad() {
       // Phase 1a: resolve the park doc itself
-      const parkDoc = await fetchPark();
+      const parkDoc = await fetchPark(requestedRoute, initializationGeneration);
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
       if (!parkDoc) return;
 
       // Schedule is fired independently (not awaited alongside attractions/wait
       // times) — a hung or slow `/api/park-schedule` response must never delay
       // or block wait-time rendering.
-      fetchSchedule(parkDoc.id, requestedRoute);
+      void fetchSchedule(parkDoc.id, requestedRoute, initializationGeneration);
 
       // Phase 1b + Phase 2: attractions and wait times load independently so a
       // failure in one never masks or blocks the other.
-      const [, waitDocs] = await Promise.all([
-        fetchAttractions(parkDoc.id, requestedRoute),
-        fetchWaitTimes(parkDoc, { requestedRoute }),
-      ]);
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
+      const initialRequestVersion = ++waitTimesRequestVersionRef.current;
+      void fetchAttractions(parkDoc.id, requestedRoute, initializationGeneration);
+      const waitDocs = await fetchWaitTimes(parkDoc, {
+        requestedRoute,
+        showLoading: false,
+        reportError: false,
+        requestVersion: initialRequestVersion,
+        initializationGeneration,
+      });
+
+      if (
+        !isCurrentInitialization(requestedRoute, initializationGeneration)
+        || waitTimesRequestVersionRef.current !== initialRequestVersion
+      ) return;
+
+      if (!waitDocs || waitDocs.length === 0) {
+        try {
+          await refreshColdStartWithRetry(
+            parkDoc,
+            requestedRoute,
+            initializationGeneration,
+          );
+          if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
+        } catch (error) {
+          if (
+            isCurrentInitialization(requestedRoute, initializationGeneration)
+            && !hasUsableWaitTimesRef.current
+          ) {
+            setWaitTimesIssue(describeWaitTimesError(initialWaitTimesErrorRef.current ?? error));
+          }
+        }
+      }
+
+      if (isCurrentInitialization(requestedRoute, initializationGeneration)) {
+        setWaitTimesLoading(false);
+      }
 
       // Phase 3: background forecast refresh (fire-and-forget, never blocks UI)
-      if (activeRouteRef.current === requestedRoute && waitDocs && waitDocs.length > 0) {
+      if (isCurrentInitialization(requestedRoute, initializationGeneration)
+          && waitDocs && waitDocs.length > 0) {
         const hasForecast = waitDocs.some((w) => w.forecast && w.forecast.length > 0);
         if (!hasForecast) {
-          refreshWaitTimesFromSource(parkDoc, requestedRoute).catch(() => { /* Non-critical */ });
+          refreshWaitTimesFromSource(
+            parkDoc,
+            requestedRoute,
+            initializationGeneration,
+          ).catch(() => { /* Non-critical */ });
         }
       }
     }
 
+    if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
     setPark(null);
     setAttractions([]);
     setWaitTimes([]);
+    hasUsableWaitTimesRef.current = false;
+    initialWaitTimesErrorRef.current = null;
     setLoading(true);
     setCoreError(null);
     setAttractionsIssue(null);
     setAttractionsLoading(false);
     setWaitTimesLoading(true);
     setWaitTimesIssue(null);
+    setWaitTimesSourceStale(false);
     setSchedule(null);
     setScheduleLoading(true);
     setScheduleIssue(null);
@@ -541,13 +715,16 @@ export default function ParkDetailPage() {
   const handleRefresh = async () => {
     if (!park || !isCurrentPark) return;
     const requestedRoute = parkId;
+    const initializationGeneration = initializationRef.current.generation;
+    if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
     setRefreshing(true);
     setRefreshError(null);
     try {
       await forceWaitTimesRefresh();
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
     } catch (error) {
       console.error('Refresh failed:', error);
-      if (activeRouteRef.current !== requestedRoute) return;
+      if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return;
       const message =
         error instanceof DOMException && error.name === 'TimeoutError'
           ? 'Refresh timed out — try again later.'
@@ -556,7 +733,7 @@ export default function ParkDetailPage() {
             : 'Refresh failed — please try again.';
       setRefreshError(message);
     } finally {
-      if (activeRouteRef.current === requestedRoute) {
+      if (isCurrentInitialization(requestedRoute, initializationGeneration)) {
         setRefreshing(false);
       }
     }
