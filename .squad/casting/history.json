@@ -9,6 +9,31 @@
       "universe": "The Goonies",
       "assignment_id": "theme-park-wait-times-firestore-reliability",
       "used_at": "2026-08-17T11:11:13.445-07:00"
+    },
+    {
+      "universe": "The Goonies",
+      "assignment_id": "theme-park-wait-times-save-reliability",
+      "used_at": "2026-08-17T14:33:07.556-07:00"
+    },
+    {
+      "universe": "The Goonies",
+      "assignment_id": "theme-park-wait-times-browser-concurrency",
+      "used_at": "2026-08-17T14:33:07.556-07:00"
+    },
+    {
+      "universe": "The Goonies",
+      "assignment_id": "theme-park-wait-times-storage-migration",
+      "used_at": "2026-08-17T14:33:07.556-07:00"
+    },
+    {
+      "universe": "The Goonies",
+      "assignment_id": "theme-park-wait-times-command-lifecycle",
+      "used_at": "2026-08-17T14:33:07.556-07:00"
+    },
+    {
+      "universe": "The Goonies",
+      "assignment_id": "theme-park-wait-times-degraded-flow",
+      "used_at": "2026-08-17T14:33:07.556-07:00"
     }
   ],
   "assignment_cast_snapshots": {
@@ -29,6 +54,41 @@
         "firestore-reliability": "Andy"
       },
       "created_at": "2026-08-17T11:11:13.445-07:00"
+    },
+    "theme-park-wait-times-save-reliability": {
+      "universe": "The Goonies",
+      "agents": {
+        "save-reliability": "Sloth"
+      },
+      "created_at": "2026-08-17T14:33:07.556-07:00"
+    },
+    "theme-park-wait-times-browser-concurrency": {
+      "universe": "The Goonies",
+      "agents": {
+        "browser-concurrency": "Rosalita"
+      },
+      "created_at": "2026-08-17T14:33:07.556-07:00"
+    },
+    "theme-park-wait-times-storage-migration": {
+      "universe": "The Goonies",
+      "agents": {
+        "storage-migration": "Troy"
+      },
+      "created_at": "2026-08-17T14:33:07.556-07:00"
+    },
+    "theme-park-wait-times-command-lifecycle": {
+      "universe": "The Goonies",
+      "agents": {
+        "command-lifecycle": "Irene"
+      },
+      "created_at": "2026-08-17T14:33:07.556-07:00"
+    },
+    "theme-park-wait-times-degraded-flow": {
+      "universe": "The Goonies",
+      "agents": {
+        "degraded-flow": "Francis"
+      },
+      "created_at": "2026-08-17T14:33:07.556-07:00"
     }
   }
 }

@@ -17,6 +17,11 @@
 | Brand | UX Reviewer | `.squad/agents/brand/charter.md` | 🔍 Active |
 | Data | Backend Dev | `.squad/agents/data/charter.md` | 🔧 Active |
 | Andy | Firestore Reliability Engineer | `.squad/agents/andy/charter.md` | 🔧 Active |
+| Sloth | Save Reliability Specialist | `.squad/agents/sloth/charter.md` | 🔧 Active |
+| Rosalita | Browser Concurrency Specialist | `.squad/agents/rosalita/charter.md` | 🔧 Active |
+| Troy | Storage Migration Specialist | `.squad/agents/troy/charter.md` | 🔧 Active |
+| Irene | Command Lifecycle Specialist | `.squad/agents/irene/charter.md` | 🔧 Active |
+| Francis | Degraded Flow Specialist | `.squad/agents/francis/charter.md` | ⚛️ Active |
 | Chunk | Data Engineer | `.squad/agents/chunk/charter.md` | 📊 Active |
 | Stef | Tester | `.squad/agents/stef/charter.md` | 🧪 Active |
 | Scribe | Session Logger | `.squad/agents/scribe/charter.md` | 📋 Active |

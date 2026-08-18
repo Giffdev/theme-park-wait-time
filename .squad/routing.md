@@ -11,6 +11,11 @@ How to decide who handles what.
 | UX review, flow verification, deploy gate | Brand | End-to-end flow checks, state refresh bugs, navigation verification, mobile UX |
 | Backend, Firebase, auth, API, deploy | Data | Firestore collections, security rules, Cloud Functions, Vercel config, auth flows |
 | Firestore transactions, contention, bounded aggregation | Andy | Transaction limits, high-volume consensus, idempotency, concurrency reliability |
+| Durable save commands, retry recovery, request-boundary tests | Sloth | Frozen command persistence, ambiguous retries, save-flow liveness, authenticated request boundaries |
+| Browser storage concurrency, multi-tab command safety | Rosalita | IndexedDB transactions, cross-tab locks, add-only command persistence, conditional completion |
+| Browser storage migration and legacy coexistence | Troy | Non-destructive migrations, compatibility windows, deterministic migration interleavings |
+| Pending-command completion and cleanup recovery | Irene | Completion tombstones, exact-request lifecycle, cleanup retries, post-commit UI recovery |
+| Degraded save flows and fallback gating | Francis | Explicit fallback submission, partial lookup failures, retryable user flow contracts |
 | Data sourcing, scraping, APIs, crowd cal | Chunk | Theme park APIs, wait time scraping, crowd calendar algorithms, ride databases |
 | Testing, QA, security testing | Stef | Unit/integration/E2E tests, Firebase Rules testing, edge cases, CI config |
 | Code review | Mikey | Review PRs, check quality, architectural consistency |

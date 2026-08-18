@@ -35,6 +35,41 @@
       "legacy_named": false,
       "status": "active"
     },
+    "save-reliability": {
+      "persistent_name": "Sloth",
+      "universe": "The Goonies",
+      "created_at": "2026-08-17T14:33:07.556-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "browser-concurrency": {
+      "persistent_name": "Rosalita",
+      "universe": "The Goonies",
+      "created_at": "2026-08-17T14:33:07.556-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "storage-migration": {
+      "persistent_name": "Troy",
+      "universe": "The Goonies",
+      "created_at": "2026-08-17T14:33:07.556-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "command-lifecycle": {
+      "persistent_name": "Irene",
+      "universe": "The Goonies",
+      "created_at": "2026-08-17T14:33:07.556-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "degraded-flow": {
+      "persistent_name": "Francis",
+      "universe": "The Goonies",
+      "created_at": "2026-08-17T14:33:07.556-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
     "data-engineer": {
       "persistent_name": "Chunk",
       "universe": "The Goonies",
