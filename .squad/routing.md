@@ -7,6 +7,7 @@ How to decide who handles what for theme-park-wait-times.
 | Work Type | Route To | Examples |
 |-----------|----------|----------|
 | Trip UI and ride-visit interactions | Frontend | Create/edit trip screens, add/remove ride visits, form state, loading/error states, responsive interaction behavior |
+| React timing, polling, and browser event lifecycle | Scheduler | Hooks, timers, async scheduling, visibility/connectivity handling, Strict Mode cleanup, deterministic fake-timer tests |
 | Firestore data and migration safety | Backend | Trip and ride-visit models, reads, writes, queries, security-aware data access, backward-compatible migrations |
 | Persistence and failure recovery | Reliability | Reload durability, concurrent writes, retries, offline behavior, stale state, idempotency, partial failure recovery |
 | Tests and reproduction | Tester | Reproduce reported failures, unit/integration/E2E coverage, regression tests, acceptance-gate execution |
@@ -19,10 +20,11 @@ How to decide who handles what for theme-park-wait-times.
 ## Primary Routing Rules
 
 1. UI behavior belongs to Frontend; Firestore contracts belong to Backend.
-2. Cross-cutting durability failures involving persistence, concurrency, offline use, retries, or reloads belong to Reliability, with Backend consulted for Firestore contract changes.
-3. Reproduction and regression proof belong to Tester; implementation remains with the routed domain owner.
-4. Architecture, ambiguous ownership, scope changes, and final review belong to Lead.
-5. No recovery task is complete until Tester has executed the shared acceptance gate and Lead has reviewed the evidence.
+2. React timing, polling, async scheduling, visibility/connectivity transitions, and Strict Mode lifecycle cleanup belong to Scheduler.
+3. Cross-cutting durability failures involving persistence, concurrency, offline use, retries, or reloads belong to Reliability, with Backend consulted for Firestore contract changes.
+4. Reproduction and regression proof belong to Tester; implementation remains with the routed domain owner.
+5. Architecture, ambiguous ownership, scope changes, and final review belong to Lead.
+6. No recovery task is complete until Tester has executed the shared acceptance gate and Lead has reviewed the evidence.
 
 ## Shared Recovery Acceptance Gate
 
@@ -41,6 +43,7 @@ Speculative patches, isolated unit success, and code review without this proof d
 | `squad` | Triage, identify the primary concern, and assign `squad:{member}` | Lead |
 | `squad:lead` | Architecture, review, scope, or completion gating | Lead |
 | `squad:frontend` | Trip and ride-visit UI work | Frontend |
+| `squad:scheduler` | React timing, polling, and event lifecycle work | Scheduler |
 | `squad:backend` | Firestore model/read/write/migration work | Backend |
 | `squad:tester` | Reproduction and regression coverage | Tester |
 | `squad:reliability` | Persistence, concurrency, offline, retry, or reload work | Reliability |
