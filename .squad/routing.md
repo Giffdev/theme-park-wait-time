@@ -1,47 +1,54 @@
 # Work Routing
 
-How to decide who handles what.
+How to decide who handles what for theme-park-wait-times.
 
 ## Routing Table
 
 | Work Type | Route To | Examples |
 |-----------|----------|----------|
-| Architecture, schema, migration | Mikey | Firebase schema design, system architecture, migration strategy, tech decisions |
-| Frontend, UI, components, design | Mouth | React pages, Tailwind styling, data viz, responsive layout, UX |
-| UX review, flow verification, deploy gate | Brand | End-to-end flow checks, state refresh bugs, navigation verification, mobile UX |
-| Backend, Firebase, auth, API, deploy | Data | Firestore collections, security rules, Cloud Functions, Vercel config, auth flows |
-| Firestore transactions, contention, bounded aggregation | Andy | Transaction limits, high-volume consensus, idempotency, concurrency reliability |
-| Durable save commands, retry recovery, request-boundary tests | Sloth | Frozen command persistence, ambiguous retries, save-flow liveness, authenticated request boundaries |
-| Browser storage concurrency, multi-tab command safety | Rosalita | IndexedDB transactions, cross-tab locks, add-only command persistence, conditional completion |
-| Browser storage migration and legacy coexistence | Troy | Non-destructive migrations, compatibility windows, deterministic migration interleavings |
-| Pending-command completion and cleanup recovery | Irene | Completion tombstones, exact-request lifecycle, cleanup retries, post-commit UI recovery |
-| Degraded save flows and fallback gating | Francis | Explicit fallback submission, partial lookup failures, retryable user flow contracts |
-| Data sourcing, scraping, APIs, crowd cal | Chunk | Theme park APIs, wait time scraping, crowd calendar algorithms, ride databases |
-| Testing, QA, security testing | Stef | Unit/integration/E2E tests, Firebase Rules testing, edge cases, CI config |
-| Code review | Mikey | Review PRs, check quality, architectural consistency |
-| Scope & priorities | Mikey | What to build next, trade-offs, decisions |
-| Session logging | Scribe | Automatic — never needs routing |
+| Trip UI and ride-visit interactions | Frontend | Create/edit trip screens, add/remove ride visits, form state, loading/error states, responsive interaction behavior |
+| Firestore data and migration safety | Backend | Trip and ride-visit models, reads, writes, queries, security-aware data access, backward-compatible migrations |
+| Persistence and failure recovery | Reliability | Reload durability, concurrent writes, retries, offline behavior, stale state, idempotency, partial failure recovery |
+| Tests and reproduction | Tester | Reproduce reported failures, unit/integration/E2E coverage, regression tests, acceptance-gate execution |
+| Architecture, scope, and review | Lead | Map the app, define ownership boundaries, control recovery scope, review cross-cutting changes, gate completion |
+| Session logging and shared memory | Scribe | Decision merging, roster history, session logs, cross-agent context propagation |
+| Work monitoring | Ralph | Scan and drive the issue/PR work queue using Ralph's current instructions |
+| Responsible AI review | Rai | Safety, privacy, bias, credential exposure, and project-appropriate RAI checks |
+| Verification and devil's advocacy | Fact Checker | Verify claims and evidence, challenge assumptions, run pre-mortems, flag contradictions |
+
+## Primary Routing Rules
+
+1. UI behavior belongs to Frontend; Firestore contracts belong to Backend.
+2. Cross-cutting durability failures involving persistence, concurrency, offline use, retries, or reloads belong to Reliability, with Backend consulted for Firestore contract changes.
+3. Reproduction and regression proof belong to Tester; implementation remains with the routed domain owner.
+4. Architecture, ambiguous ownership, scope changes, and final review belong to Lead.
+5. No recovery task is complete until Tester has executed the shared acceptance gate and Lead has reviewed the evidence.
+
+## Shared Recovery Acceptance Gate
+
+Every recovery candidate must prove this exact end-to-end flow:
+
+1. Create and save a simple trip.
+2. Add ride visits to the trip.
+3. Reload and confirm the trip and ride visits persist.
+
+Speculative patches, isolated unit success, and code review without this proof do not satisfy completion.
 
 ## Issue Routing
 
 | Label | Action | Who |
 |-------|--------|-----|
-| `squad` | Triage: analyze issue, assign `squad:{member}` label | Lead |
-| `squad:{name}` | Pick up issue and complete the work | Named member |
-
-### How Issue Assignment Works
-
-1. When a GitHub issue gets the `squad` label, the **Lead** triages it — analyzing content, assigning the right `squad:{member}` label, and commenting with triage notes.
-2. When a `squad:{member}` label is applied, that member picks up the issue in their next session.
-3. Members can reassign by removing their label and adding another member's label.
-4. The `squad` label is the "inbox" — untriaged issues waiting for Lead review.
+| `squad` | Triage, identify the primary concern, and assign `squad:{member}` | Lead |
+| `squad:lead` | Architecture, review, scope, or completion gating | Lead |
+| `squad:frontend` | Trip and ride-visit UI work | Frontend |
+| `squad:backend` | Firestore model/read/write/migration work | Backend |
+| `squad:tester` | Reproduction and regression coverage | Tester |
+| `squad:reliability` | Persistence, concurrency, offline, retry, or reload work | Reliability |
 
 ## Rules
 
-1. **Eager by default** — spawn all agents who could usefully start work, including anticipatory downstream work.
-2. **Scribe always runs** after substantial work, always as `mode: "background"`. Never blocks.
-3. **Quick facts → coordinator answers directly.** Don't spawn an agent for "what port does the server run on?"
-4. **When two agents could handle it**, pick the one whose domain is the primary concern.
-5. **"Team, ..." → fan-out.** Spawn all relevant agents in parallel as `mode: "background"`.
-6. **Anticipate downstream work.** If a feature is being built, spawn the tester to write test cases from requirements simultaneously.
-7. **Issue-labeled work** — when a `squad:{member}` label is applied to an issue, route to that member. The Lead handles all `squad` (base label) triage.
+1. Route by primary concern using the table above; Lead resolves ambiguity.
+2. Spawn Tester alongside implementation when a recovery behavior changes.
+3. Route cross-domain designs and final recovery evidence through Lead.
+4. Scribe runs after substantial work and does not own application changes.
+5. Rai and Fact Checker retain their policy-defined review triggers.

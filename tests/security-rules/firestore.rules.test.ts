@@ -320,6 +320,10 @@ describe('User trips and ride logs', () => {
 
     await expect(updateDoc(ref, { status: 'completed' })).resolves.toBeUndefined();
     await expect(updateDoc(ref, {
+      parkIds: ['epcot'],
+      parkNames: { epcot: 'EPCOT' },
+    })).resolves.toBeUndefined();
+    await expect(updateDoc(ref, {
       stats: {
         totalRides: 99,
         totalWaitMinutes: 999,
@@ -330,6 +334,9 @@ describe('User trips and ride logs', () => {
     })).rejects.toThrow();
     await expect(updateDoc(ref, {
       statsGeneration: { seconds: 999, nanoseconds: 0 },
+    })).rejects.toThrow();
+    await expect(updateDoc(ref, {
+      statsUpdatedAt: { seconds: 999, nanoseconds: 0 },
     })).rejects.toThrow();
   });
 
@@ -384,6 +391,7 @@ describe('User trips and ride logs', () => {
     const ctx = authenticatedContext(testEnv, userId);
     const forgedStatsRef = doc(ctx.firestore(), `users/${userId}/trips/forged-stats`);
     const futureGenerationRef = doc(ctx.firestore(), `users/${userId}/trips/future-generation`);
+    const forgedFreshnessRef = doc(ctx.firestore(), `users/${userId}/trips/forged-freshness`);
     const validTrip = {
       name: 'Summer Trip',
       startDate: '2026-08-17',
@@ -411,6 +419,10 @@ describe('User trips and ride logs', () => {
     await expect(setDoc(futureGenerationRef, {
       ...validTrip,
       statsGeneration: { seconds: 9_999_999_999, nanoseconds: 0 },
+    })).rejects.toThrow();
+    await expect(setDoc(forgedFreshnessRef, {
+      ...validTrip,
+      statsUpdatedAt: { seconds: 9_999_999_999, nanoseconds: 0 },
     })).rejects.toThrow();
   });
 
@@ -621,6 +633,81 @@ describe('User trips and ride logs', () => {
     const ctx = authenticatedContext(testEnv, 'other-user');
     const ref = doc(ctx.firestore(), rideLogPath);
     await expect(setDoc(ref, rideLogData)).rejects.toThrow();
+  });
+});
+
+describe('Shared trips', () => {
+  const sharePath = 'sharedTrips/share-123456';
+  const sharedTrip = {
+    userId: 'user-1',
+    tripId: 'trip-1',
+    stats: {
+      totalRides: 2,
+      totalWaitMinutes: 30,
+      parksVisited: 1,
+      uniqueAttractions: 2,
+      favoriteAttraction: null,
+    },
+    parkNames: { epcot: 'EPCOT' },
+    statsGeneration: new Date('2026-08-19T00:00:00Z'),
+    statsUpdatedAt: new Date('2026-08-19T00:00:00Z'),
+    updatedAt: new Date('2026-08-19T00:00:00Z'),
+  };
+
+  it('denies unauthenticated direct get and collection list', async () => {
+    await seedDoc(sharePath, sharedTrip);
+    const publicContext = unauthenticatedContext(testEnv);
+    await expect(getDoc(doc(publicContext.firestore(), sharePath))).rejects.toThrow();
+    await expect(getDocs(collection(publicContext.firestore(), 'sharedTrips')))
+      .rejects.toThrow();
+  });
+
+  it('allows only the owner to get a share index document', async () => {
+    await seedDoc(sharePath, sharedTrip);
+    const owner = authenticatedContext(testEnv, 'user-1');
+    const unrelated = authenticatedContext(testEnv, 'user-2');
+    await expect(getDoc(doc(owner.firestore(), sharePath))).resolves.toBeDefined();
+    await expect(getDoc(doc(unrelated.firestore(), sharePath))).rejects.toThrow();
+    await expect(getDocs(collection(owner.firestore(), 'sharedTrips'))).rejects.toThrow();
+  });
+
+  it('allows only an authenticated owner to create the identity-only share index', async () => {
+    const owner = authenticatedContext(testEnv, 'user-1');
+    const other = authenticatedContext(testEnv, 'user-2');
+    await expect(setDoc(doc(owner.firestore(), sharePath), {
+      userId: 'user-1',
+      tripId: 'trip-1',
+      updatedAt: serverTimestamp(),
+    })).resolves.toBeUndefined();
+    await expect(setDoc(doc(other.firestore(), 'sharedTrips/share-other'), {
+      userId: 'user-1',
+      tripId: 'trip-1',
+      updatedAt: serverTimestamp(),
+    })).rejects.toThrow();
+    await expect(setDoc(doc(owner.firestore(), 'sharedTrips/share-forged'), {
+      userId: 'user-1',
+      tripId: 'trip-1',
+      stats: sharedTrip.stats,
+      updatedAt: serverTimestamp(),
+    })).rejects.toThrow();
+  });
+
+  it('keeps identity and server summary fields immutable while allowing unrelated owner edits', async () => {
+    await seedDoc(sharePath, sharedTrip);
+    const owner = authenticatedContext(testEnv, 'user-1');
+    const ref = doc(owner.firestore(), sharePath);
+
+    await expect(updateDoc(ref, { label: 'Family link' })).resolves.toBeUndefined();
+    for (const update of [
+      { userId: 'user-2' },
+      { tripId: 'trip-2' },
+      { stats: { ...sharedTrip.stats, totalRides: 99 } },
+      { statsGeneration: new Date('2027-01-01T00:00:00Z') },
+      { statsUpdatedAt: new Date('2027-01-01T00:00:00Z') },
+      { parkNames: { epcot: 'Injected' } },
+    ]) {
+      await expect(updateDoc(ref, update)).rejects.toThrow();
+    }
   });
 });
 

@@ -404,7 +404,6 @@ export default function UnifiedLogSheet({
             await addRideLog(user.uid, rideCommandData(command), command.tripId, {
               requestId: command.requestId,
               timeoutMs: RIDE_SAVE_TIMEOUT_MS,
-              waitForTripStats: true,
             });
           } catch (saveError) {
             if (

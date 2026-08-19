@@ -69,8 +69,32 @@ import {
   getRideLog,
   updateRideLog,
   deleteRideLog,
+  refreshTripStatsAfterMutation,
   submitCrowdReport,
 } from '@/lib/services/ride-log-service';
+
+const refreshedStats = {
+  status: 'updated' as const,
+  stats: {
+    totalRides: 3,
+    totalWaitMinutes: 45,
+    parksVisited: 2,
+    uniqueAttractions: 3,
+    favoriteAttraction: 'Space Mountain',
+  },
+  statsUpdatedAt: '2026-08-19T01:02:03.000Z',
+};
+
+function refreshResponse(status = 200, body: unknown = {
+  updated: true,
+  stats: refreshedStats.stats,
+  statsUpdatedAt: refreshedStats.statsUpdatedAt,
+}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
 
 describe('ride-log-service', () => {
   const userId = 'user-123';
@@ -105,12 +129,15 @@ describe('ride-log-service', () => {
         requestId: string;
         tripId?: string | null;
       };
+      if (String(_input) === '/api/trip-stats') return refreshResponse();
       return {
         ok: true,
         status: 200,
         json: vi.fn().mockResolvedValue({
           id: request.requestId,
+          result: 'created',
           tripId: request.tripId ?? null,
+          statsUpdated: true,
         }),
       };
     }));
@@ -119,6 +146,175 @@ describe('ride-log-service', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('honors bounded Retry-After and leaves no lifecycle timer behind', async () => {
+    vi.useFakeTimers();
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response('{}', {
+        status: 429,
+        headers: { 'Retry-After': '1' },
+      }))
+      .mockResolvedValueOnce(refreshResponse());
+
+    const pending = refreshTripStatsAfterMutation('trip-retry');
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await expect(pending).resolves.toEqual(refreshedStats);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('lets one subscriber abort while a coalesced subscriber still succeeds', async () => {
+    let resolveFetch!: (response: Response) => void;
+    let transportSignal: AbortSignal | undefined;
+    vi.mocked(fetch).mockImplementationOnce((_input, init) => {
+      transportSignal = init?.signal as AbortSignal;
+      return new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      });
+    });
+    const first = new AbortController();
+    const second = new AbortController();
+
+    const firstResult = refreshTripStatsAfterMutation('trip-shared', first.signal);
+    const secondResult = refreshTripStatsAfterMutation('trip-shared', second.signal);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    first.abort();
+
+    await expect(firstResult).resolves.toBe('stale');
+    expect(transportSignal?.aborted).toBe(false);
+    resolveFetch(refreshResponse());
+    await expect(secondResult).resolves.toEqual(refreshedStats);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('evicts an abandoned transport before an immediate manual retry', async () => {
+    const signals: AbortSignal[] = [];
+    vi.mocked(fetch)
+      .mockImplementationOnce((_input, init) => {
+        const signal = init?.signal as AbortSignal;
+        signals.push(signal);
+        return new Promise<Response>((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+          });
+        });
+      })
+      .mockImplementationOnce((_input, init) => {
+        signals.push(init?.signal as AbortSignal);
+        return Promise.resolve(refreshResponse());
+      });
+    const abandoned = new AbortController();
+
+    const first = refreshTripStatsAfterMutation('trip-abandoned', abandoned.signal);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    abandoned.abort();
+    await expect(first).resolves.toBe('stale');
+    await expect(refreshTripStatsAfterMutation('trip-abandoned')).resolves.toEqual(refreshedStats);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(signals[0].aborted).toBe(true);
+    expect(signals[1]).not.toBe(signals[0]);
+  });
+
+  it('keeps simultaneous trips on independent transports', async () => {
+    const resolvers = new Map<string, (response: Response) => void>();
+    vi.mocked(fetch).mockImplementation((_input, init) => {
+      const { tripId } = JSON.parse(String(init?.body)) as { tripId: string };
+      return new Promise<Response>((resolve) => {
+        resolvers.set(tripId, resolve);
+      });
+    });
+
+    const first = refreshTripStatsAfterMutation('trip-one');
+    const second = refreshTripStatsAfterMutation('trip-two');
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    resolvers.get('trip-two')!(refreshResponse());
+    await expect(second).resolves.toEqual(refreshedStats);
+    resolvers.get('trip-one')!(refreshResponse());
+    await expect(first).resolves.toEqual(refreshedStats);
+  });
+
+  it.each([
+    ['delta seconds', '10'],
+    ['HTTP date', new Date('2026-08-19T00:00:10Z').toUTCString()],
+  ])('honors a ten-second Retry-After expressed as %s', async (_label, retryAfter) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-19T00:00:00Z'));
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response('{}', {
+        status: 429,
+        headers: { 'Retry-After': retryAfter },
+      }))
+      .mockResolvedValueOnce(refreshResponse());
+
+    const pending = refreshTripStatsAfterMutation(`trip-${_label}`);
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(pending).resolves.toEqual(refreshedStats);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('returns a terminal throttled result when Retry-After exceeds the refresh deadline', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-19T00:00:00Z'));
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}', {
+      status: 429,
+      headers: { 'Retry-After': '20' },
+    }));
+
+    await expect(refreshTripStatsAfterMutation('trip-throttled')).resolves.toEqual({
+      status: 'throttled',
+      retryAt: Date.parse('2026-08-19T00:00:20Z'),
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('accepts only a valid authoritative 200 refresh payload', async () => {
+    const exactTimestamp = '2026-08-19T01:02:03.123456789Z';
+    vi.mocked(fetch).mockResolvedValueOnce(refreshResponse(200, {
+      updated: true,
+      stats: refreshedStats.stats,
+      statsUpdatedAt: exactTimestamp,
+    }));
+    await expect(refreshTripStatsAfterMutation('trip-valid')).resolves.toEqual({
+      ...refreshedStats,
+      statsUpdatedAt: exactTimestamp,
+    });
+  });
+
+  it('keeps a malformed 200 refresh stale', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(refreshResponse(200, {
+      updated: true,
+      stats: { ...refreshedStats.stats, totalRides: '3' },
+      statsUpdatedAt: refreshedStats.statsUpdatedAt,
+    }));
+    await expect(refreshTripStatsAfterMutation('trip-malformed')).resolves.toBe('stale');
+  });
+
+  it.each([
+    '2026-08-19T01:02:03.1234567890Z',
+    '2026-08-19T01:02:03.123456+24:00',
+    '2026-02-30T01:02:03Z',
+  ])('keeps malformed authoritative timestamp %s stale', async (statsUpdatedAt) => {
+    vi.mocked(fetch).mockResolvedValueOnce(refreshResponse(200, {
+      updated: true,
+      stats: refreshedStats.stats,
+      statsUpdatedAt,
+    }));
+    await expect(refreshTripStatsAfterMutation(`trip-malformed-${statsUpdatedAt}`))
+      .resolves.toBe('stale');
+  });
+
+  it('keeps an actual 202 updated-false refresh stale', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(refreshResponse(202, { updated: false }));
+    await expect(refreshTripStatsAfterMutation('trip-pending')).resolves.toBe('stale');
   });
 
   describe('addRideLog', () => {
@@ -167,6 +363,89 @@ describe('ride-log-service', () => {
       }));
       expect(mockAddDocument).not.toHaveBeenCalled();
       expect(result).toBe('ride-request-1234');
+    });
+
+    it.each([
+      ['missing ID', { result: 'created', tripId: null, statsUpdated: true }],
+      ['mismatched ID', {
+        id: 'different-ride-id',
+        result: 'created',
+        tripId: null,
+        statsUpdated: true,
+      }],
+      ['missing result', {
+        id: 'ride-request-invalid-success',
+        tripId: null,
+        statsUpdated: true,
+      }],
+      ['mismatched trip', {
+        id: 'ride-request-invalid-success',
+        result: 'created',
+        tripId: 'different-trip',
+        statsUpdated: true,
+      }],
+      ['missing stats outcome', {
+        id: 'ride-request-invalid-success',
+        result: 'created',
+        tripId: null,
+      }],
+    ])('keeps a 200 ride response with %s ambiguous for retry', async (_label, body) => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(body),
+      } as unknown as Response);
+
+      await expect(addRideLog(
+        userId,
+        mockRideLogInput,
+        null,
+        { requestId: 'ride-request-invalid-success' },
+      )).rejects.toMatchObject({
+        code: 'write-failed',
+        outcome: 'ambiguous',
+      });
+    });
+
+    it('keeps malformed ride success JSON ambiguous for retry', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockRejectedValue(new SyntaxError('invalid JSON')),
+      } as unknown as Response);
+
+      await expect(addRideLog(
+        userId,
+        mockRideLogInput,
+        null,
+        { requestId: 'ride-request-malformed-success' },
+      )).rejects.toMatchObject({
+        code: 'write-failed',
+        outcome: 'ambiguous',
+      });
+    });
+
+    it('does not accept a well-formed ride success under an arbitrary 2xx status', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: vi.fn().mockResolvedValue({
+          id: 'ride-request-wrong-status',
+          result: 'created',
+          tripId: null,
+          statsUpdated: true,
+        }),
+      } as unknown as Response);
+
+      await expect(addRideLog(
+        userId,
+        mockRideLogInput,
+        null,
+        { requestId: 'ride-request-wrong-status' },
+      )).rejects.toMatchObject({
+        code: 'write-failed',
+        outcome: 'ambiguous',
+      });
     });
 
     it('writes first when read dependencies reject or never resolve', async () => {
@@ -223,7 +502,12 @@ describe('ride-log-service', () => {
         resolveWrite = () => resolve({
           ok: true,
           status: 200,
-          json: vi.fn().mockResolvedValue({ id: 'ride-request-duplicate', tripId: null }),
+          json: vi.fn().mockResolvedValue({
+            id: 'ride-request-duplicate',
+            result: 'created',
+            tripId: null,
+            statsUpdated: true,
+          }),
         } as unknown as Response);
       }));
 
@@ -386,6 +670,7 @@ describe('ride-log-service', () => {
         status: 200,
         json: vi.fn().mockResolvedValue({
           id: 'ride-request-partial',
+          result: 'created',
           tripId: 'trip-active',
           statsUpdated: false,
         }),
@@ -405,8 +690,105 @@ describe('ride-log-service', () => {
         message: expect.stringMatching(/Ride saved/i),
       });
 
-      expect(fetch).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+      expect(fetch).toHaveBeenLastCalledWith('/api/trip-stats', expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ tripId: 'trip-active' }),
+      }));
       expect(mockUpdateTripStats).not.toHaveBeenCalled();
+    });
+
+    it.each(['created', 'replayed'] as const)(
+      'acknowledges a confirmed %s ride before its automatic stats refresh completes',
+      async (result) => {
+        let resolveRefresh!: (response: Response) => void;
+        let refreshCompleted = false;
+        vi.mocked(fetch)
+          .mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: vi.fn().mockResolvedValue({
+              id: 'ride-request-acknowledged',
+              result,
+              tripId: 'trip-active',
+              statsUpdated: false,
+            }),
+          } as unknown as Response)
+          .mockImplementationOnce(() => new Promise<Response>((resolve) => {
+            resolveRefresh = (response) => {
+              refreshCompleted = true;
+              resolve(response);
+            };
+          }));
+
+        await expect(addRideLog(
+          userId,
+          mockRideLogInput,
+          'trip-active',
+          { requestId: 'ride-request-acknowledged' },
+        )).resolves.toBe('ride-request-acknowledged');
+
+        await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+        expect(refreshCompleted).toBe(false);
+        expect(fetch).toHaveBeenLastCalledWith('/api/trip-stats', expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ tripId: 'trip-active' }),
+        }));
+
+        resolveRefresh(refreshResponse());
+        await vi.waitFor(() => expect(refreshCompleted).toBe(true));
+      },
+    );
+
+    it('keeps a confirmed ride acknowledgement when automatic stats refresh fails', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({
+            id: 'ride-request-refresh-failure',
+            result: 'created',
+            tripId: 'trip-refresh-failure',
+            statsUpdated: false,
+          }),
+        } as unknown as Response)
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockRejectedValueOnce(new Error('still offline'));
+
+      await expect(addRideLog(
+        userId,
+        mockRideLogInput,
+        'trip-refresh-failure',
+        { requestId: 'ride-request-refresh-failure' },
+      )).resolves.toBe('ride-request-refresh-failure');
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+      await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(
+        '[ride-log-service] Background trip summary refresh did not confirm an update.',
+      ));
+    });
+
+    it('freezes retry for a permanent server configuration failure', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 412,
+        json: vi.fn().mockResolvedValue({
+          error: 'Ride saving is not configured',
+          retryable: false,
+        }),
+      } as unknown as Response);
+
+      await expect(addRideLog(
+        userId,
+        mockRideLogInput,
+        null,
+        { requestId: 'ride-request-config' },
+      )).rejects.toMatchObject({
+        code: 'configuration-error',
+        outcome: 'definitive-non-commit',
+        message: 'Ride saving is not configured',
+      });
     });
 
     it('reuses one write for a same-payload retry after an ambiguous timeout', async () => {
@@ -418,7 +800,9 @@ describe('ride-log-service', () => {
           status: 200,
           json: vi.fn().mockResolvedValue({
             id: 'ride-request-timeout-replay',
+            result: 'replayed',
             tripId: 'trip-original',
+            statsUpdated: true,
           }),
         } as unknown as Response);
       }));
@@ -592,6 +976,93 @@ describe('ride-log-service', () => {
       })).rejects.toMatchObject({ code: 'invalid-data' });
       expect(mockUpdateDocument).not.toHaveBeenCalled();
     });
+
+    it('returns from a trip ride edit before its bounded stats refresh completes', async () => {
+      mockGetDocument.mockResolvedValue({ id: 'log-1', tripId: 'trip-1' });
+      mockUpdateDocument.mockResolvedValue(undefined);
+      let resolveRefresh!: (response: Response) => void;
+      let refreshCompleted = false;
+      vi.mocked(fetch).mockImplementationOnce(() => new Promise<Response>((resolve) => {
+        resolveRefresh = (response) => {
+          refreshCompleted = true;
+          resolve(response);
+        };
+      }));
+
+      await expect(updateRideLog(userId, 'log-1', { rating: 4 }))
+        .resolves.toBeUndefined();
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith(
+        '/api/trip-stats',
+        expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ tripId: 'trip-1' }),
+        }),
+      ));
+      expect(refreshCompleted).toBe(false);
+
+      resolveRefresh(refreshResponse());
+      await vi.waitFor(() => expect(refreshCompleted).toBe(true));
+    });
+
+    it('keeps separate trips independent and retries a 429 once', async () => {
+      mockGetDocument.mockImplementation(async (_path, id) => ({
+        id,
+        tripId: id === 'log-1' ? 'trip-1' : 'trip-2',
+      }));
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response('{}', {
+          status: 429,
+          headers: { 'Retry-After': '0' },
+        }))
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+
+      await Promise.all([
+        updateRideLog(userId, 'log-1', { rating: 4 }),
+        updateRideLog(userId, 'log-2', { rating: 5 }),
+      ]);
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+      expect(vi.mocked(fetch).mock.calls.map(([, init]) => String(init?.body))).toEqual(
+        expect.arrayContaining([
+          JSON.stringify({ tripId: 'trip-1' }),
+          JSON.stringify({ tripId: 'trip-2' }),
+        ]),
+      );
+    });
+
+    it('does not downgrade an edit when refresh reaches a terminal error', async () => {
+      mockGetDocument.mockResolvedValue({ id: 'log-1', tripId: 'trip-1' });
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(fetch).mockRejectedValue(new Error('offline'));
+
+      await expect(updateRideLog(userId, 'log-1', { rating: 4 }))
+        .resolves.toBeUndefined();
+      expect(mockUpdateDocument).toHaveBeenCalled();
+      await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(
+        '[ride-log-service] Background trip summary refresh did not confirm an update.',
+      ));
+    });
+
+    it('does not await or surface a failed stats metadata lookup', async () => {
+      let rejectLookup!: (reason?: unknown) => void;
+      mockGetDocument.mockReturnValue(new Promise((_resolve, reject) => {
+        rejectLookup = reject;
+      }));
+      mockUpdateDocument.mockResolvedValue(undefined);
+
+      const operation = updateRideLog(userId, 'log-1', { rating: 4 });
+
+      expect(mockUpdateDocument).toHaveBeenCalledWith(
+        collectionPath,
+        'log-1',
+        expect.objectContaining({ rating: 4 }),
+      );
+      rejectLookup(new Error('metadata unavailable'));
+      await expect(operation).resolves.toBeUndefined();
+      expect(fetch).not.toHaveBeenCalled();
+    });
   });
 
   describe('deleteRideLog', () => {
@@ -601,6 +1072,61 @@ describe('ride-log-service', () => {
       await deleteRideLog(userId, 'log-1');
 
       expect(mockDeleteDocument).toHaveBeenCalledWith(collectionPath, 'log-1');
+    });
+
+    it('returns from a trip ride delete before its bounded stats refresh completes', async () => {
+      mockGetDocument.mockResolvedValue({ id: 'log-1', tripId: 'trip-1' });
+      mockDeleteDocument.mockResolvedValue(undefined);
+      let resolveRefresh!: (response: Response) => void;
+      let refreshCompleted = false;
+      vi.mocked(fetch).mockImplementationOnce(() => new Promise<Response>((resolve) => {
+        resolveRefresh = (response) => {
+          refreshCompleted = true;
+          resolve(response);
+        };
+      }));
+
+      await expect(deleteRideLog(userId, 'log-1')).resolves.toBeUndefined();
+
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith(
+        '/api/trip-stats',
+        expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ tripId: 'trip-1' }),
+        }),
+      ));
+      expect(refreshCompleted).toBe(false);
+
+      resolveRefresh(refreshResponse());
+      await vi.waitFor(() => expect(refreshCompleted).toBe(true));
+    });
+
+    it('does not downgrade a delete when background refresh fails', async () => {
+      mockGetDocument.mockResolvedValue({ id: 'log-1', tripId: 'trip-delete-failure' });
+      mockDeleteDocument.mockResolvedValue(undefined);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.mocked(fetch).mockRejectedValue(new Error('offline'));
+
+      await expect(deleteRideLog(userId, 'log-1')).resolves.toBeUndefined();
+      expect(mockDeleteDocument).toHaveBeenCalled();
+      await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(
+        '[ride-log-service] Background trip summary refresh did not confirm an update.',
+      ));
+    });
+
+    it('does not await or surface a failed stats metadata lookup', async () => {
+      let rejectLookup!: (reason?: unknown) => void;
+      mockGetDocument.mockReturnValue(new Promise((_resolve, reject) => {
+        rejectLookup = reject;
+      }));
+      mockDeleteDocument.mockResolvedValue(undefined);
+
+      const operation = deleteRideLog(userId, 'log-1');
+
+      expect(mockDeleteDocument).toHaveBeenCalledWith(collectionPath, 'log-1');
+      rejectLookup(new Error('metadata unavailable'));
+      await expect(operation).resolves.toBeUndefined();
+      expect(fetch).not.toHaveBeenCalled();
     });
   });
 

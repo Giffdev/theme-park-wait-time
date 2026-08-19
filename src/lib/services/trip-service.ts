@@ -83,7 +83,13 @@ export type TripCreationStatus =
   | 'payload-conflict';
 
 export class TripCreateError extends Error {
-  readonly code: 'auth-required' | 'invalid-data' | 'conflicting-replay' | 'timeout' | 'write-failed';
+  readonly code:
+    | 'auth-required'
+    | 'invalid-data'
+    | 'configuration-error'
+    | 'conflicting-replay'
+    | 'timeout'
+    | 'write-failed';
   readonly outcome: TripCreateOutcome;
   readonly cause?: unknown;
 
@@ -219,6 +225,7 @@ async function postTripCommand(
           id?: unknown;
           result?: unknown;
           error?: string;
+          retryable?: boolean;
         } | null;
         return { response, body };
       })();
@@ -228,6 +235,13 @@ async function postTripCommand(
           'conflicting-replay',
           body?.error ?? 'This trip request has conflicting server state. Retry the same request ID or contact support; do not start a new trip request.',
           'ambiguous',
+        );
+      }
+      if (response.status === 412 && body?.retryable === false) {
+        throw new TripCreateError(
+          'configuration-error',
+          body.error ?? 'Trip creation is not configured. Contact support before trying again.',
+          'definitive-non-commit',
         );
       }
       if (!response.ok) {
@@ -317,6 +331,7 @@ export async function getTripCreationStatus(
         : await getIdTokenWithRefreshDeadline(currentUser, timeoutMs);
       const fingerprint = await tripCommandFingerprint(data);
       const query = new URLSearchParams({ requestId, fingerprint });
+      if (data.shareId) query.set('shareId', data.shareId);
       return fetch(`/api/trip-commands?${query.toString()}`, {
         method: 'GET',
         headers: {
@@ -333,6 +348,7 @@ export async function getTripCreationStatus(
         status?: TripCreationStatus;
         id?: unknown;
         error?: string;
+        retryable?: boolean;
       };
       return { response, body };
     })();
@@ -342,6 +358,13 @@ export async function getTripCreationStatus(
         'auth-required',
         'Your session expired. Sign in again to continue confirming this trip.',
         'ambiguous',
+      );
+    }
+    if (response.status === 412 && body.retryable === false) {
+      throw new TripCreateError(
+        'configuration-error',
+        body.error ?? 'Trip creation status is not configured. Contact support before trying again.',
+        'definitive-non-commit',
       );
     }
     if (response.status === 503 && body.status === 'pending') return 'pending';
@@ -482,7 +505,7 @@ async function createTripDocument(
     tripId = ref.id;
   }
 
-  // If sharing is enabled, index in shared collection for public access
+  // If sharing is enabled, create the private index resolved by the public API route.
   if (shareId && !options.requestId) {
     await setDocument(SHARED_TRIPS_COLLECTION, shareId, {
       userId,
@@ -528,27 +551,6 @@ export async function getTrips(
       results = results.slice(0, options.limit);
     }
     trips = results;
-  }
-
-  // Populate missing display names for this render without client writes to
-  // server-owned derived fields.
-  const tripsNeedingBackfill = trips.filter(
-    (t) => t.stats.totalRides > 0 && (!t.parkNames || Object.keys(t.parkNames).length === 0)
-  );
-  if (tripsNeedingBackfill.length > 0) {
-    for (const trip of tripsNeedingBackfill) {
-      try {
-        const logs = await getTripRideLogs(userId, trip.id);
-        const names: Record<string, string> = {};
-        for (const log of logs) {
-          if (!names[log.parkId]) {
-            const name = log.parkName || getParkById(log.parkId)?.name;
-            if (name) names[log.parkId] = name;
-          }
-        }
-        trip.parkNames = names;
-      } catch { /* skip */ }
-    }
   }
 
   return trips;
@@ -755,55 +757,4 @@ export async function updateTripStats(userId: string, tripId: string): Promise<v
   };
 
   await updateDocument(tripsPath(userId), tripId, { stats, parkNames });
-}
-
-// ---------------------------------------------------------------------------
-// Public Sharing
-// ---------------------------------------------------------------------------
-
-/**
- * Generate a share link for a trip.
- * - Creates a URL-safe shareId
- * - Writes it to the trip doc
- * - Indexes in sharedTrips collection for public lookup
- * - Returns the full share URL path (caller prepends domain)
- */
-export async function generateShareLink(
-  userId: string,
-  tripId: string,
-): Promise<string> {
-  const trip = await getTrip(userId, tripId);
-  if (!trip) throw new Error('Trip not found');
-
-  // Reuse existing shareId if already generated
-  if (trip.shareId) return `/trips/shared/${trip.shareId}`;
-
-  const shareId = generateShareId();
-
-  // Write shareId to trip doc
-  await updateDocument(tripsPath(userId), tripId, { shareId });
-
-  // Write public index entry
-  await setDocument(SHARED_TRIPS_COLLECTION, shareId, {
-    userId,
-    tripId,
-    createdAt: new Date(),
-  });
-
-  return `/trips/shared/${shareId}`;
-}
-
-/** Get a shared trip by its shareId (no auth required). */
-export async function getSharedTrip(
-  shareId: string,
-): Promise<(Trip & { id: string }) | null> {
-  // Look up the share index to find owner + tripId
-  const shareDoc = await getDocument<{ userId: string; tripId: string }>(
-    SHARED_TRIPS_COLLECTION,
-    shareId,
-  );
-  if (!shareDoc) return null;
-
-  // Fetch the actual trip
-  return getTrip(shareDoc.userId, shareDoc.tripId);
 }

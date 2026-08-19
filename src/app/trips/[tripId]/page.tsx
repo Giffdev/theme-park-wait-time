@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Trash2, Pencil, X, PlusCircle, Clock, MapPin } from 'lucide-react';
@@ -14,6 +14,7 @@ import { getTripDiningLogs, deleteDiningLog, updateDiningLog } from '@/lib/servi
 import { notifyActiveTripChanged } from '@/components/trips/ActiveTripBanner';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import ShareModal from '@/components/trips/ShareModal';
+import { withReadDeadline } from '@/lib/services/bounded-read';
 import type { Trip } from '@/types/trip';
 import type { RideLog, RideLogUpdateData } from '@/types/ride-log';
 import type { DiningLog, DiningLogUpdateData } from '@/types/dining-log';
@@ -129,6 +130,8 @@ export default function TripDetailPage() {
   const [rideLogs, setRideLogs] = useState<(RideLog & { id: string })[]>([]);
   const [diningLogs, setDiningLogs] = useState<(DiningLog & { id: string })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tripLoadError, setTripLoadError] = useState<string | null>(null);
+  const [rideLogsLoadError, setRideLogsLoadError] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -154,35 +157,80 @@ export default function TripDetailPage() {
   const [editingDiningLog, setEditingDiningLog] = useState<(DiningLog & { id: string }) | null>(null);
   const [editDiningData, setEditDiningData] = useState<{ diningAt: string; tableWaitMinutes: string; rating: string; notes: string; mealType: string; hadReservation: string }>({ diningAt: '', tableWaitMinutes: '', rating: '', notes: '', mealType: '', hadReservation: '' });
   const [savingDining, setSavingDining] = useState(false);
+  const fetchRequestRef = useRef(0);
+  const visibleStats = useMemo(() => ({
+    totalRides: rideLogs.length,
+    totalWaitMinutes: rideLogs.reduce(
+      (sum, log) => sum + (log.waitTimeMinutes ?? 0),
+      0,
+    ),
+    parksVisited: new Set(rideLogs.map((log) => log.parkId)).size,
+    uniqueAttractions: new Set(rideLogs.map((log) => log.attractionId)).size,
+  }), [rideLogs]);
 
   const fetchData = useCallback(async (background = false) => {
     if (!user || !tripId) return;
-    // Only show loading spinner on initial load, not background refreshes
+    const requestId = ++fetchRequestRef.current;
     if (!background) setLoading(true);
-    try {
-      const tripData = await getTrip(user.uid, tripId);
+    setTripLoadError(null);
+    setRideLogsLoadError(null);
+
+    const [tripResult, rideLogsResult, diningLogsResult] = await Promise.allSettled([
+      withReadDeadline(
+        getTrip(user.uid, tripId),
+        'This trip could not be loaded. Check your connection and try again.',
+      ),
+      withReadDeadline(
+        getTripRideLogs(user.uid, tripId),
+        'Ride visits could not be loaded. Check your connection and try again.',
+      ),
+      withReadDeadline(
+        getTripDiningLogs(user.uid, tripId),
+        'Dining visits could not be loaded. Check your connection and try again.',
+      ),
+    ]);
+
+    if (fetchRequestRef.current !== requestId) return;
+
+    if (tripResult.status === 'fulfilled') {
+      const tripData = tripResult.value;
       setTrip(tripData);
-    } catch (err) {
-      console.error('Failed to load trip:', err);
+    } else {
+      console.error('Failed to load trip:', tripResult.reason);
+      setTripLoadError(
+        tripResult.reason instanceof Error
+          ? tripResult.reason.message
+          : 'This trip could not be loaded. Check your connection and try again.',
+      );
     }
-    try {
-      const logs = await getTripRideLogs(user.uid, tripId);
-      setRideLogs(logs);
-    } catch (err) {
-      console.error('Failed to load ride logs:', err);
+
+    if (rideLogsResult.status === 'fulfilled') {
+      setRideLogs(rideLogsResult.value);
+    } else {
+      console.error('Failed to load ride logs:', rideLogsResult.reason);
+      setRideLogsLoadError(
+        rideLogsResult.reason instanceof Error
+          ? rideLogsResult.reason.message
+          : 'Ride visits could not be loaded. Check your connection and try again.',
+      );
     }
-    try {
-      const dLogs = await getTripDiningLogs(user.uid, tripId);
-      setDiningLogs(dLogs);
-    } catch (err) {
-      console.error('Failed to load dining logs:', err);
+
+    if (diningLogsResult.status === 'fulfilled') {
+      setDiningLogs(diningLogsResult.value);
+    } else {
+      console.error('Failed to load dining logs:', diningLogsResult.reason);
     }
+
     setLoading(false);
   }, [user, tripId]);
 
   useEffect(() => {
     if (user) fetchData();
   }, [user, fetchData]);
+
+  useEffect(() => () => {
+    fetchRequestRef.current += 1;
+  }, []);
 
   // Re-fetch trip data when page regains focus (e.g. after editing trip name)
   useEffect(() => {
@@ -398,6 +446,23 @@ export default function TripDetailPage() {
     );
   }
 
+  if (!trip && tripLoadError) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+        <div className="text-5xl mb-4">⚠️</div>
+        <h1 className="text-2xl font-bold text-primary-900">Trip could not be loaded</h1>
+        <p role="alert" className="mt-2 text-primary-600">{tripLoadError}</p>
+        <button
+          type="button"
+          onClick={() => void fetchData()}
+          className="mt-5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
   if (!trip) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-20 text-center">
@@ -504,22 +569,22 @@ export default function TripDetailPage() {
       </div>
 
       {/* Stats Bar */}
-      {trip.stats.totalRides > 0 && (
+      {visibleStats.totalRides > 0 && (
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-lg border border-primary-100 bg-white p-3 text-center">
-            <div className="text-xl font-bold text-primary-700">{trip.stats.totalRides}</div>
+            <div className="text-xl font-bold text-primary-700">{visibleStats.totalRides}</div>
             <div className="text-xs text-primary-500">Total Rides</div>
           </div>
           <div className="rounded-lg border border-primary-100 bg-white p-3 text-center">
-            <div className="text-xl font-bold text-primary-700">{trip.stats.totalWaitMinutes}</div>
+            <div className="text-xl font-bold text-primary-700">{visibleStats.totalWaitMinutes}</div>
             <div className="text-xs text-primary-500">Min. Waited</div>
           </div>
           <div className="rounded-lg border border-primary-100 bg-white p-3 text-center">
-            <div className="text-xl font-bold text-primary-700">{trip.stats.parksVisited}</div>
+            <div className="text-xl font-bold text-primary-700">{visibleStats.parksVisited}</div>
             <div className="text-xs text-primary-500">Parks Visited</div>
           </div>
           <div className="rounded-lg border border-primary-100 bg-white p-3 text-center">
-            <div className="text-xl font-bold text-primary-700">{trip.stats.uniqueAttractions}</div>
+            <div className="text-xl font-bold text-primary-700">{visibleStats.uniqueAttractions}</div>
             <div className="text-xs text-primary-500">Unique Attractions</div>
           </div>
         </div>
@@ -531,7 +596,23 @@ export default function TripDetailPage() {
           <h2 className="text-lg font-semibold text-primary-900">{trip.name || 'Untitled Trip'} — Timeline</h2>
         </div>
 
-        {rideLogs.length === 0 ? (
+        {rideLogsLoadError && (
+          <div role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p>{rideLogsLoadError}</p>
+            <p className="mt-1 text-amber-800">
+              Your saved ride visits have not been marked as missing.
+            </p>
+            <button
+              type="button"
+              onClick={() => void fetchData(true)}
+              className="mt-3 font-medium text-amber-900 underline"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
+        {rideLogs.length === 0 && !rideLogsLoadError ? (
           <div className="rounded-2xl border-2 border-dashed border-primary-200 bg-gradient-to-b from-white to-primary-50/30 py-14 text-center">
             <div className="text-5xl mb-4">🎢</div>
             <p className="text-lg text-primary-700 font-semibold">Your adventure awaits!</p>
@@ -544,7 +625,7 @@ export default function TripDetailPage() {
               Log a Ride or Experience
             </Link>
           </div>
-        ) : (
+        ) : rideLogs.length > 0 ? (
           <div className="space-y-8">
             {Object.entries(groupedLogs).map(([date, dayLogs]) => {
               const parkGroups = groupByPark(dayLogs, trip.parkNames);
@@ -638,7 +719,7 @@ export default function TripDetailPage() {
               );
             })}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Dining Logs (only shown if user has existing dining logs) */}

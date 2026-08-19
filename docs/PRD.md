@@ -311,7 +311,7 @@ users/{userId}/
   ├── trips/{tripId}             — Trip documents
   └── activeTimer                — Single doc; queue timer state
 
-sharedTrips/{shareId}            — Index for public trip sharing
+sharedTrips/{shareId}            — Private lookup index for server-routed public sharing
 
 crowdsourcedWaitTimes/{parkId}/
   └── reports/{reportId}         — Individual CrowdReport documents

@@ -11,17 +11,68 @@ export class RequestError extends Error {
   }
 }
 
-export async function authenticateRequest(request: NextRequest): Promise<string> {
+export const SAVE_ROUTE_DEADLINE_MS = 17_000;
+
+export function createRequestDeadline(now = Date.now()): number {
+  return now + SAVE_ROUTE_DEADLINE_MS;
+}
+
+function remaining(deadlineAt?: number): number {
+  if (deadlineAt === undefined) return SAVE_ROUTE_DEADLINE_MS;
+  return Math.max(0, deadlineAt - Date.now());
+}
+
+async function withRequestDeadline<T>(
+  operation: Promise<T>,
+  deadlineAt: number | undefined,
+  onTimeout: () => void,
+): Promise<T> {
+  if (deadlineAt === undefined) return operation;
+  const timeoutMs = remaining(deadlineAt);
+  if (timeoutMs <= 0) {
+    void operation.catch(() => {});
+    onTimeout();
+    throw new RequestError(503, 'The request deadline elapsed');
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          onTimeout();
+          reject(new RequestError(503, 'The request deadline elapsed'));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    void operation.catch(() => {});
+  }
+}
+
+export async function authenticateRequest(
+  request: NextRequest,
+  deadlineAt?: number,
+): Promise<string> {
   const authorization = request.headers.get('authorization');
   const bearer = authorization?.match(/^Bearer ([^\s]+)$/);
   if (!bearer) {
     throw new RequestError(401, 'Missing or invalid Authorization header');
   }
   try {
-    const token = await verifyIdToken(bearer[1]);
+    // Firebase Admin token verification cannot be physically cancelled. Bound
+    // this pre-write await and suppress a late rejection; callers still prevent
+    // every write from starting after the overall route deadline.
+    const token = await withRequestDeadline(
+      verifyIdToken(bearer[1]),
+      deadlineAt,
+      () => {},
+    );
     if (!token.uid) throw new Error('Verified UID missing');
     return token.uid;
-  } catch {
+  } catch (error) {
+    if (error instanceof RequestError) throw error;
     throw new RequestError(401, 'Invalid or expired token');
   }
 }
@@ -29,6 +80,7 @@ export async function authenticateRequest(request: NextRequest): Promise<string>
 export async function readBoundedJson<T>(
   request: NextRequest,
   maximumBytes: number,
+  deadlineAt?: number,
 ): Promise<T> {
   const declaredLength = Number(request.headers.get('content-length'));
   if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
@@ -52,7 +104,11 @@ export async function readBoundedJson<T>(
   request.signal.addEventListener('abort', handleAbort, { once: true });
   try {
     while (true) {
-      const { done, value } = await Promise.race([reader.read(), aborted]);
+      const { done, value } = await withRequestDeadline(
+        Promise.race([reader.read(), aborted]),
+        deadlineAt,
+        () => { void reader.cancel(); },
+      );
       if (request.signal.aborted) {
         throw new RequestError(400, 'Request body was aborted');
       }

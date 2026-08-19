@@ -204,7 +204,6 @@ describe('UnifiedLogSheet save contract', () => {
       {
         requestId: expect.stringMatching(/^[A-Za-z0-9_-]{8,128}$/),
         timeoutMs: 10_000,
-        waitForTripStats: true,
       },
     ]]);
   }, 10_000);

@@ -468,7 +468,6 @@ describe('TimerCompleteSheet', () => {
       expect.objectContaining({
         requestId: expect.any(String),
         timeoutMs: 10_000,
-        waitForTripStats: true,
       }),
     );
     expect(mockSubmitCrowdReport).toHaveBeenCalledWith({

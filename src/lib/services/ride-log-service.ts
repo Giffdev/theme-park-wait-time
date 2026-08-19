@@ -12,6 +12,8 @@ import {
 import { auth } from '@/lib/firebase/config';
 import { getActiveTrip } from '@/lib/services/trip-service';
 import type { RideLog, RideLogCreateData, RideLogUpdateData } from '@/types/ride-log';
+import type { TripStats } from '@/types/trip';
+import { parseFirestoreTimestamp } from '@/lib/firestore-timestamp';
 import { increment, type QueryConstraint } from 'firebase/firestore';
 import {
   isValidReportedWaitTime,
@@ -45,6 +47,7 @@ const CROWD_REPORT_TIMEOUT_MS = 5_000;
 export type RideLogSaveErrorCode =
   | 'auth-required'
   | 'invalid-data'
+  | 'configuration-error'
   | 'conflicting-replay'
   | 'timeout'
   | 'write-failed'
@@ -76,7 +79,7 @@ export class RideLogSaveError extends Error {
     this.outcome = outcome ?? (
       code === 'post-write-refresh-failed'
         ? 'committed'
-        : code === 'auth-required' || code === 'invalid-data'
+        : code === 'auth-required' || code === 'invalid-data' || code === 'configuration-error'
           ? 'definitive-non-commit'
           : 'ambiguous'
     );
@@ -95,7 +98,7 @@ export interface AddRideLogOptions {
    */
   requestId?: string;
   timeoutMs?: number;
-  /** Wait for a bounded trip-summary refresh and report partial success. */
+  /** Legacy opt-in for callers that still require synchronous derived stats. */
   waitForTripStats?: boolean;
 }
 
@@ -176,6 +179,237 @@ function remainingTime(deadline: number, stageMaximum: number): number {
   return Math.max(1, Math.min(stageMaximum, deadline - Date.now()));
 }
 
+export type TripStatsRefreshResult =
+  | { status: 'updated'; stats: TripStats; statsUpdatedAt: string }
+  | 'stale'
+  | { status: 'throttled'; retryAt: number };
+
+interface TripStatsRefreshEntry {
+  controller: AbortController;
+  promise: Promise<TripStatsRefreshResult>;
+  subscribers: Set<symbol>;
+  settled: boolean;
+}
+
+const TRIP_STATS_REFRESH_DEADLINE_MS = 15_000;
+const TRIP_STATS_ATTEMPT_DEADLINE_MS = 5_000;
+const tripStatsRefreshes = new Map<string, TripStatsRefreshEntry>();
+
+function retryAfterTime(response: Response, now: number): number | null {
+  const raw = response.headers?.get('retry-after')?.trim();
+  if (!raw) return null;
+  if (/^\d+(?:\.\d+)?$/.test(raw)) {
+    const seconds = Number(raw);
+    return Number.isFinite(seconds) ? now + Math.ceil(seconds * 1_000) : null;
+  }
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? Math.max(now, parsed) : null;
+}
+
+function waitForRetry(delayMs: number, signal: AbortSignal): Promise<boolean> {
+  if (signal.aborted) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const finish = (completed: boolean) => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      resolve(completed);
+    };
+    const onAbort = () => finish(false);
+    const timer = setTimeout(() => finish(true), delayMs);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function isTripStats(value: unknown): value is TripStats {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const stats = value as Partial<Record<keyof TripStats, unknown>>;
+  const countKeys: Array<keyof TripStats> = [
+    'totalRides',
+    'totalWaitMinutes',
+    'parksVisited',
+    'uniqueAttractions',
+  ];
+  return countKeys.every((key) => (
+    Number.isSafeInteger(stats[key]) && (stats[key] as number) >= 0
+  )) && (
+    stats.favoriteAttraction === null || typeof stats.favoriteAttraction === 'string'
+  );
+}
+
+async function updatedTripStats(response: Response): Promise<TripStatsRefreshResult> {
+  if (response.status !== 200) return 'stale';
+  try {
+    const body = await response.json() as {
+      updated?: unknown;
+      stats?: unknown;
+      statsUpdatedAt?: unknown;
+    };
+    if (body.updated !== true || !isTripStats(body.stats)
+        || typeof body.statsUpdatedAt !== 'string'
+        || !parseFirestoreTimestamp(body.statsUpdatedAt)) return 'stale';
+    return {
+      status: 'updated',
+      stats: body.stats,
+      statsUpdatedAt: body.statsUpdatedAt,
+    };
+  } catch {
+    return 'stale';
+  }
+}
+
+function createTripStatsRefresh(
+  refreshKey: string,
+  tripId: string,
+  idToken: string,
+): TripStatsRefreshEntry {
+  const controller = new AbortController();
+  const entry: TripStatsRefreshEntry = {
+    controller,
+    promise: Promise.resolve('stale'),
+    subscribers: new Set(),
+    settled: false,
+  };
+  const deadlineAt = Date.now() + TRIP_STATS_REFRESH_DEADLINE_MS;
+  const deadlineTimer = setTimeout(() => controller.abort(), TRIP_STATS_REFRESH_DEADLINE_MS);
+  entry.promise = (async (): Promise<TripStatsRefreshResult> => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (controller.signal.aborted) return 'stale';
+      const remaining = deadlineAt - Date.now();
+      if (remaining <= 0) return 'stale';
+      const attemptController = new AbortController();
+      const abortAttempt = () => attemptController.abort();
+      controller.signal.addEventListener('abort', abortAttempt, { once: true });
+      const attemptTimer = setTimeout(
+        () => attemptController.abort(),
+        Math.min(TRIP_STATS_ATTEMPT_DEADLINE_MS, remaining),
+      );
+      try {
+        const response = await fetch('/api/trip-stats', {
+          method: 'POST',
+          headers: {
+            Authorization: ['Bearer', idToken].join(' '),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ tripId }),
+          signal: attemptController.signal,
+        });
+        if (response.status === 200) return updatedTripStats(response);
+        if (response.ok) return 'stale';
+        if (response.status !== 429) return 'stale';
+        const retryAt = retryAfterTime(response, Date.now());
+        if (retryAt === null) return 'stale';
+        if (attempt === 1 || retryAt >= deadlineAt) {
+          return { status: 'throttled', retryAt };
+        }
+        const waited = await waitForRetry(Math.max(0, retryAt - Date.now()), controller.signal);
+        if (!waited) return 'stale';
+      } catch {
+        if (controller.signal.aborted || attempt === 1) return 'stale';
+      } finally {
+        controller.signal.removeEventListener('abort', abortAttempt);
+        clearTimeout(attemptTimer);
+      }
+    }
+    return 'stale';
+  })().finally(() => {
+    clearTimeout(deadlineTimer);
+    entry.settled = true;
+    if (tripStatsRefreshes.get(refreshKey) === entry) {
+      tripStatsRefreshes.delete(refreshKey);
+    }
+  });
+  tripStatsRefreshes.set(refreshKey, entry);
+  return entry;
+}
+
+function subscribeToTripStatsRefresh(
+  refreshKey: string,
+  entry: TripStatsRefreshEntry,
+  signal?: AbortSignal,
+): Promise<TripStatsRefreshResult> {
+  if (signal?.aborted) return Promise.resolve('stale');
+  const subscriber = Symbol(refreshKey);
+  entry.subscribers.add(subscriber);
+  return new Promise((resolve) => {
+    let complete = false;
+    const finish = (result: TripStatsRefreshResult, aborted: boolean) => {
+      if (complete) return;
+      complete = true;
+      signal?.removeEventListener('abort', onAbort);
+      entry.subscribers.delete(subscriber);
+      if (aborted && entry.subscribers.size === 0 && !entry.settled) {
+        if (tripStatsRefreshes.get(refreshKey) === entry) {
+          tripStatsRefreshes.delete(refreshKey);
+        }
+        entry.controller.abort();
+      }
+      resolve(result);
+    };
+    const onAbort = () => finish('stale', true);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    entry.promise.then(
+      (result) => finish(result, false),
+      () => finish('stale', false),
+    );
+  });
+}
+
+async function requestTripStatsRefresh(
+  uid: string,
+  tripId: string,
+  idToken: string,
+  signal?: AbortSignal,
+): Promise<TripStatsRefreshResult> {
+  const refreshKey = `${uid}\u0000${tripId}`;
+  let entry = tripStatsRefreshes.get(refreshKey);
+  if (entry?.settled || entry?.controller.signal.aborted) {
+    if (tripStatsRefreshes.get(refreshKey) === entry) tripStatsRefreshes.delete(refreshKey);
+    entry = undefined;
+  }
+  if (!entry) {
+    entry = createTripStatsRefresh(refreshKey, tripId, idToken);
+  }
+  return subscribeToTripStatsRefresh(refreshKey, entry, signal);
+}
+
+export async function refreshTripStatsAfterMutation(
+  tripId: string,
+  signal?: AbortSignal,
+): Promise<TripStatsRefreshResult> {
+  const currentUser = auth.currentUser;
+  if (!currentUser || signal?.aborted) return 'stale';
+  try {
+    return await requestTripStatsRefresh(
+      currentUser.uid,
+      tripId,
+      await currentUser.getIdToken(),
+      signal,
+    );
+  } catch {
+    return 'stale';
+  }
+}
+
+function scheduleTripStatsRefresh(tripId: string): void {
+  // The refresh transport is deadline-bounded and coalesces concurrent work per trip.
+  void refreshTripStatsAfterMutation(tripId).then(
+    (result) => {
+      if (result === 'stale') {
+        console.warn(
+          '[ride-log-service] Background trip summary refresh did not confirm an update.',
+        );
+      } else if (result.status === 'throttled') {
+        console.warn(
+          '[ride-log-service] Background trip summary refresh was throttled.',
+        );
+      }
+    },
+    (error) => {
+      console.warn('[ride-log-service] Background trip summary refresh failed:', error);
+    },
+  );
+}
+
 async function postRideCommand(
   data: RideLogCreateData,
   tripId: string | null | undefined,
@@ -227,10 +461,12 @@ async function postRideCommand(
     });
     const response = await Promise.race([requestPromise, deadline]);
     const body = await response.json().catch(() => ({})) as {
-      id?: string;
-      tripId?: string | null;
-      statsUpdated?: boolean;
+      id?: unknown;
+      result?: unknown;
+      tripId?: unknown;
+      statsUpdated?: unknown;
       error?: string;
+      retryable?: boolean;
     };
     if (response.status === 409) {
       throw new RideLogSaveError(
@@ -242,6 +478,15 @@ async function postRideCommand(
       );
     }
     if (!response.ok) {
+      if (response.status === 412 && body.retryable === false) {
+        throw new RideLogSaveError(
+          'configuration-error',
+          body.error ?? 'Ride saving is not configured. Contact support before trying again.',
+          undefined,
+          undefined,
+          'definitive-non-commit',
+        );
+      }
       throw new RideLogSaveError(
         response.status === 401 ? 'auth-required' : response.status < 500 ? 'invalid-data' : 'write-failed',
         body.error ?? 'The ride save was not confirmed. Retry with the same request ID.',
@@ -250,10 +495,32 @@ async function postRideCommand(
         response.status < 500 ? 'definitive-non-commit' : 'ambiguous',
       );
     }
+    const expectedTripId = tripId !== undefined
+      ? tripId
+      : data.tripId ?? null;
+    const confirmedId = body.id;
+    const confirmedResult = body.result;
+    const confirmedTripId = body.tripId;
+    const statsUpdated = body.statsUpdated;
+    if (response.status !== 200
+        || typeof confirmedId !== 'string'
+        || confirmedId !== requestId
+        || (confirmedResult !== 'created' && confirmedResult !== 'replayed')
+        || (confirmedTripId !== null && typeof confirmedTripId !== 'string')
+        || confirmedTripId !== expectedTripId
+        || typeof statsUpdated !== 'boolean') {
+      throw new RideLogSaveError(
+        'write-failed',
+        'Ride saving returned an unrecognized confirmation. Retry will reconcile the same ride ID.',
+        undefined,
+        undefined,
+        'ambiguous',
+      );
+    }
     return {
-      id: body.id ?? requestId,
-      tripId: body.tripId ?? null,
-      statsUpdated: body.statsUpdated !== false,
+      id: confirmedId,
+      tripId: confirmedTripId,
+      statsUpdated,
     };
   } catch (error) {
     if (error instanceof RideLogSaveError) throw error;
@@ -327,6 +594,10 @@ async function saveRideLog(
     logId = saved.id;
     resolvedTripId = saved.tripId;
     if (resolvedTripId && options.waitForTripStats && !saved.statsUpdated) {
+      const refreshed = await refreshTripStatsAfterMutation(resolvedTripId);
+      if (typeof refreshed === 'object' && refreshed.status === 'updated') {
+        return logId;
+      }
       throw new RideLogSaveError(
         'post-write-refresh-failed',
         'Ride saved. The trip summary could not refresh, but retrying will not duplicate this ride.',
@@ -334,6 +605,9 @@ async function saveRideLog(
         logId,
         'committed',
       );
+    }
+    if (resolvedTripId && !saved.statsUpdated) {
+      scheduleTripStatsRefresh(resolvedTripId);
     }
   } else {
     if (tripId !== undefined) {
@@ -380,6 +654,9 @@ async function saveRideLog(
         undefined,
         writeFailureOutcome(error),
       );
+    }
+    if (resolvedTripId) {
+      scheduleTripStatsRefresh(resolvedTripId);
     }
   }
 
@@ -452,15 +729,27 @@ export async function updateRideLog(
   if (data.rodeAt) {
     updateData.rodeAt = dateToTimestamp(data.rodeAt);
   }
-  return updateDocument(rideLogsPath(userId), logId, {
+  const existingForStatsRefresh = getRideLog(userId, logId).catch(() => null);
+  await updateDocument(rideLogsPath(userId), logId, {
     ...updateData,
     revision: increment(1),
+  });
+  void existingForStatsRefresh.then((existing) => {
+    if (existing?.tripId && auth.currentUser?.uid === userId) {
+      scheduleTripStatsRefresh(existing.tripId);
+    }
   });
 }
 
 /** Delete a ride log entry. */
 export async function deleteRideLog(userId: string, logId: string): Promise<void> {
-  return deleteDocument(rideLogsPath(userId), logId);
+  const existingForStatsRefresh = getRideLog(userId, logId).catch(() => null);
+  await deleteDocument(rideLogsPath(userId), logId);
+  void existingForStatsRefresh.then((existing) => {
+    if (existing?.tripId && auth.currentUser?.uid === userId) {
+      scheduleTripStatsRefresh(existing.tripId);
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -68,7 +68,6 @@ import {
   completeTrip,
   updateTripStats,
   getTripRideLogs,
-  getSharedTrip,
   generateShareId,
 } from '@/lib/services/trip-service';
 
@@ -211,10 +210,29 @@ describe('trip-service', () => {
       await expect(createTrip(userId, mockTripInput, {
         requestId: 'trip-request-1234',
       })).resolves.toBe('trip-request-1234');
+    });
+
+    it('freezes retry when trip creation returns non-retryable 412', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 412,
+        json: vi.fn().mockResolvedValue({
+          error: 'Trip creation is not configured',
+          retryable: false,
+        }),
+      } as unknown as Response);
+
+      await expect(createTrip(userId, mockTripInput, {
+        requestId: 'trip-request-config',
+      })).rejects.toMatchObject({
+        code: 'configuration-error',
+        outcome: 'definitive-non-commit',
+        message: 'Trip creation is not configured',
+      });
 
       expect(fetch).toHaveBeenCalledWith('/api/trip-commands', expect.objectContaining({
         method: 'POST',
-        body: expect.stringContaining('"requestId":"trip-request-1234"'),
+        body: expect.stringContaining('"requestId":"trip-request-config"'),
       }));
       expect(mockAddDocument).not.toHaveBeenCalled();
     });
@@ -537,6 +555,26 @@ describe('trip-service', () => {
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 
+    it('freezes status reconciliation on non-retryable 412', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        status: 412,
+        json: vi.fn().mockResolvedValue({
+          error: 'Trip creation status is not configured',
+          retryable: false,
+        }),
+      } as unknown as Response);
+
+      await expect(getTripCreationStatus(
+        userId,
+        mockTripInput,
+        'trip-request-status-config',
+      )).rejects.toMatchObject({
+        code: 'configuration-error',
+        outcome: 'definitive-non-commit',
+      });
+    });
+
     it.each([
       ['malformed 200', 200, {}],
       ['redirect', 302, { status: 'not-found' }],
@@ -665,6 +703,25 @@ describe('trip-service', () => {
       const result = await getTrips(userId);
 
       expect(result).toEqual([]);
+    });
+
+    it('uses persisted summaries without downloading the account ride-log collection', async () => {
+      const staleTrip = {
+        ...mockTrip,
+        stats: {
+          totalRides: 2,
+          totalWaitMinutes: 30,
+          parksVisited: 1,
+          uniqueAttractions: 2,
+          favoriteAttraction: 'Ride One',
+        },
+        statsUpdatedAt: new Date('2026-08-19T01:00:00Z'),
+      };
+      mockGetCollection.mockResolvedValueOnce([staleTrip]);
+
+      const [result] = await getTrips(userId);
+      expect(result).toEqual(staleTrip);
+      expect(mockGetCollection).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -918,31 +975,6 @@ describe('trip-service', () => {
   // =========================================================================
   // Sharing
   // =========================================================================
-
-  describe('getSharedTrip', () => {
-    it('retrieves trip by shareId via shared index lookup', async () => {
-      // First call: look up share index doc
-      mockGetDocument
-        .mockResolvedValueOnce({ userId: 'owner-user', tripId: 'trip-shared' })
-        // Second call: get actual trip
-        .mockResolvedValueOnce({ ...mockTrip, id: 'trip-shared', shareId: 'share-abc123' });
-
-      const result = await getSharedTrip('share-abc123');
-
-      // Looks up in sharedTrips collection
-      expect(mockGetDocument).toHaveBeenCalledWith('sharedTrips', 'share-abc123');
-      expect(result).not.toBeNull();
-      expect(result!.id).toBe('trip-shared');
-    });
-
-    it('returns null for invalid shareId', async () => {
-      mockGetDocument.mockResolvedValue(null);
-
-      const result = await getSharedTrip('invalid-share-id');
-
-      expect(result).toBeNull();
-    });
-  });
 
   describe('generateShareId', () => {
     it('generates a string ID', () => {

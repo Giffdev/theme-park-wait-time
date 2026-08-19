@@ -93,6 +93,23 @@ describe('authenticated request helpers', () => {
     );
   });
 
+  it('bounds uncancellable authentication and suppresses its late rejection', async () => {
+    vi.useFakeTimers();
+    mockVerifyIdToken.mockReturnValueOnce(new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('late private rejection')), 100);
+    }));
+    const result = authenticateRequest(
+      nextRequest(null, { authorization: ['Bearer', 'token-123'].join(' ') }),
+      Date.now() + 25,
+    );
+    const rejection = expectRequestError(result, 503, 'The request deadline elapsed');
+    await vi.advanceTimersByTimeAsync(26);
+    await rejection;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+  });
+
   it.each([null, [], 'text', 42, true])('rejects non-object JSON %j', async (value) => {
     const raw = JSON.stringify(value);
     await expectRequestError(
@@ -188,5 +205,29 @@ describe('authenticated request helpers', () => {
 
     await expectRequestError(result, 400, 'Request body was aborted');
     expect(cancelled).toBe(true);
+  });
+
+  it('cancels a delayed request body at the shared route deadline', async () => {
+    vi.useFakeTimers();
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull() {
+        return new Promise(() => {});
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const result = readBoundedJson(
+      streamRequest(stream),
+      100,
+      Date.now() + 25,
+    );
+    const rejection = expectRequestError(result, 503, 'The request deadline elapsed');
+    await vi.advanceTimersByTimeAsync(26);
+    await rejection;
+    expect(cancelled).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
   });
 });

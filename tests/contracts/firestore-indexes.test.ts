@@ -23,4 +23,22 @@ describe('Firestore index contract', () => {
       ],
     });
   });
+
+  it('expires durable trip stats throttle buckets', () => {
+    expect(indexes.fieldOverrides).toContainEqual({
+      collectionGroup: 'tripStatsRefreshThrottle',
+      fieldPath: 'expiresAt',
+      ttl: true,
+      indexes: [],
+    });
+  });
+
+  it('expires shared-trip rate-limit buckets', () => {
+    expect(indexes.fieldOverrides).toContainEqual({
+      collectionGroup: 'sharedTripRateLimits',
+      fieldPath: 'expiresAt',
+      ttl: true,
+      indexes: [],
+    });
+  });
 });

@@ -732,6 +732,38 @@ resolved the deadlock without weakening the reviewer protocol.
 - The existing team universe remains unchanged and within capacity.
 - The ride-logging release was independently approved after Andy's revision.
 
+---
+
+### 2026-08-19T09:55:20.065-07:00: Recovery roster and verified end-to-end acceptance gate
+
+**By:** Devin Sinha (confirmed through roster/reset form); Scribe (recorded)
+**Status:** Active team requirement
+
+#### Decision
+
+Recast the active domain roster to the descriptive Lead, Frontend, Backend,
+Tester, and Reliability roles while retaining Scribe, Ralph, Rai, and Fact
+Checker as built-ins. Archive the prior non-built-in roster without deleting its
+knowledge.
+
+All recovery work is subject to this non-negotiable acceptance gate:
+
+1. Create and save a simple trip.
+2. Add ride visits to the trip.
+3. Reload and confirm the trip and ride visits persist.
+
+Lead controls recovery scope and gates completion; Frontend owns trip and
+ride-visit interactions; Backend owns Firestore models, writes, reads, and
+migration safety; Tester reproduces failures and enforces end-to-end regression
+coverage; Reliability owns persistence, concurrency, offline, retry, and reload
+failure modes.
+
+#### Rationale
+
+Core trip logging remained broken too long. The team must prioritize verified
+end-to-end behavior over speculative patches, isolated fixes, or completion
+claims that do not prove persistence across reload.
+
 ## Governance
 
 - All meaningful changes require team consensus

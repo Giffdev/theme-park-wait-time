@@ -34,6 +34,11 @@
       "universe": "The Goonies",
       "assignment_id": "theme-park-wait-times-degraded-flow",
       "used_at": "2026-08-17T14:33:07.556-07:00"
+    },
+    {
+      "universe": "descriptive",
+      "assignment_id": "theme-park-wait-times-descriptive-recast-2026-08-19",
+      "used_at": "2026-08-19T09:55:20.065-07:00"
     }
   ],
   "assignment_cast_snapshots": {
@@ -89,6 +94,17 @@
         "degraded-flow": "Francis"
       },
       "created_at": "2026-08-17T14:33:07.556-07:00"
+    },
+    "theme-park-wait-times-descriptive-recast-2026-08-19": {
+      "universe": "descriptive",
+      "agents": {
+        "lead": "Lead",
+        "frontend": "Frontend",
+        "backend": "Backend",
+        "tester": "Tester",
+        "reliability": "Reliability"
+      },
+      "created_at": "2026-08-19T09:55:20.065-07:00"
     }
   }
 }

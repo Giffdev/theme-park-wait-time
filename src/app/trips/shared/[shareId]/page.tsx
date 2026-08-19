@@ -10,7 +10,7 @@ interface SharedTrip {
   name: string;
   startDate: string;
   endDate: string;
-  parkNames: string[];
+  parkNames: Record<string, string>;
   status: string;
   stats: {
     totalRides: number;
@@ -19,6 +19,7 @@ interface SharedTrip {
     uniqueAttractions: number;
     favoriteAttraction?: string | null;
   };
+  statsUpdatedAt?: string | null;
   notes?: string;
 }
 
@@ -36,7 +37,10 @@ export default function SharedTripPage() {
   const [trip, setTrip] = useState<SharedTrip | null>(null);
   const [rideLogs, setRideLogs] = useState<SharedRideLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!shareId) return;
@@ -52,10 +56,30 @@ export default function SharedTripPage() {
       .then((data) => {
         setTrip(data.trip);
         setRideLogs(data.rideLogs || []);
+        setNextCursor(data.nextCursor || null);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [shareId]);
+
+  const loadMore = async () => {
+    if (!shareId || !nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setPageError(null);
+    try {
+      const response = await fetch(
+        `/api/trips/${shareId}?cursor=${encodeURIComponent(nextCursor)}`,
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to load more rides');
+      setRideLogs((current) => [...current, ...(data.rideLogs || [])]);
+      setNextCursor(data.nextCursor || null);
+    } catch (loadError) {
+      setPageError(loadError instanceof Error ? loadError.message : 'Failed to load more rides');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -98,15 +122,7 @@ export default function SharedTripPage() {
     }
   };
 
-  // Derive favorite attraction from ride logs if not in stats
-  const favoriteAttraction = trip.stats.favoriteAttraction || (() => {
-    if (rideLogs.length === 0) return null;
-    const counts: Record<string, number> = {};
-    for (const log of rideLogs) {
-      counts[log.attractionName] = (counts[log.attractionName] || 0) + 1;
-    }
-    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-  })();
+  const favoriteAttraction = trip.stats.favoriteAttraction || null;
 
   // Group rides by park
   const ridesByPark: Record<string, SharedRideLog[]> = {};
@@ -175,6 +191,11 @@ export default function SharedTripPage() {
           </div>
         </div>
       )}
+      <p className="mb-8 text-center text-xs text-primary-400">
+        {trip.statsUpdatedAt
+          ? `Ride summary updated ${new Date(trip.statsUpdatedAt).toLocaleString()}`
+          : 'Ride summary refresh pending'}
+      </p>
 
       {/* Favorite Attraction */}
       {favoriteAttraction && (
@@ -196,7 +217,7 @@ export default function SharedTripPage() {
 
       {/* Ride Logs grouped by park */}
       <h2 className="mb-4 text-lg font-semibold text-primary-900">
-        Rides & Experiences ({rideLogs.length})
+        Rides & Experiences ({rideLogs.length} of {trip.stats.totalRides})
       </h2>
       {rideLogs.length === 0 ? (
         <p className="text-primary-400 text-sm">No rides logged for this trip yet.</p>
@@ -249,6 +270,21 @@ export default function SharedTripPage() {
               </div>
             </div>
           ))}
+          {pageError && (
+            <p role="alert" className="text-center text-sm text-red-600">{pageError}</p>
+          )}
+          {nextCursor && (
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="rounded-full border border-primary-200 bg-white px-5 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 disabled:opacity-50"
+              >
+                {loadingMore ? 'Loading rides…' : 'Load more rides'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -269,4 +305,3 @@ export default function SharedTripPage() {
     </div>
   );
 }
-

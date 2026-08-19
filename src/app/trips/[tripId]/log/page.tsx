@@ -548,7 +548,6 @@ export default function TripLogRidePage() {
         {
           requestId,
           timeoutMs: RIDE_SAVE_TIMEOUT_MS,
-          waitForTripStats: true,
         },
       );
       try {
