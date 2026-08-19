@@ -54,6 +54,36 @@ describe('useVisibility', () => {
     expect(onVisible).toHaveBeenCalledTimes(1);
   });
 
+  it('fires when mounted hidden and first shown after the debounce period', () => {
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'hidden',
+      writable: true,
+      configurable: true,
+    });
+    const onVisible = vi.fn();
+
+    renderHook(() => useVisibility(onVisible));
+    vi.advanceTimersByTime(5001);
+    fireVisibilityChange('visible');
+
+    expect(onVisible).toHaveBeenCalledTimes(1);
+  });
+
+  it('debounces the first visible event when mounted hidden', () => {
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'hidden',
+      writable: true,
+      configurable: true,
+    });
+    const onVisible = vi.fn();
+
+    renderHook(() => useVisibility(onVisible));
+    vi.advanceTimersByTime(4999);
+    fireVisibilityChange('visible');
+
+    expect(onVisible).not.toHaveBeenCalled();
+  });
+
   it('does NOT fire when document becomes hidden', () => {
     const onVisible = vi.fn();
     renderHook(() => useVisibility(onVisible));

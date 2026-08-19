@@ -15,7 +15,11 @@ export function useVisibility(
   options?: { debounceMs?: number }
 ): void {
   const debounceMs = options?.debounceMs ?? 5000;
-  const hiddenAtRef = useRef<number | null>(null);
+  const hiddenAtRef = useRef<number | null>(
+    typeof document !== 'undefined' && document.visibilityState === 'hidden'
+      ? Date.now()
+      : null
+  );
   const onVisibleRef = useRef(onVisible);
 
   // Keep callback ref fresh without re-subscribing listeners

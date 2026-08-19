@@ -8,7 +8,7 @@
  * The hook may not exist yet — Data is building it concurrently.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act, waitFor, cleanup } from '@testing-library/react';
+import { renderHook, act, cleanup } from '@testing-library/react';
 import { useAutoRefresh } from '../useAutoRefresh';
 
 // Mock useVisibility — we test it separately, here we just simulate its callback
@@ -26,10 +26,31 @@ function simulateVisible() {
   if (cb) cb();
 }
 
+function setVisibility(state: 'visible' | 'hidden') {
+  Object.defineProperty(document, 'visibilityState', {
+    value: state,
+    writable: true,
+    configurable: true,
+  });
+}
+
+function setOnline(online: boolean) {
+  Object.defineProperty(navigator, 'onLine', {
+    value: online,
+    configurable: true,
+  });
+}
+
+function fireOnlineEvent() {
+  window.dispatchEvent(new Event('online'));
+}
+
 describe('useAutoRefresh', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     (globalThis as Record<string, unknown>).__visibilityCallback = undefined;
+    setVisibility('visible');
+    setOnline(true);
   });
 
   afterEach(() => {
@@ -104,6 +125,508 @@ describe('useAutoRefresh', () => {
     vi.advanceTimersByTime(10 * 60 * 1000); // way past staleness
 
     await act(async () => {
+      simulateVisible();
+    });
+
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
+
+  describe('periodic polling', () => {
+    it('uses the remaining freshness budget for the first poll', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      renderHook(() =>
+        useAutoRefresh({
+          key: 'poll-initial-freshness-budget',
+          staleness: 1_000,
+          pollIntervalMs: 1_000,
+          onRefresh,
+          enabled: true,
+          initialDataAge: 400,
+        })
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(599);
+      });
+      expect(onRefresh).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-anchors the first poll when the active key receives its initial age after enabling', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      const { rerender } = renderHook(
+        ({ enabled, age }: { enabled: boolean; age: number | null }) =>
+          useAutoRefresh({
+            key: 'poll-delayed-initial-age',
+            staleness: 1_000,
+            pollIntervalMs: 1_000,
+            onRefresh,
+            enabled,
+            initialDataAge: age,
+          }),
+        { initialProps: { enabled: false, age: null } }
+      );
+
+      rerender({ enabled: true, age: null });
+
+      await act(async () => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(onRefresh).not.toHaveBeenCalled();
+
+      rerender({ enabled: true, age: 900 });
+
+      await act(async () => {
+        vi.advanceTimersByTime(99);
+      });
+      expect(onRefresh).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not reset the first poll when a concrete initial age changes on an unrelated render', () => {
+      const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
+      const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      const { rerender } = renderHook(
+        ({ age }: { age: number }) =>
+          useAutoRefresh({
+            key: 'poll-stable-concrete-age',
+            staleness: 1_000,
+            pollIntervalMs: 1_000,
+            onRefresh,
+            enabled: true,
+            initialDataAge: age,
+          }),
+        { initialProps: { age: 400 } }
+      );
+
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+      expect(clearTimeoutSpy).not.toHaveBeenCalled();
+
+      rerender({ age: 500 });
+
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+      expect(clearTimeoutSpy).not.toHaveBeenCalled();
+
+      setTimeoutSpy.mockRestore();
+      clearTimeoutSpy.mockRestore();
+    });
+
+    it('does not burst when a delayed initial age is already stale', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      const { rerender } = renderHook(
+        ({ age }: { age: number | null }) =>
+          useAutoRefresh({
+            key: 'poll-delayed-stale-age',
+            staleness: 1_000,
+            pollIntervalMs: 1_000,
+            onRefresh,
+            enabled: true,
+            initialDataAge: age,
+          }),
+        { initialProps: { age: null } }
+      );
+
+      await act(async () => {
+        rerender({ age: 1_000 });
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(999);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(2);
+    });
+
+    it('uses the full initial cadence when cached-data age is unknown', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      renderHook(() =>
+        useAutoRefresh({
+          key: 'poll-unknown-initial-age',
+          staleness: 1_000,
+          pollIntervalMs: 1_000,
+          onRefresh,
+          enabled: true,
+        })
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(999);
+      });
+      expect(onRefresh).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('refreshes once after the cadence while the page stays visible and online', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      renderHook(() =>
+        useAutoRefresh({
+          key: 'poll-visible-online',
+          staleness: 2_000,
+          pollIntervalMs: 1_000,
+          onRefresh,
+          enabled: true,
+          initialDataAge: 1_000,
+        })
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(999);
+      });
+      expect(onRefresh).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('schedules the next poll from refresh completion when refresh has non-zero latency', async () => {
+      const onRefresh = vi.fn()
+        .mockImplementationOnce(
+          () => new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 100);
+          })
+        )
+        .mockResolvedValue(undefined);
+
+      renderHook(() =>
+        useAutoRefresh({
+          key: 'poll-completion-cadence',
+          staleness: 1_000,
+          pollIntervalMs: 1_000,
+          onRefresh,
+          enabled: true,
+          initialDataAge: 0,
+        })
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_100);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(999);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(2);
+    });
+
+    it('re-anchors the next poll after a mid-cycle manual forceRefresh without letting the old boundary fire', async () => {
+      const onRefresh = vi.fn()
+        .mockImplementationOnce(
+          () => new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 100);
+          })
+        )
+        .mockResolvedValue(undefined);
+
+      const { result } = renderHook(() =>
+        useAutoRefresh({
+          key: 'poll-manual-reanchor',
+          staleness: 1_000,
+          pollIntervalMs: 1_000,
+          onRefresh,
+          enabled: true,
+          initialDataAge: 0,
+        })
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+
+      await act(async () => {
+        const refreshPromise = result.current.forceRefresh();
+        await vi.advanceTimersByTimeAsync(100);
+        await refreshPromise;
+      });
+
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      // The original t=1000 poll boundary must not fire after the manual refresh.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(599);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(2);
+    });
+
+    it('re-anchors the next poll when visibility catch-up refreshes mid-cycle', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+      setVisibility('hidden');
+
+      renderHook(() =>
+        useAutoRefresh({
+          key: 'poll-out-of-band-reanchor',
+          staleness: 1_000,
+          pollIntervalMs: 1_000,
+          onRefresh,
+          enabled: true,
+          initialDataAge: 0,
+        })
+      );
+
+      // The first hidden boundary no-ops and leaves an old timer at t=2000.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+      expect(onRefresh).not.toHaveBeenCalled();
+
+      setVisibility('visible');
+      await act(async () => {
+        simulateVisible();
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      // The old t=2000 boundary must not move the completion-anchored timer.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(499);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      // Exactly one interval after the t=1500 catch-up completion.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not poll while hidden', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+      setVisibility('hidden');
+
+      renderHook(() =>
+        useAutoRefresh({
+          key: 'poll-hidden',
+          staleness: 2_000,
+          pollIntervalMs: 1_000,
+          onRefresh,
+          enabled: true,
+          initialDataAge: 1_000,
+        })
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+      });
+
+      expect(onRefresh).not.toHaveBeenCalled();
+    });
+
+    it('does not poll while offline', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+      setOnline(false);
+
+      renderHook(() =>
+        useAutoRefresh({
+          key: 'poll-offline',
+          staleness: 2_000,
+          pollIntervalMs: 1_000,
+          onRefresh,
+          enabled: true,
+          initialDataAge: 1_000,
+        })
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+      });
+
+      expect(onRefresh).not.toHaveBeenCalled();
+    });
+
+    it('catches up promptly when visibility and connectivity return and the data is stale', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+      setVisibility('hidden');
+      setOnline(false);
+
+      renderHook(() =>
+        useAutoRefresh({
+          key: 'poll-return',
+          staleness: 2_000,
+          pollIntervalMs: 1_000,
+          onRefresh,
+          enabled: true,
+          initialDataAge: 1_000,
+        })
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(onRefresh).not.toHaveBeenCalled();
+
+      setVisibility('visible');
+      setOnline(true);
+      await act(async () => {
+        fireOnlineEvent();
+        simulateVisible();
+      });
+
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not start a second refresh while the previous periodic refresh is still in flight', async () => {
+      let resolveRefresh!: () => void;
+      const onRefresh = vi.fn().mockImplementation(
+        () => new Promise<void>((resolve) => {
+          resolveRefresh = resolve;
+        })
+      );
+
+      renderHook(() =>
+        useAutoRefresh({
+          key: 'poll-inflight',
+          staleness: 2_000,
+          pollIntervalMs: 1_000,
+          onRefresh,
+          enabled: true,
+          initialDataAge: 1_000,
+        })
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(1_000);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolveRefresh!();
+      });
+    });
+
+    it('cleans up timer and connectivity listeners when the key changes or unmounts', () => {
+      const addListenerSpy = vi.spyOn(window, 'addEventListener');
+      const removeListenerSpy = vi.spyOn(window, 'removeEventListener');
+      const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
+      const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+      const { rerender, unmount } = renderHook(
+        ({ dataKey }: { dataKey: string }) =>
+          useAutoRefresh({
+            key: dataKey,
+            staleness: 2_000,
+            pollIntervalMs: 1_000,
+            onRefresh,
+            enabled: true,
+            initialDataAge: 1_000,
+          }),
+        { initialProps: { dataKey: 'poll-a' } }
+      );
+
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+      expect(addListenerSpy).toHaveBeenCalledWith('online', expect.any(Function));
+      expect(addListenerSpy).toHaveBeenCalledWith('offline', expect.any(Function));
+
+      rerender({ dataKey: 'poll-b' });
+
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+      expect(removeListenerSpy).toHaveBeenCalledWith('online', expect.any(Function));
+      expect(removeListenerSpy).toHaveBeenCalledWith('offline', expect.any(Function));
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(2);
+      expect(addListenerSpy.mock.calls.filter(([event]) => (
+        event === 'online' || event === 'offline'
+      ))).toHaveLength(4);
+
+      unmount();
+
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(2);
+      expect(removeListenerSpy.mock.calls.filter(([event]) => (
+        event === 'online' || event === 'offline'
+      ))).toHaveLength(4);
+
+      addListenerSpy.mockRestore();
+      removeListenerSpy.mockRestore();
+      setTimeoutSpy.mockRestore();
+      clearTimeoutSpy.mockRestore();
+    });
+  });
+
+  it('preserves visibility refreshes for non-poll callers while initial data age is unresolved', async () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+    renderHook(() =>
+      useAutoRefresh({
+        key: 'parks-style-unresolved-age',
+        staleness: 10 * 60 * 1000,
+        onRefresh,
+        enabled: true,
+        initialDataAge: null,
+      })
+    );
+
+    await act(async () => {
+      simulateVisible();
+    });
+
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('no-ops on a visibility return while offline instead of attempting a doomed refresh', async () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    setOnline(false);
+
+    renderHook(() =>
+      useAutoRefresh({
+        key: 'parks-style-offline-visibility-noop',
+        staleness: 500,
+        onRefresh,
+        enabled: true,
+        initialDataAge: 0,
+      })
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(600);
       simulateVisible();
     });
 
@@ -364,6 +887,44 @@ describe('useAutoRefresh', () => {
             onRefresh,
             enabled: true,
             initialDataAge: 5 * 60 * 1000, // cached data is 5 min old — stale
+          })
+        );
+      });
+
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves stale arrival refresh for a non-poll caller mounted hidden', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+      setVisibility('hidden');
+
+      await act(async () => {
+        renderHook(() =>
+          useAutoRefresh({
+            key: 'arrival-stale-hidden-non-poll',
+            staleness: 2 * 60 * 1000,
+            onRefresh,
+            enabled: true,
+            initialDataAge: 5 * 60 * 1000,
+          })
+        );
+      });
+
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves stale arrival refresh for a non-poll caller mounted offline', async () => {
+      const onRefresh = vi.fn().mockResolvedValue(undefined);
+      setOnline(false);
+
+      await act(async () => {
+        renderHook(() =>
+          useAutoRefresh({
+            key: 'arrival-stale-offline-non-poll',
+            staleness: 2 * 60 * 1000,
+            onRefresh,
+            enabled: true,
+            initialDataAge: 5 * 60 * 1000,
           })
         );
       });

@@ -14,6 +14,7 @@
 |------|------|---------|--------|
 | Lead | Lead / Architect | `.squad/agents/lead/charter.md` | Active |
 | Frontend | Frontend Dev | `.squad/agents/frontend/charter.md` | Active |
+| Scheduler | React Timing Specialist | `.squad/agents/scheduler/charter.md` | Active |
 | Backend | Backend Dev | `.squad/agents/backend/charter.md` | Active |
 | Tester | Tester / QA | `.squad/agents/tester/charter.md` | Active |
 | Reliability | Reliability Engineer | `.squad/agents/reliability/charter.md` | Active |

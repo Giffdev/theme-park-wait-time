@@ -13,6 +13,18 @@ export interface UseAutoRefreshOptions {
   /** Disable auto-refresh (e.g., while page is still loading) */
   enabled?: boolean;
   /**
+   * Optional periodic polling cadence for pages that should refresh while
+   * they remain open. When cached-data age is known, the first check runs at
+   * the remaining staleness boundary; later checks run after the previous
+   * check or refresh completes. Poll-enabled callers defer a stale arrival
+   * while hidden or offline until visibility/connectivity returns. Visibility
+   * returns while offline are intentionally ignored rather than attempting a
+   * doomed refresh; reconnecting checks immediately instead. When omitted, the
+   * hook keeps the legacy arrival behavior, including refreshing stale
+   * rendered data even if the page mounts hidden or offline.
+   */
+  pollIntervalMs?: number;
+  /**
    * Age (in ms) of the cached data that is already rendered on arrival, e.g.
    * `Date.now() - lastFetchedAt` for the snapshot the page is showing.
    *
@@ -46,17 +58,22 @@ export interface UseAutoRefreshReturn {
 /**
  * Staleness-aware auto-refresh hook.
  *
- * Covers two triggers for a silent, non-blocking background refresh:
+ * Covers three triggers for a silent, non-blocking background refresh:
  * 1. Initial arrival — if `initialDataAge` shows the data already on screen
  *    exceeds `staleness`, refresh once immediately after mount.
- * 2. Hidden→visible — when the page becomes visible after being hidden for
- *    >5s, checks if data exceeds the staleness threshold and refreshes if so.
+ * 2. Hidden→visible — non-poll callers use the 5s debounce before checking
+ *    staleness; poll-enabled callers use zero debounce for prompt catch-up.
+ * 3. Optional polling — while the page remains visible and online, checks for
+ *    stale data at `pollIntervalMs`. Reconnecting also checks immediately, and
+ *    visibility returns while offline are treated as no-ops rather than failed
+ *    refresh attempts.
  *
- * Both triggers share the same in-flight guard, so an arrival refresh and a
- * near-simultaneous visibility refresh can never double-fire.
+ * All triggers share the same in-flight guard, so concurrent refresh signals
+ * can never produce overlapping requests.
  */
 export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshReturn {
-  const { key, staleness, onRefresh, enabled = true, initialDataAge } = options;
+  const { key, staleness, onRefresh, enabled = true, pollIntervalMs, initialDataAge } = options;
+  const hasConcreteInitialDataAge = typeof initialDataAge === 'number';
 
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
@@ -64,10 +81,28 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
 
   const inFlightRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
   const activeKeyRef = useRef(key);
+  const enabledRef = useRef(enabled);
+  const stalenessRef = useRef(staleness);
+  const pollingEnabledRef = useRef(
+    typeof pollIntervalMs === 'number' && pollIntervalMs > 0
+  );
+  const pollIntervalRef = useRef<number | null>(
+    typeof pollIntervalMs === 'number' && pollIntervalMs > 0 ? pollIntervalMs : null
+  );
+  const pollTimerRef = useRef<number | null>(null);
+  const pollGenerationRef = useRef(0);
+  const pollSchedulerActiveRef = useRef(false);
+  const scheduleNextPollRef = useRef<((delay: number) => void) | null>(null);
+  const onlineRef = useRef(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const lastRefreshedAtRef = useRef<number | null>(null);
   const initialCheckDoneRef = useRef(false);
   const initialDataAgeRef = useRef(initialDataAge);
   initialDataAgeRef.current = initialDataAge;
+  enabledRef.current = enabled;
+  stalenessRef.current = staleness;
+  pollingEnabledRef.current = typeof pollIntervalMs === 'number' && pollIntervalMs > 0;
+  pollIntervalRef.current =
+    typeof pollIntervalMs === 'number' && pollIntervalMs > 0 ? pollIntervalMs : null;
 
   const doRefresh = useCallback(
     (background: boolean, propagateError = false): Promise<void> => {
@@ -94,6 +129,11 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
           lastRefreshedAtRef.current = now;
           setLastRefreshedAt(now);
           setLastRefreshError(null);
+
+          const activePollInterval = pollIntervalRef.current;
+          if (pollSchedulerActiveRef.current && activePollInterval !== null) {
+            scheduleNextPollRef.current?.(activePollInterval);
+          }
         } catch (error) {
           if (background) {
             console.error(`[useAutoRefresh:${refreshKey}] refresh failed:`, error);
@@ -117,6 +157,70 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
     },
     [key, onRefresh, enabled]
   );
+
+  const doRefreshRef = useRef(doRefresh);
+  doRefreshRef.current = doRefresh;
+
+  const maybeRefresh = useCallback(
+    (background: boolean): Promise<void> => {
+      if (!enabledRef.current) return Promise.resolve();
+      if (pollingEnabledRef.current && !initialCheckDoneRef.current) {
+        return Promise.resolve();
+      }
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return Promise.resolve();
+      }
+      if (!onlineRef.current) return Promise.resolve();
+
+      const last = lastRefreshedAtRef.current;
+      const age = last === null ? Infinity : Date.now() - last;
+      if (age >= stalenessRef.current) {
+        return doRefreshRef.current(background);
+      }
+      return Promise.resolve();
+    },
+    []
+  );
+
+  const maybeRefreshRef = useRef(maybeRefresh);
+  maybeRefreshRef.current = maybeRefresh;
+
+  const cancelScheduledPoll = useCallback(() => {
+    pollGenerationRef.current += 1;
+    if (pollTimerRef.current !== null) {
+      window.clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleNextPoll = useCallback((delay: number) => {
+    cancelScheduledPoll();
+    if (
+      !pollSchedulerActiveRef.current
+      || !enabledRef.current
+      || !pollingEnabledRef.current
+    ) {
+      return;
+    }
+
+    const generation = pollGenerationRef.current;
+    pollTimerRef.current = window.setTimeout(async () => {
+      if (pollGenerationRef.current !== generation) return;
+      pollTimerRef.current = null;
+
+      await maybeRefreshRef.current(true);
+
+      // A successful refresh installs the next timer from its own completion.
+      // Skipped or failed checks retain cadence from this completed check.
+      if (pollGenerationRef.current === generation) {
+        const activePollInterval = pollIntervalRef.current;
+        if (activePollInterval !== null) {
+          scheduleNextPollRef.current?.(activePollInterval);
+        }
+      }
+    }, Math.max(0, delay));
+  }, [cancelScheduledPoll]);
+  scheduleNextPollRef.current = scheduleNextPoll;
 
   // A client-side route/data-key change can reuse the same mounted hook
   // instance. Treat the new key as a fresh arrival while allowing an older
@@ -157,24 +261,83 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
     setLastRefreshedAt(reconstructedTimestamp);
 
     if (age >= staleness) {
-      doRefresh(true);
+      if (pollingEnabledRef.current) {
+        void maybeRefresh(true);
+      } else {
+        // Preserve the shared legacy arrival contract for non-poll callers:
+        // rendered stale data refreshes even when mounted hidden or offline.
+        void doRefreshRef.current(true);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, staleness, doRefresh, initialDataAge]);
+  }, [enabled, key, staleness, maybeRefresh, initialDataAge]);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    onlineRef.current = typeof navigator === 'undefined' ? true : navigator.onLine;
+
+    function handleOnline() {
+      onlineRef.current = true;
+      void maybeRefresh(true);
+    }
+
+    function handleOffline() {
+      onlineRef.current = false;
+    }
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [enabled, key, maybeRefresh]);
+
+  // Re-anchor once when a delayed initial age becomes concrete. Depending on
+  // the numeric age itself would reset this timer whenever callers recompute
+  // `Date.now() - capturedAt` during an unrelated render.
+  useEffect(() => {
+    if (!enabled || !pollIntervalMs || pollIntervalMs <= 0) return;
+
+    pollSchedulerActiveRef.current = true;
+
+    const lastRefreshedAt = lastRefreshedAtRef.current;
+    const currentAge = lastRefreshedAt === null
+      ? null
+      : Math.max(0, Date.now() - lastRefreshedAt);
+    const remainingFreshness = currentAge === null
+      ? null
+      : stalenessRef.current - currentAge;
+
+    // A stale arrival is already refreshed by the arrival effect. Starting
+    // that case (or an unknown-age case) at the normal cadence avoids a
+    // redundant zero-delay check while fresh data uses its true boundary.
+    const initialDelay = remainingFreshness !== null && remainingFreshness > 0
+      ? remainingFreshness
+      : pollIntervalMs;
+    scheduleNextPoll(initialDelay);
+
+    return () => {
+      pollSchedulerActiveRef.current = false;
+      cancelScheduledPoll();
+    };
+  }, [
+    enabled,
+    key,
+    pollIntervalMs,
+    hasConcreteInitialDataAge,
+    scheduleNextPoll,
+    cancelScheduledPoll,
+  ]);
 
   // On visibility return: check staleness, refresh if needed
   useVisibility(
     useCallback(() => {
-      if (!enabled) return;
-
-      const last = lastRefreshedAtRef.current;
-      const age = last === null ? Infinity : Date.now() - last;
-
-      if (age >= staleness) {
-        doRefresh(true);
-      }
-    }, [enabled, staleness, doRefresh]),
-    { debounceMs: 5000 }
+      void maybeRefresh(true);
+    }, [maybeRefresh]),
+    { debounceMs: pollIntervalMs === undefined ? 5000 : 0 }
   );
 
   const forceRefresh = useCallback(async () => {

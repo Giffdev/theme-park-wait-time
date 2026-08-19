@@ -450,6 +450,142 @@ describe('Park Detail Page', () => {
     });
   });
 
+  describe('periodic auto-refresh while the page stays open', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-19T12:00:00.000Z'));
+      Object.defineProperty(document, 'visibilityState', {
+        value: 'visible',
+        writable: true,
+        configurable: true,
+      });
+      Object.defineProperty(navigator, 'onLine', {
+        value: true,
+        configurable: true,
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('refreshes the wait-time feed automatically after the cadence while visible and online', async () => {
+      const freshWaitTimes = mockWaitTimes.map((entry) => ({
+        ...entry,
+        fetchedAt: new Date(Date.now() - 60_000).toISOString(),
+      }));
+      const refreshedWaitTimes = freshWaitTimes.map((entry) => ({
+        ...entry,
+        waitMinutes: entry.attractionId === 'space-mountain' ? 12 : entry.waitMinutes,
+        fetchedAt: new Date().toISOString(),
+      }));
+
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') return Promise.resolve([mockPark]);
+        if (collectionPath === 'attractions') return Promise.resolve(mockAttractions);
+        if (collectionPath === 'waitTimes/magic-kingdom/current') return Promise.resolve(freshWaitTimes);
+        return Promise.resolve([]);
+      });
+      mockFetch.mockImplementation((url: string) => Promise.resolve(
+        url === '/api/wait-times?parkId=magic-kingdom'
+          ? {
+              ok: true,
+              json: () => Promise.resolve({
+                parks: { 'magic-kingdom': refreshedWaitTimes },
+              }),
+            }
+          : { ok: true, json: () => Promise.resolve(mockSchedule) }
+      ));
+
+      render(<ParkDetailPage />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByRole('button', {
+        name: /Space Mountain, operating, 60 minute wait/i,
+      })).toBeInTheDocument();
+      expect(mockFetch.mock.calls.filter(
+        (call) => call[0] === '/api/wait-times?parkId=magic-kingdom'
+      )).toHaveLength(0);
+      expect(screen.getByText(/Wait-time feed · Captured 1 min ago/i)).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2 * 60_000);
+      });
+
+      expect(screen.getByRole('button', {
+        name: /Space Mountain, operating, 12 minute wait/i,
+      })).toBeInTheDocument();
+      expect(mockFetch.mock.calls.filter(
+        (call) => call[0] === '/api/wait-times?parkId=magic-kingdom'
+      )).toHaveLength(1);
+    });
+
+    it('keeps the last known wait times visible after a failed background refresh and recovers on the next cadence', async () => {
+      const freshWaitTimes = mockWaitTimes.map((entry) => ({
+        ...entry,
+        fetchedAt: new Date(Date.now() - 60_000).toISOString(),
+      }));
+      const refreshedWaitTimes = freshWaitTimes.map((entry) => ({
+        ...entry,
+        waitMinutes: entry.attractionId === 'space-mountain' ? 12 : entry.waitMinutes,
+        fetchedAt: new Date().toISOString(),
+      }));
+      let refreshAttempts = 0;
+
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') return Promise.resolve([mockPark]);
+        if (collectionPath === 'attractions') return Promise.resolve(mockAttractions);
+        if (collectionPath === 'waitTimes/magic-kingdom/current') return Promise.resolve(freshWaitTimes);
+        return Promise.resolve([]);
+      });
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/wait-times?parkId=magic-kingdom') {
+          refreshAttempts += 1;
+          return Promise.resolve(refreshAttempts === 1
+            ? { ok: false, status: 503 }
+            : {
+                ok: true,
+                json: () => Promise.resolve({
+                  parks: { 'magic-kingdom': refreshedWaitTimes },
+                }),
+              });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(mockSchedule) });
+      });
+
+      render(<ParkDetailPage />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByRole('button', {
+        name: /Space Mountain, operating, 60 minute wait/i,
+      })).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2 * 60_000);
+      });
+
+      expect(screen.getByText('Background refresh failed — showing the last known snapshot.'))
+        .toBeInTheDocument();
+      expect(screen.getByRole('button', {
+        name: /Space Mountain, operating, 60 minute wait/i,
+      })).toBeInTheDocument();
+      expect(refreshAttempts).toBe(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2 * 60_000);
+      });
+
+      expect(screen.getByRole('button', {
+        name: /Space Mountain, operating, 12 minute wait/i,
+      })).toBeInTheDocument();
+      expect(screen.queryByText('Background refresh failed — showing the last known snapshot.'))
+        .not.toBeInTheDocument();
+      expect(refreshAttempts).toBe(2);
+    });
+  });
+
   describe('sort toggle', () => {
     it('shows sort label by default', async () => {
       render(<ParkDetailPage />);
