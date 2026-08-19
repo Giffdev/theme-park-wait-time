@@ -57,6 +57,7 @@ interface WaitTimeEntry {
 const COLD_START_ATTEMPTS = 2;
 const COLD_START_RETRY_DELAY_MS = 250;
 const WAIT_TIMES_REQUEST_TIMEOUT_MS = 15_000;
+const WAIT_TIMES_REFRESH_INTERVAL_MS = 2 * 60 * 1000;
 
 function waitTimesFromApiPayload(payload: unknown, parkUuid: string): WaitTimeEntry[] | null {
   if (!payload || typeof payload !== 'object') return null;
@@ -686,7 +687,8 @@ export default function ParkDetailPage() {
     forceRefresh: forceWaitTimesRefresh,
   } = useAutoRefresh({
     key: `park-wait-times-${parkId}`,
-    staleness: 2 * 60 * 1000,
+    staleness: WAIT_TIMES_REFRESH_INTERVAL_MS,
+    pollIntervalMs: WAIT_TIMES_REFRESH_INTERVAL_MS,
     onRefresh: async () => {
       if (!park || !isCurrentPark) return;
       await refreshWaitTimesFromSource(park, parkId);
