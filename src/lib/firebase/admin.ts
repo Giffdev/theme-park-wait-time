@@ -5,7 +5,15 @@ import * as fs from 'fs';
 
 const initializationStartedAt = performance.now();
 
-function getServiceAccount(): object {
+export interface ServiceAccountConfig {
+  project_id?: string;
+  client_email?: string;
+  private_key?: string;
+  token_uri?: string;
+  [key: string]: unknown;
+}
+
+export function getAdminServiceAccount(): ServiceAccountConfig {
   // Try env var first (JSON string)
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -26,9 +34,10 @@ function getServiceAccount(): object {
 let adminApp: App;
 
 if (getApps().length === 0) {
-  const serviceAccount = getServiceAccount();
+  const serviceAccount = getAdminServiceAccount();
   adminApp = initializeApp({
     credential: cert(serviceAccount as Parameters<typeof cert>[0]),
+    ...(serviceAccount.project_id ? { projectId: serviceAccount.project_id } : {}),
   });
 } else {
   adminApp = getApps()[0];
@@ -49,5 +58,8 @@ try {
 }
 
 export const adminDb: Firestore = adminDbInstance;
+export const adminProjectId = adminApp.options.projectId
+  ?? process.env.GCLOUD_PROJECT
+  ?? process.env.GOOGLE_CLOUD_PROJECT;
 export const adminInitializationMs = Math.round(performance.now() - initializationStartedAt);
 export { adminApp };

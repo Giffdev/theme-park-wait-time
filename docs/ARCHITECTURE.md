@@ -923,8 +923,9 @@ module.exports = nextConfig;
 | 10 | Vercel Cron over Firebase Scheduled Functions | Simpler deployment — single platform. Firebase Functions add cold start latency. |
 # Reliable ride and trip command rollout
 
-Ride saves with a stable request ID use authenticated server endpoints and
-Admin SDK write batches. The first attempt performs zero Firestore reads and
+Ride saves with a stable request ID use authenticated server endpoints and a
+direct Firestore public REST `documents:commit` request. The first attempt
+performs zero Firestore reads and
 atomically creates both the target document and
 a private immutable SHA-256 fingerprint of an exact normalized, canonically
 serialized business payload. A replay with the same ID and business payload
@@ -938,33 +939,63 @@ context; success or definitive rejection removes them.
 Trip creation ambiguity is reconciled automatically. After the UI deadline or
 on reload, the client uses authenticated
 `GET /api/trip-commands?requestId=<stable-id>` to read only the caller-owned
-command and target documents. The endpoint returns `committed`, `not-found`, or
+command, target, and expected global share document in one abortable Firestore
+REST `batchGet` when a share ID exists. The endpoint returns `committed`, `not-found`, or
 the structural states `target-only`, `command-only`, and `payload-conflict`.
-`not-found` is returned only after a successful Firestore `getAll` that finds
+`not-found` is returned only after a successful Firestore `batchGet` that finds
 both documents absent; any read error, including `RESOURCE_EXHAUSTED` (code 8),
 returns retryable `pending` (HTTP 503) and preserves the frozen command — the
 client never interprets a read failure as absence. `not-found` causes a replay
 of the original payload with the same request ID, never a new command.
 An `ALREADY_EXISTS` error from a re-POST is classified by reading both the
 command and trip documents; both must exist and carry a matching fingerprint and
-targetId before the outcome is `'replayed'`. Any classification read failure,
+targetId before the outcome is `'replayed'`. Shared trips additionally require
+`sharedTrips/{shareId}` to exist with the exact authenticated `userId` and
+`tripId`; a missing or mismatched share is a structural conflict. Any
+classification read failure,
 including `RESOURCE_EXHAUSTED`, surfaces as `SaveCommandAmbiguousError` — never
 a silent optimistic replay. Structural states (`target-only`, `command-only`,
 `payload-conflict`) and share-ID collisions are conflicts: the browser retains
 the frozen command, blocks a new request ID, and directs the user to retry
-confirmation or contact support. Cached-token stalls and HTTP 401 responses
-trigger a bounded forced token refresh. The server logs only a truncated
+confirmation or contact support. The server performs no internal write or token
+retry. The server logs only a truncated
 SHA-256 request hash plus authentication, parsing, Firestore write, and total
-timings — never payloads or user identifiers. `batch.commit` is additionally
-instrumented with structured attempt/success/failure events (including
-normalized error code and duration) so production logs can confirm whether
-commits land even after a client abort. A `batch.commit.failure` event with
-`outcome: "deadline"` means the server-side commit wait deadline was reached
-(the write may still land asynchronously in Firestore); it does NOT claim the
-write was lost. Background settlement observers attached before the deadline
-return logs a `batch.commit.late-success` (`outcome: "created-after-deadline"`)
-or `batch.commit.late-failure` event — these fire only if the Vercel function
-is still alive when the late settlement occurs.
+timings — never payloads, document paths, credentials, or user identifiers.
+Authoritative command writes carry `currentDocument.exists:false`; deterministic
+summary overwrites carry `currentDocument.exists:true` plus an explicit update
+mask. Server timestamps use `updateTransforms` with `REQUEST_TIME`. Commit
+transport results retain explicit document-path and transform-field metadata;
+trip summary responses use the private trip write's `statsUpdatedAt` transform
+timestamp, not the commit-level time or a positional guess across an optional
+shared write. RFC3339 transform timestamps with `Z` or validated `±HH:MM`
+offsets normalize to epoch seconds plus exact fractional nanoseconds before
+comparison; JavaScript `Date` conversion occurs only for display. Malformed or
+incomplete transform results leave recovery stale.
+The `sharedTrips/{shareId}` index is not a public Firestore surface: direct
+gets are owner-only and collection list/query is denied. Possession-based
+public viewing goes exclusively through `GET /api/trips/{shareId}`, where the
+abortable Firestore REST `batchGet` resolves the private index and trip,
+verifies the trip still carries that share ID, and an abortable projected
+`runQuery` provides stable `(rodeAt, document ID)` descending pagination. The
+route rate-limits requests durably and returns `private, no-store`; no
+uncancellable Admin SDK read starts after the limiter commits.
+Production authorization uses the
+configured service account's public OAuth 2 JWT-bearer flow: Node crypto signs
+the assertion and abortable platform `fetch` exchanges it for a short-lived,
+expiry-skewed cached token. No private Admin SDK internals are used. The token
+exchange, Firestore request, and error-body reads each derive their physical
+abort from one route-wide 17-second application deadline. Emulator requests
+use the emulator admin convention and never request an OAuth token. There are
+no internal retries or orphaned deadline timers, and authentication and body
+parsing consume the same budget, leaving margin inside the 20-second route
+limit. The REST transport integration suite uses a separate deterministic
+emulator project from the rules suite so concurrent cleanup cannot erase the
+other suite's data. Admin token verification is the one pre-write operation that cannot be
+physically cancelled; its await is bounded and late rejection is suppressed,
+and no write starts after the deadline. A commit deadline remains
+ambiguous because aborting locally cannot prove whether Firestore received the
+request. The durable same-ID client retry and exact replay/conflict
+classification therefore remain required.
 
 All four production ride writers (unified sheet, manual form, timer completion,
 and trip ride page) use the same complete-command service. The stored command
@@ -1005,13 +1036,63 @@ cannot be proven.
 
 The ride API performs the primary write without a client Firestore pre-read.
 Trip association on the user-owned ride document is accepted as a validated
-string; no trip lookup occurs before the primary write. After the Admin batch
-commits the ride and immutable command record, the
-server recomputes trip stats. Stats writes carry the query snapshot read-time as
-a generation and transactionally refuse older/equal generations, preventing a
-late stale snapshot from regressing newer totals. Stats failure is returned as
-explicit partial success and never rolls back or duplicates the ride. Every
-Admin document path validates UID, request ID, trip ID, and share ID segments
+string; no trip lookup occurs before the primary write. After the REST commit
+creates the ride and immutable command record, the route opens a Firestore REST
+read-write transaction. It reads the trip, pages a `tripId` query ordered by
+document name at one transaction snapshot, and projects only the six fields
+needed by the aggregate (large notes are never returned). The trip and matching
+share summary are updated in that same transaction with `statsGeneration` set
+to the query `readTime`. Each decoded page is reduced immediately and discarded;
+the query enforces an 8 MiB conservative representation budget and a
+10,000-document budget, returning `statsUpdated:false` without committing
+partial stats if either is exceeded. The representation estimate charges each
+wire byte eight times for concurrent stream chunks/combined bytes, UTF-16 text,
+parsed REST objects, decoded fields, and the incremental accumulator. Thus the
+8 MiB budget admits at most about 1 MiB of projected wire JSON across all pages.
+This is a bounded estimate, not an exact measurement of the JavaScript heap.
+Firestore aborts an older transaction if its ride-log
+query is stale; the service performs one bounded retry, so an older aggregate
+cannot overwrite a newer generation. If any post-commit refresh step fails,
+including permissions, configuration, share consistency, quota, or deadline,
+the authoritative ride save still returns created/replayed with
+`statsUpdated:false`; the client performs an awaited recovery request coalesced
+per user and trip. The shared transport owns its controller and 15-second
+deadline; subscriber aborts stop only that subscriber unless it was the final
+waiter, in which case the abandoned entry is evicted before transport abort.
+Numeric and HTTP-date `Retry-After` values are honored when they fit the overall
+deadline, with at most one retry; longer throttles remain visible for manual
+recovery. Every later
+same-ID replay retries the same recomputation. Recovery verifies ownership
+before creating a privacy-safe SHA-256 UID/trip/time-bucket throttle document,
+so nonexistent IDs allocate no durable state and separate trips do not collide.
+Create, edit, and delete mutations remain successful even when recovery ends
+stale. Trip cards offer one manual recovery action and use the persisted
+monotonic summary to expose
+`statsUpdatedAt` freshness instead of downloading every account ride log or
+silently presenting an old summary as current. A successful manual recovery
+installs the authoritative persisted freshness time immediately, removing the
+stale label and action without waiting for the unchanged trip prop to refetch.
+Each card binds a manual response to its trip/request epoch; a trip-ID change
+aborts that subscriber, and newer or equal authoritative props prevent an older
+response from replacing the displayed summary.
+Trip detail derives its visible
+totals from the already-required trip ride-log query. Public shared-trip
+responses return the persisted summary plus a projected 20-log page ordered by
+`rodeAt` and document ID, with an opaque stable cursor for subsequent pages;
+ride notes and ownership fields are not exposed, orphaned share indexes are
+rejected, and the entire route has a 17-second application deadline.
+Shared responses are `private, no-store`; a Firestore transaction enforces
+per-hashed-trusted-client and global minute buckets without storing raw IPs or
+share IDs, and pagination controls render once after all ride groups. Production
+must enable Firestore TTL on `expiresAt` for `sharedTripRateLimits` and
+`tripStatsRefreshThrottle`; correctness does not depend on prompt deletion, but
+bounded retained storage does.
+Shared-trip rules bind client-created indexes to the authenticated `userId` and
+immutable `tripId`. Owners may still edit unrelated share metadata and normal
+trip fields, including trip `parkNames`, but cannot mutate shared summary
+`stats`, `statsGeneration`, `statsUpdatedAt`, or summary-derived `parkNames`.
+No uncancellable Admin operation is launched after commit.
+Every document path validates UID, request ID, trip ID, and share ID segments
 before interpolation.
 
 Deployment order is mandatory:
@@ -1023,7 +1104,7 @@ Deployment order is mandatory:
    window permits new clients to add a revision while editing either
    compatibility shape and old clients to edit stable documents without
    incrementing revision, including cross-version edit chains.
-   Trip derived `stats` and `statsGeneration` are server-owned immediately:
+   Trip derived `stats`, `statsGeneration`, and `statsUpdatedAt` are server-owned immediately:
    client trip creates must contain exact zero stats and no generation, legacy
    client refresh attempts are denied, and later Admin refreshes remain
    allowed. Status/name/date updates and ride creation remain allowed. Older

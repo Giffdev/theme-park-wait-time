@@ -294,7 +294,6 @@ export default function TimerCompleteSheet({
       await createRideLog(user.uid, rideCommandData(command), command.tripId, {
         requestId: command.requestId,
         timeoutMs: RIDE_LOG_SAVE_TIMEOUT_MS,
-        waitForTripStats: true,
       });
 
       saveConfirmedRef.current = true;

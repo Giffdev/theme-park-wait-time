@@ -5,6 +5,18 @@ const mockAuthenticate = vi.fn();
 const mockSaveRide = vi.fn();
 const mockSaveTrip = vi.fn();
 const mockGetTripStatus = vi.fn();
+const mockRefreshTripStats = vi.fn();
+const mockClaimTripStatsRefreshSlot = vi.fn();
+const refreshedTripStats = {
+  stats: {
+    totalRides: 3,
+    totalWaitMinutes: 45,
+    parksVisited: 2,
+    uniqueAttractions: 3,
+    favoriteAttraction: 'Space Mountain',
+  },
+  statsUpdatedAt: '2026-08-19T01:02:03.000Z',
+};
 
 vi.mock('@/lib/server/authenticated-json', () => {
   class RequestError extends Error {
@@ -15,6 +27,7 @@ vi.mock('@/lib/server/authenticated-json', () => {
   }
   return {
     RequestError,
+    createRequestDeadline: () => Date.now() + 17_000,
     authenticateRequest: (...args: unknown[]) => mockAuthenticate(...args),
     readBoundedJson: async (request: NextRequest, maximumBytes: number) => {
       const contentLength = Number(request.headers.get('content-length') ?? '0');
@@ -55,18 +68,36 @@ vi.mock('@/lib/services/save-command-service', () => {
       this.name = 'SaveCommandDeadlineError';
     }
   }
+  class SaveCommandConfigurationError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'SaveCommandConfigurationError';
+    }
+  }
+  class TripStatsRateLimitError extends Error {
+    constructor(public retryAfterSeconds: number) {
+      super('rate limited');
+      this.name = 'TripStatsRateLimitError';
+    }
+  }
   return {
     SaveCommandAmbiguousError,
     SaveCommandConflictError,
     SaveCommandDeadlineError,
-    COMMIT_DEADLINE_MS: 10_000,
+    SaveCommandConfigurationError,
+    TripStatsRateLimitError,
+    COMMIT_DEADLINE_MS: 7_000,
+    CLASSIFICATION_DEADLINE_MS: 5_000,
     getTripCommandStatus: (...args: unknown[]) => mockGetTripStatus(...args),
+    claimTripStatsRefreshSlot: (...args: unknown[]) => mockClaimTripStatsRefreshSlot(...args),
+    refreshTripStats: (...args: unknown[]) => mockRefreshTripStats(...args),
     saveRideCommand: (...args: unknown[]) => mockSaveRide(...args),
     saveTripCommand: (...args: unknown[]) => mockSaveTrip(...args),
   };
 });
 
 import { POST as saveRide } from '@/app/api/ride-logs/route';
+import { POST as refreshTripStatsRoute } from '@/app/api/trip-stats/route';
 import {
   GET as getTripStatus,
   POST as saveTrip,
@@ -81,6 +112,7 @@ import { RequestError } from '@/lib/server/authenticated-json';
 import {
   SaveCommandConflictError,
   SaveCommandAmbiguousError,
+  SaveCommandConfigurationError,
   SaveCommandDeadlineError,
   COMMIT_DEADLINE_MS,
 } from '@/lib/services/save-command-service';
@@ -96,8 +128,10 @@ function request(path: string, body: unknown) {
 function statusRequest(
   requestId = 'trip-request-route',
   fingerprint = 'a'.repeat(64),
+  shareId?: string,
 ) {
   const query = new URLSearchParams({ requestId, fingerprint });
+  if (shareId) query.set('shareId', shareId);
   return new NextRequest(`http://localhost:3000/api/trip-commands?${query.toString()}`);
 }
 
@@ -135,6 +169,8 @@ describe('authenticated save command routes', () => {
     mockSaveRide.mockResolvedValue({ result: 'created', tripId: null });
     mockSaveTrip.mockResolvedValue('created');
     mockGetTripStatus.mockResolvedValue('not-found');
+    mockRefreshTripStats.mockResolvedValue(refreshedTripStats);
+    mockClaimTripStatsRefreshSlot.mockResolvedValue(undefined);
   });
 
   it('rejects unauthenticated ride saves before writing', async () => {
@@ -170,7 +206,11 @@ describe('authenticated save command routes', () => {
   it('passes only the verified UID to the ride command service', async () => {
     const response = await saveRide(request('/api/ride-logs', validRide));
     expect(response.status).toBe(200);
-    expect(mockSaveRide).toHaveBeenCalledWith('user-123', validRide);
+    expect(mockSaveRide).toHaveBeenCalledWith(
+      'user-123',
+      validRide,
+      expect.objectContaining({ deadlineAt: expect.any(Number) }),
+    );
   });
 
   it.each(['trip/escape', 'trip\u0000escape', 'x'.repeat(129)])(
@@ -265,6 +305,8 @@ describe('authenticated save command routes', () => {
         'user-123',
         'trip-request-route',
         'a'.repeat(64),
+        null,
+        expect.objectContaining({ deadlineAt: expect.any(Number) }),
       );
     },
   );
@@ -292,6 +334,23 @@ describe('authenticated save command routes', () => {
       'different-user',
       'trip-request-route',
       'a'.repeat(64),
+      null,
+      expect.objectContaining({ deadlineAt: expect.any(Number) }),
+    );
+  });
+
+  it('binds shared-trip status to the expected global share ID', async () => {
+    await getTripStatus(statusRequest(
+      'trip-request-route',
+      'a'.repeat(64),
+      'share-request-route',
+    ));
+    expect(mockGetTripStatus).toHaveBeenCalledWith(
+      'user-123',
+      'trip-request-route',
+      'a'.repeat(64),
+      'share-request-route',
+      expect.objectContaining({ deadlineAt: expect.any(Number) }),
     );
   });
 
@@ -324,6 +383,79 @@ describe('authenticated save command routes', () => {
     const response = await saveTrip(request('/api/trip-commands', validTrip));
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({ outcome: 'ambiguous', retryable: true });
+  });
+
+  it('maps permanent save configuration failures to non-retryable 412', async () => {
+    mockSaveRide.mockRejectedValue(new SaveCommandConfigurationError('private config detail'));
+    const rideResponse = await saveRide(request('/api/ride-logs', validRide));
+    expect(rideResponse.status).toBe(412);
+    await expect(rideResponse.json()).resolves.toEqual({
+      error: 'Ride saving is not configured',
+      retryable: false,
+    });
+
+    mockSaveTrip.mockRejectedValue(new SaveCommandConfigurationError('private config detail'));
+    const tripResponse = await saveTrip(request('/api/trip-commands', validTrip));
+    expect(tripResponse.status).toBe(412);
+    await expect(tripResponse.json()).resolves.toEqual({
+      error: 'Trip creation is not configured',
+      retryable: false,
+    });
+  });
+
+  it('runs authenticated bounded trip summary refreshes', async () => {
+    const response = await refreshTripStatsRoute(request('/api/trip-stats', {
+      tripId: 'trip-request-route',
+    }));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      updated: true,
+      ...refreshedTripStats,
+    });
+    expect(mockRefreshTripStats).toHaveBeenCalledWith(
+      'user-123',
+      'trip-request-route',
+      expect.objectContaining({ deadlineAt: expect.any(Number) }),
+    );
+    expect(mockClaimTripStatsRefreshSlot).toHaveBeenCalledWith(
+      'user-123',
+      'trip-request-route',
+      expect.objectContaining({ deadlineAt: expect.any(Number) }),
+    );
+  });
+
+  it('returns 202 updated false when the authoritative summary is still stale', async () => {
+    mockRefreshTripStats.mockResolvedValueOnce(null);
+    const response = await refreshTripStatsRoute(request('/api/trip-stats', {
+      tripId: 'trip-request-route',
+    }));
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ updated: false });
+  });
+
+  it('returns durable trip summary throttle failures as 429 with Retry-After', async () => {
+    const { TripStatsRateLimitError } = await import('@/lib/services/save-command-service');
+    mockClaimTripStatsRefreshSlot.mockRejectedValue(new TripStatsRateLimitError(7));
+    const response = await refreshTripStatsRoute(request('/api/trip-stats', {
+      tripId: 'trip-request-route',
+    }));
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('7');
+    expect(mockRefreshTripStats).not.toHaveBeenCalled();
+  });
+
+  it('keeps trip summary configuration failures permanent', async () => {
+    mockRefreshTripStats.mockRejectedValue(
+      new SaveCommandConfigurationError('private config detail'),
+    );
+    const response = await refreshTripStatsRoute(request('/api/trip-stats', {
+      tripId: 'trip-request-route',
+    }));
+    expect(response.status).toBe(412);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Trip summary refresh is not configured',
+      retryable: false,
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -387,7 +519,7 @@ describe('authenticated save command routes', () => {
   it('BW8: trip-commands route exports maxDuration=20 and dynamic=force-dynamic', () => {
     expect(tripMaxDuration).toBe(20);
     expect(tripDynamic).toBe('force-dynamic');
-    // COMMIT_DEADLINE_MS (10s) + classification reads + margin must stay under maxDuration
+    // The 7s physical abort plus classification reads and margin stays under maxDuration.
     expect(COMMIT_DEADLINE_MS).toBeLessThan(tripMaxDuration * 1_000);
     // maxDuration must be below the 30s client/Vercel hard abort ceiling
     expect(tripMaxDuration).toBeLessThan(30);

@@ -27,15 +27,18 @@ export default function TripsPage() {
   const { user, loading: authLoading } = useAuth();
   const [allTrips, setAllTrips] = useState<(Trip & { id: string })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchTrips = useCallback(async () => {
     if (!user) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await getTrips(user.uid);
       setAllTrips(data);
     } catch (err) {
       console.error('Failed to load trips:', err);
+      setLoadError('Trip summaries could not be refreshed. Previously loaded values may be out of date.');
     } finally {
       setLoading(false);
     }
@@ -123,9 +126,28 @@ export default function TripsPage() {
 
       {/* Content */}
       <div className="mt-8">
+        {loadError && (
+          <div role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            {loadError}
+          </div>
+        )}
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
+          </div>
+        ) : loadError && !hasAnyTrips ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-12 text-center">
+            <h2 className="text-xl font-semibold text-amber-900">Trips could not be loaded</h2>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-amber-800">
+              Your saved trips have not been marked as missing. Check your connection and try loading them again.
+            </p>
+            <button
+              type="button"
+              onClick={fetchTrips}
+              className="mt-5 rounded-lg bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-800"
+            >
+              Try Again
+            </button>
           </div>
         ) : !hasAnyTrips ? (
           <div className="rounded-2xl border-2 border-dashed border-primary-200 py-16 text-center">

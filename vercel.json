@@ -64,6 +64,12 @@
       ]
     },
     {
+      "source": "/api/trip-stats",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, max-age=0" }
+      ]
+    },
+    {
       "source": "/api/parks/(.*)/schedule",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, max-age=0" }

@@ -3,11 +3,17 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
-import { authenticateRequest, readBoundedJson, RequestError } from '@/lib/server/authenticated-json';
+import {
+  authenticateRequest,
+  createRequestDeadline,
+  readBoundedJson,
+  RequestError,
+} from '@/lib/server/authenticated-json';
 import {
   getTripCommandStatus,
   SaveCommandConflictError,
   SaveCommandAmbiguousError,
+  SaveCommandConfigurationError,
   saveTripCommand,
   TripSaveCommand,
 } from '@/lib/services/save-command-service';
@@ -99,14 +105,19 @@ function statusResponse(body: unknown, status = 200): NextResponse {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const startedAt = performance.now();
+  const deadlineAt = createRequestDeadline();
   const timings: Record<string, number> = {};
   let requestId: string | null = null;
   try {
     const authStartedAt = performance.now();
-    const uid = await authenticateRequest(request);
+    const uid = await authenticateRequest(request, deadlineAt);
     timings.authMs = Math.round(performance.now() - authStartedAt);
     const bodyStartedAt = performance.now();
-    const command = await readBoundedJson<TripSaveCommand>(request, MAX_BODY_BYTES);
+    const command = await readBoundedJson<TripSaveCommand>(
+      request,
+      MAX_BODY_BYTES,
+      deadlineAt,
+    );
     timings.bodyMs = Math.round(performance.now() - bodyStartedAt);
     requestId = command.requestId ?? null;
     const validationError = validate(command);
@@ -115,7 +126,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
     const writeStartedAt = performance.now();
-    const result = await saveTripCommand(uid, command);
+    const result = await saveTripCommand(uid, command, { deadlineAt });
     timings.writeMs = Math.round(performance.now() - writeStartedAt);
     logResult('create', result, requestId, startedAt, timings);
     return NextResponse.json({ id: command.requestId, result });
@@ -142,6 +153,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 503 },
       );
     }
+    if (error instanceof SaveCommandConfigurationError) {
+      logResult('create', 'configuration-error', requestId, startedAt, timings, error);
+      return NextResponse.json(
+        { error: 'Trip creation is not configured', retryable: false },
+        { status: 412 },
+      );
+    }
     if (error instanceof InvalidFirestorePathSegmentError) {
       logResult('create', 'invalid-path', requestId, startedAt, timings, error);
       return NextResponse.json({ error: error.message }, { status: 400 });
@@ -153,20 +171,29 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const startedAt = performance.now();
+  const deadlineAt = createRequestDeadline();
   const timings: Record<string, number> = {};
   const requestId = request.nextUrl.searchParams.get('requestId');
   const expectedFingerprint = request.nextUrl.searchParams.get('fingerprint');
+  const expectedShareId = request.nextUrl.searchParams.get('shareId');
   try {
     if (!requestId || !ID_PATTERN.test(requestId)
-        || !expectedFingerprint || !FINGERPRINT_PATTERN.test(expectedFingerprint)) {
+        || !expectedFingerprint || !FINGERPRINT_PATTERN.test(expectedFingerprint)
+        || (expectedShareId !== null && !ID_PATTERN.test(expectedShareId))) {
       logResult('status', 'invalid', requestId, startedAt, timings);
       return statusResponse({ error: 'Invalid trip creation status request' }, 400);
     }
     const authStartedAt = performance.now();
-    const uid = await authenticateRequest(request);
+    const uid = await authenticateRequest(request, deadlineAt);
     timings.authMs = Math.round(performance.now() - authStartedAt);
     const readStartedAt = performance.now();
-    const status = await getTripCommandStatus(uid, requestId, expectedFingerprint);
+    const status = await getTripCommandStatus(
+      uid,
+      requestId,
+      expectedFingerprint,
+      expectedShareId,
+      { deadlineAt },
+    );
     timings.readMs = Math.round(performance.now() - readStartedAt);
     logResult('status', status, requestId, startedAt, timings);
     return statusResponse({ status, id: status === 'committed' ? requestId : undefined });
@@ -178,6 +205,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (error instanceof InvalidFirestorePathSegmentError) {
       logResult('status', 'invalid-path', requestId, startedAt, timings, error);
       return statusResponse({ error: error.message }, 400);
+    }
+    if (error instanceof SaveCommandConfigurationError) {
+      logResult('status', 'configuration-error', requestId, startedAt, timings, error);
+      return statusResponse(
+        { error: 'Trip creation status is not configured', retryable: false },
+        412,
+      );
     }
     logResult('status', 'pending', requestId, startedAt, timings, error);
     return statusResponse(

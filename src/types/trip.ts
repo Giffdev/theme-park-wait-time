@@ -3,6 +3,7 @@
  * Stored at: users/{userId}/trips/{tripId}
  * Shared trips indexed at: sharedTrips/{shareId}
  */
+import type { FirestoreTimestampValue } from '@/lib/firestore-timestamp';
 
 /** Computed statistics for a trip. */
 export interface TripStats {
@@ -29,6 +30,8 @@ export interface Trip {
   status: TripStatus;
   shareId: string | null; // unique URL-safe ID for public sharing
   stats: TripStats;
+  /** Last successful authoritative ride-log summary refresh. */
+  statsUpdatedAt?: FirestoreTimestampValue;
   notes: string;
   createdAt: Date;
   updatedAt: Date;

@@ -1,11 +1,27 @@
 import { createHash } from 'crypto';
-import { FieldValue, Timestamp, type WriteBatch } from 'firebase-admin/firestore';
-import { adminDb } from '@/lib/firebase/admin';
+import { Timestamp } from 'firebase-admin/firestore';
+import { adminDb, getAdminServiceAccount } from '@/lib/firebase/admin';
+import {
+  batchGetFirestoreDocuments,
+  beginFirestoreTransaction,
+  commitFirestoreDocuments,
+  createServiceAccountAccessTokenProvider,
+  FIRESTORE_REST_COMMIT_ABORT_MS,
+  FIRESTORE_REST_READ_ABORT_MS,
+  FirestoreRestCommitError,
+  rollbackFirestoreTransaction,
+  runFirestoreEqualityQuery,
+  type FirestoreCommitDocument,
+  type FirestoreCommitResult,
+  type FirestoreRestCommitDependencies,
+  type FirestoreReadDocument,
+} from '@/lib/firebase/firestore-rest-commit';
 import { assertFirestorePathSegment } from '@/lib/server/firestore-path';
 import {
   canonicalTripCommandPayload,
   tripCommandFingerprint,
 } from '@/lib/services/trip-command-fingerprint';
+import type { TripStats } from '@/types/trip';
 
 export class SaveCommandConflictError extends Error {
   constructor(message: string) {
@@ -23,113 +39,135 @@ export class SaveCommandAmbiguousError extends Error {
 }
 
 export class SaveCommandDeadlineError extends Error {
-  constructor(message: string) {
-    super(message);
+  declare readonly cause?: unknown;
+  constructor(message: string, cause?: unknown) {
+    super(message, cause !== undefined ? { cause } : undefined);
     this.name = 'SaveCommandDeadlineError';
   }
 }
 
-/** Milliseconds before an unresolved batch.commit is abandoned. */
-export const COMMIT_DEADLINE_MS = 10_000;
+export class SaveCommandConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SaveCommandConfigurationError';
+  }
+}
 
-/**
- * Races batch.commit() against a deadline. Returns 'created' on success.
- * Throws SaveCommandDeadlineError if the deadline fires first — the underlying
- * commit promise is kept alive internally and its rejection is swallowed to
- * prevent an unhandled rejection, but the caller receives ambiguous/deadline.
- * Throws the raw commit error on any other failure so callers can classify it.
- */
-async function commitWithDeadline(
-  batch: WriteBatch,
+export class TripStatsRateLimitError extends Error {
+  constructor(public readonly retryAfterSeconds: number) {
+    super('Trip summary refresh rate limit exceeded.');
+    this.name = 'TripStatsRateLimitError';
+  }
+}
+
+/** Milliseconds before the physical REST commit request is aborted. */
+export const COMMIT_DEADLINE_MS = FIRESTORE_REST_COMMIT_ABORT_MS;
+export const CLASSIFICATION_DEADLINE_MS = FIRESTORE_REST_READ_ABORT_MS;
+
+export interface SaveCommandDependencies {
+  commitDocuments?: (
+    documents: FirestoreCommitDocument[],
+    dependencies?: FirestoreRestCommitDependencies,
+    transaction?: string,
+  ) => Promise<void | FirestoreCommitResult | null>;
+  readDocuments?: (
+    paths: string[],
+    dependencies?: FirestoreRestCommitDependencies,
+    transaction?: string,
+  ) => Promise<Map<string, FirestoreReadDocument | null>>;
+  queryDocuments?: typeof runFirestoreEqualityQuery;
+  beginTransaction?: typeof beginFirestoreTransaction;
+  rollbackTransaction?: typeof rollbackFirestoreTransaction;
+  deadlineAt?: number;
+  now?: () => number;
+}
+
+const operationTransports = new WeakMap<
+  SaveCommandDependencies,
+  FirestoreRestCommitDependencies
+>();
+
+function transportDependencies(
+  dependencies: SaveCommandDependencies,
+): FirestoreRestCommitDependencies {
+  if (dependencies.deadlineAt === undefined) return {};
+  const existing = operationTransports.get(dependencies);
+  if (existing) return existing;
+  let accessTokenProvider: () => Promise<string>;
+  try {
+    accessTokenProvider = createServiceAccountAccessTokenProvider(
+      getAdminServiceAccount(),
+      { deadlineAt: dependencies.deadlineAt },
+    );
+  } catch {
+    throw new SaveCommandConfigurationError(
+      'The save service credentials are not configured correctly.',
+    );
+  }
+  const transport = { deadlineAt: dependencies.deadlineAt, accessTokenProvider };
+  operationTransports.set(dependencies, transport);
+  return transport;
+}
+
+function isConfigurationFailure(error: unknown): boolean {
+  return error instanceof FirestoreRestCommitError
+    && [
+      'FAILED_PRECONDITION',
+      'INVALID_ARGUMENT',
+      'UNAUTHENTICATED',
+      'PERMISSION_DENIED',
+    ].includes(error.code);
+}
+
+async function commitWithTelemetry(
+  documents: FirestoreCommitDocument[],
   requestHash: string,
   logPrefix: string,
+  dependencies: SaveCommandDependencies,
 ): Promise<void> {
   const startedAt = performance.now();
   console.info(`[${logPrefix}]`, JSON.stringify({
-    event: 'batch.commit.attempt',
+    event: 'firestore.commit.attempt',
     requestHash,
   }));
-
-  const commitPromise = batch.commit();
-
-  let deadlineHandle: ReturnType<typeof setTimeout> | undefined;
-  const deadlinePromise = new Promise<never>((_, reject) => {
-    deadlineHandle = setTimeout(() => reject(new SaveCommandDeadlineError(
-      'The server-side commit wait deadline was reached.',
-    )), COMMIT_DEADLINE_MS);
-  });
-
-  let result: 'committed' | 'deadline' | 'error' = 'error';
-  let thrownError: unknown;
 
   try {
-    await Promise.race([commitPromise, deadlinePromise]);
-    result = 'committed';
-  } catch (error) {
-    thrownError = error;
-    result = error instanceof SaveCommandDeadlineError ? 'deadline' : 'error';
-  }
-
-  // Always clear the timer — safe to call on an already-fired timer (no-op).
-  clearTimeout(deadlineHandle);
-
-  const durationMs = Math.round(performance.now() - startedAt);
-
-  if (result === 'committed') {
+    await (dependencies.commitDocuments ?? commitFirestoreDocuments)(
+      documents,
+      transportDependencies(dependencies),
+    );
     console.info(`[${logPrefix}]`, JSON.stringify({
-      event: 'batch.commit.success',
+      event: 'firestore.commit.success',
       outcome: 'created',
       requestHash,
-      durationMs,
+      durationMs: Math.round(performance.now() - startedAt),
     }));
-    // Suppress any late rejection from the resolved commit promise (e.g. stream
-    // teardown after acknowledgement) to prevent an unhandled rejection warning.
-    commitPromise.catch(() => {});
-    return;
+  } catch (error) {
+    const errorCode = error && typeof error === 'object' && 'code' in error
+      ? String((error as { code: unknown }).code)
+      : error instanceof Error ? error.name : 'unknown';
+    console.info(`[${logPrefix}]`, JSON.stringify({
+      event: 'firestore.commit.failure',
+      outcome: errorCode === 'DEADLINE_EXCEEDED'
+        ? 'deadline'
+        : isAlreadyExists(error) ? 'already-exists' : 'ambiguous',
+      errorCode,
+      requestHash,
+      durationMs: Math.round(performance.now() - startedAt),
+    }));
+    if (error instanceof FirestoreRestCommitError && error.code === 'DEADLINE_EXCEEDED') {
+      throw new SaveCommandDeadlineError(
+        'The Firestore commit was aborted at its local deadline.',
+        error,
+      );
+    }
+    if (isConfigurationFailure(error)) {
+      throw new SaveCommandConfigurationError(
+        'The save service is not configured correctly.',
+      );
+    }
+    throw error;
   }
-
-  const errorCode = thrownError instanceof SaveCommandDeadlineError
-    ? 'deadline'
-    : thrownError && typeof thrownError === 'object' && 'code' in thrownError
-      ? String((thrownError as { code: unknown }).code)
-      : thrownError instanceof Error ? thrownError.name : 'unknown';
-
-  console.info(`[${logPrefix}]`, JSON.stringify({
-    event: 'batch.commit.failure',
-    outcome: result === 'deadline' ? 'deadline' : isAlreadyExists(thrownError) ? 'already-exists' : 'ambiguous',
-    errorCode,
-    requestHash,
-    durationMs,
-  }));
-
-  if (result === 'deadline') {
-    // Attach background settlement observers BEFORE returning so late outcomes
-    // are logged. These fire only if Vercel keeps the process alive long enough.
-    // No raw UID, requestId, or payload is logged — only the outcome and error code.
-    commitPromise.then(
-      () => {
-        console.info(`[${logPrefix}]`, JSON.stringify({
-          event: 'batch.commit.late-success',
-          outcome: 'created-after-deadline',
-          requestHash,
-        }));
-      },
-      (lateError: unknown) => {
-        const lateCode = lateError && typeof lateError === 'object' && 'code' in lateError
-          ? String((lateError as { code: unknown }).code)
-          : lateError instanceof Error ? lateError.name : 'unknown';
-        console.info(`[${logPrefix}]`, JSON.stringify({
-          event: 'batch.commit.late-failure',
-          outcome: 'failed-after-deadline',
-          errorCode: lateCode,
-          requestHash,
-        }));
-      },
-    );
-    throw thrownError;
-  }
-
-  throw thrownError;
 }
 
 export interface RideSaveCommand {
@@ -159,41 +197,6 @@ export interface TripSaveCommand {
   notes: string;
 }
 
-interface TripStats {
-  totalRides: number;
-  totalWaitMinutes: number;
-  parksVisited: number;
-  uniqueAttractions: number;
-  favoriteAttraction: string | null;
-}
-
-interface StatsGeneration {
-  seconds: number;
-  nanoseconds: number;
-}
-
-function statsGeneration(readTime: Timestamp | undefined): StatsGeneration {
-  if (readTime) {
-    return {
-      seconds: readTime.seconds,
-      nanoseconds: readTime.nanoseconds,
-    };
-  }
-  const now = Timestamp.now();
-  return { seconds: now.seconds, nanoseconds: now.nanoseconds };
-}
-
-function isGenerationAtLeast(current: unknown, candidate: StatsGeneration): boolean {
-  if (typeof current === 'number') {
-    return current >= candidate.seconds * 1_000 + Math.floor(candidate.nanoseconds / 1_000_000);
-  }
-  if (!current || typeof current !== 'object') return false;
-  const value = current as Partial<StatsGeneration>;
-  if (typeof value.seconds !== 'number' || typeof value.nanoseconds !== 'number') return false;
-  return value.seconds > candidate.seconds
-    || (value.seconds === candidate.seconds && value.nanoseconds >= candidate.nanoseconds);
-}
-
 function canonicalSerialize(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) {
@@ -215,6 +218,7 @@ function isAlreadyExists(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const value = error as { code?: unknown; message?: unknown };
   return value.code === 6
+    || value.code === 'ALREADY_EXISTS'
     || value.code === 'already-exists'
     || value.code === 'firestore/already-exists'
     || (typeof value.message === 'string' && /\balready exists\b/i.test(value.message));
@@ -237,78 +241,272 @@ function normalizedRidePayload(command: RideSaveCommand) {
   };
 }
 
-function calculateTripStats(
-  logs: Array<Record<string, unknown>>,
-): { stats: TripStats; parkNames: Record<string, string> } {
+function fields(document: FirestoreReadDocument | null | undefined): Record<string, unknown> | null {
+  return document?.fields ?? null;
+}
+
+function createTripStatsAccumulator() {
   const parks = new Set<string>();
   const attractions = new Set<string>();
   const attractionCounts = new Map<string, number>();
   const parkNames: Record<string, string> = {};
   let totalWaitMinutes = 0;
-
-  for (const log of logs) {
-    const parkId = String(log.parkId ?? '');
-    const attractionId = String(log.attractionId ?? '');
-    const attractionName = String(log.attractionName ?? '');
-    if (parkId) parks.add(parkId);
-    if (parkId && typeof log.parkName === 'string' && log.parkName && !parkNames[parkId]) {
-      parkNames[parkId] = log.parkName;
-    }
-    if (attractionId) attractions.add(attractionId);
-    if (attractionName) {
-      attractionCounts.set(attractionName, (attractionCounts.get(attractionName) ?? 0) + 1);
-    }
-    if (typeof log.waitTimeMinutes === 'number') totalWaitMinutes += log.waitTimeMinutes;
-  }
-
-  let favoriteAttraction: string | null = null;
-  let favoriteCount = 0;
-  for (const [name, count] of attractionCounts) {
-    if (count > favoriteCount) {
-      favoriteAttraction = name;
-      favoriteCount = count;
-    }
-  }
-
+  let totalRides = 0;
   return {
-    stats: {
-      totalRides: logs.length,
-      totalWaitMinutes,
-      parksVisited: parks.size,
-      uniqueAttractions: attractions.size,
-      favoriteAttraction,
+    add({ fields: log }: FirestoreReadDocument) {
+    if (typeof log.parkId !== 'string' || !log.parkId || log.parkId.length > 128
+        || typeof log.parkName !== 'string' || log.parkName.length > 256
+        || typeof log.attractionId !== 'string' || !log.attractionId
+        || log.attractionId.length > 128
+        || typeof log.attractionName !== 'string' || log.attractionName.length > 256
+        || (log.waitTimeMinutes !== null
+          && (typeof log.waitTimeMinutes !== 'number'
+            || !Number.isSafeInteger(log.waitTimeMinutes)
+            || log.waitTimeMinutes < 0
+            || log.waitTimeMinutes > 1_440))) {
+      throw new FirestoreRestCommitError(
+        'DATA_LOSS',
+        'Trip summary input fields exceeded their validated bounds.',
+      );
+    }
+    totalRides += 1;
+    parks.add(log.parkId);
+    if (log.parkName && !parkNames[log.parkId]) {
+      parkNames[log.parkId] = log.parkName;
+    }
+    attractions.add(log.attractionId);
+    if (log.attractionName) {
+      attractionCounts.set(
+        log.attractionName,
+        (attractionCounts.get(log.attractionName) ?? 0) + 1,
+      );
+    }
+    if (typeof log.waitTimeMinutes === 'number') {
+      totalWaitMinutes += log.waitTimeMinutes;
+      if (!Number.isSafeInteger(totalWaitMinutes)) {
+        throw new FirestoreRestCommitError(
+          'DATA_LOSS',
+          'Trip summary wait total exceeded safe numeric bounds.',
+        );
+      }
+    }
     },
-    parkNames,
+    finish() {
+      const favoriteAttraction = [...attractionCounts.entries()]
+        .sort(([leftName, leftCount], [rightName, rightCount]) => (
+          rightCount - leftCount || leftName.localeCompare(rightName)
+        ))[0]?.[0] ?? null;
+      return {
+        stats: {
+          totalRides,
+          totalWaitMinutes,
+          parksVisited: parks.size,
+          uniqueAttractions: attractions.size,
+          favoriteAttraction,
+        },
+        parkNames,
+      };
+    },
   };
 }
 
-async function refreshTripStats(uid: string, tripId: string): Promise<void> {
+function timestampFromReadTime(readTime: string): Timestamp {
+  const match = readTime.match(
+    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$/,
+  );
+  if (!match) {
+    throw new FirestoreRestCommitError('DATA_LOSS', 'Firestore returned an invalid read time.');
+  }
+  const seconds = Date.parse(`${match[1]}Z`) / 1_000;
+  if (!Number.isSafeInteger(seconds)) {
+    throw new FirestoreRestCommitError('DATA_LOSS', 'Firestore returned an invalid read time.');
+  }
+  const nanoseconds = Number((match[2] ?? '').padEnd(9, '0'));
+  return new Timestamp(seconds, nanoseconds);
+}
+
+const TRIP_STATS_THROTTLE_BUCKET_MS = 10_000;
+
+export async function claimTripStatsRefreshSlot(
+  uid: string,
+  tripId: string,
+  dependencies: SaveCommandDependencies = {},
+): Promise<void> {
   assertFirestorePathSegment(uid, 'authenticated user ID');
   assertFirestorePathSegment(tripId, 'trip ID');
-  const snapshot = await adminDb
-    .collection(`users/${uid}/rideLogs`)
-    .where('tripId', '==', tripId)
-    .get();
-  const generation = statsGeneration(snapshot.readTime);
-  const calculated = calculateTripStats(snapshot.docs.map((document) => document.data()));
-  const tripRef = adminDb.doc(`users/${uid}/trips/${tripId}`);
+  const tripPath = `users/${uid}/trips/${tripId}`;
+  const transport = transportDependencies(dependencies);
+  const ownedTrip = await (dependencies.readDocuments ?? batchGetFirestoreDocuments)(
+    [tripPath],
+    transport,
+  );
+  if (!fields(ownedTrip.get(tripPath))) {
+    throw new SaveCommandConflictError('The trip does not exist.');
+  }
+  const now = (dependencies.now ?? Date.now)();
+  const bucket = Math.floor(now / TRIP_STATS_THROTTLE_BUCKET_MS);
+  const key = createHash('sha256')
+    .update(`${uid}\u0000${tripId}\u0000${bucket}`)
+    .digest('hex');
+  try {
+    await (dependencies.commitDocuments ?? commitFirestoreDocuments)([{
+      path: `tripStatsRefreshThrottle/${key}`,
+      fields: {
+        expiresAt: new Date((bucket + 2) * TRIP_STATS_THROTTLE_BUCKET_MS),
+      },
+      serverTimestampFields: ['createdAt'],
+    }], transport);
+  } catch (error) {
+    if (isAlreadyExists(error)) {
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil(((bucket + 1) * TRIP_STATS_THROTTLE_BUCKET_MS - now) / 1_000),
+      );
+      throw new TripStatsRateLimitError(retryAfterSeconds);
+    }
+    if (isConfigurationFailure(error)) {
+      throw new SaveCommandConfigurationError(
+        'The trip stats throttle is not configured correctly.',
+      );
+    }
+    throw error;
+  }
+}
 
-  await adminDb.runTransaction(async (transaction) => {
-    const tripSnapshot = await transaction.get(tripRef);
-    if (!tripSnapshot.exists) return;
-    const currentGeneration = tripSnapshot.get('statsGeneration');
-    if (isGenerationAtLeast(currentGeneration, generation)) return;
-    transaction.update(tripRef, {
-      ...calculated,
-      statsGeneration: generation,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  });
+export interface RefreshedTripStats {
+  stats: TripStats;
+  statsUpdatedAt: string;
+}
+
+export async function refreshTripStats(
+  uid: string,
+  tripId: string,
+  dependencies: SaveCommandDependencies = {},
+): Promise<RefreshedTripStats | null> {
+  assertFirestorePathSegment(uid, 'authenticated user ID');
+  assertFirestorePathSegment(tripId, 'trip ID');
+  const tripPath = `users/${uid}/trips/${tripId}`;
+  const transport = transportDependencies(dependencies);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let transaction: string | null = null;
+    try {
+      transaction = await (dependencies.beginTransaction ?? beginFirestoreTransaction)(
+        transport,
+      );
+      const readDocuments = dependencies.readDocuments ?? batchGetFirestoreDocuments;
+      const tripDocuments = await readDocuments([tripPath], transport, transaction);
+      const tripFields = fields(tripDocuments.get(tripPath));
+      if (!tripFields) {
+        await (dependencies.rollbackTransaction ?? rollbackFirestoreTransaction)(
+          transaction,
+          transport,
+        );
+        return null;
+      }
+      const accumulator = createTripStatsAccumulator();
+      const queryResult = await (dependencies.queryDocuments ?? runFirestoreEqualityQuery)(
+        {
+          collectionPath: `users/${uid}/rideLogs`,
+          field: 'tripId',
+          value: tripId,
+          projectionFields: [
+            'tripId',
+            'parkId',
+            'parkName',
+            'attractionId',
+            'attractionName',
+            'waitTimeMinutes',
+          ],
+          transaction,
+          onDocument: (document) => accumulator.add(document),
+          maxRepresentationBytes: 8 * 1024 * 1024,
+          maxDocuments: 10_000,
+        },
+        transport,
+      );
+      if (!queryResult.readTime) {
+        throw new FirestoreRestCommitError(
+          'DATA_LOSS',
+          'Firestore query did not provide a snapshot read time.',
+        );
+      }
+      for (const document of queryResult.documents) accumulator.add(document);
+      const aggregate = accumulator.finish();
+      const generation = timestampFromReadTime(queryResult.readTime);
+      const writes: FirestoreCommitDocument[] = [{
+        path: tripPath,
+        fields: { ...aggregate, statsGeneration: generation },
+        operation: 'update',
+        updateMaskFields: ['stats', 'parkNames', 'statsGeneration'],
+        serverTimestampFields: ['statsUpdatedAt', 'updatedAt'],
+      }];
+      const shareId = typeof tripFields.shareId === 'string' ? tripFields.shareId : null;
+      if (shareId) {
+        assertFirestorePathSegment(shareId, 'share ID');
+        const sharePath = `sharedTrips/${shareId}`;
+        const shareDocuments = await readDocuments([sharePath], transport, transaction);
+        const shareFields = fields(shareDocuments.get(sharePath));
+        if (!shareFields || shareFields.userId !== uid || shareFields.tripId !== tripId) {
+          throw new SaveCommandConflictError('The trip share index is inconsistent.');
+        }
+        writes.push({
+          path: sharePath,
+          fields: { ...aggregate, statsGeneration: generation },
+          operation: 'update',
+          updateMaskFields: ['stats', 'parkNames', 'statsGeneration'],
+          serverTimestampFields: ['statsUpdatedAt', 'updatedAt'],
+        });
+      }
+      const commitResult = await (dependencies.commitDocuments ?? commitFirestoreDocuments)(
+        writes,
+        transport,
+        transaction,
+      );
+      const statsUpdatedAt = commitResult && typeof commitResult === 'object'
+        ? commitResult.writes.find(({ path }) => path === tripPath)
+          ?.transformResults.statsUpdatedAt
+        : undefined;
+      if (typeof statsUpdatedAt !== 'string') {
+        throw new FirestoreRestCommitError(
+          'DATA_LOSS',
+          'Firestore commit did not provide the stats update transform time.',
+        );
+      }
+      transaction = null;
+      return {
+        stats: aggregate.stats,
+        statsUpdatedAt,
+      };
+    } catch (error) {
+      if (transaction) {
+        try {
+          await (dependencies.rollbackTransaction ?? rollbackFirestoreTransaction)(
+            transaction,
+            transport,
+          );
+        } catch {
+          // Preserve the original refresh failure classification.
+        }
+      }
+      if (error instanceof SaveCommandConflictError) throw error;
+      if (isConfigurationFailure(error)) {
+        throw new SaveCommandConfigurationError(
+          'The trip stats service is not configured correctly.',
+        );
+      }
+      if (error instanceof FirestoreRestCommitError
+          && error.code === 'ABORTED'
+          && attempt === 0) continue;
+      return null;
+    }
+  }
+  return null;
 }
 
 export async function saveRideCommand(
   uid: string,
   command: RideSaveCommand,
+  dependencies: SaveCommandDependencies = {},
 ): Promise<{
   result: 'created' | 'replayed';
   tripId: string | null;
@@ -324,9 +522,10 @@ export async function saveRideCommand(
   const resolvedTripId = command.tripId ?? null;
   if (resolvedTripId) assertFirestorePathSegment(resolvedTripId, 'trip ID');
 
-  const batch = adminDb.batch();
   const rodeAt = Timestamp.fromDate(new Date(payload.rodeAt));
-  batch.create(rideRef, {
+  const documents: FirestoreCommitDocument[] = [{
+    path: rideRef.path,
+    fields: {
       parkId: command.parkId,
       attractionId: command.attractionId,
       parkName: command.parkName,
@@ -340,15 +539,17 @@ export async function saveRideCommand(
       tripId: resolvedTripId,
       clientRequestId: command.requestId,
       revision: 0,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-  });
-  batch.create(commandRef, {
+    },
+    serverTimestampFields: ['createdAt', 'updatedAt'],
+  }, {
+    path: commandRef.path,
+    fields: {
       fingerprint: commandFingerprint,
       targetId: command.requestId,
       tripId: resolvedTripId,
-      createdAt: FieldValue.serverTimestamp(),
-  });
+    },
+    serverTimestampFields: ['createdAt'],
+  }];
 
   const rideCommitHash = createHash('sha256')
     .update(command.requestId)
@@ -357,9 +558,10 @@ export async function saveRideCommand(
 
   let saved: { result: 'created' | 'replayed'; tripId: string | null };
   try {
-    await commitWithDeadline(batch, rideCommitHash, 'saveRideCommand');
+    await commitWithTelemetry(documents, rideCommitHash, 'saveRideCommand', dependencies);
     saved = { result: 'created', tripId: resolvedTripId };
   } catch (writeError) {
+    if (writeError instanceof SaveCommandConfigurationError) throw writeError;
     if (!isAlreadyExists(writeError)) {
       throw new SaveCommandAmbiguousError(
         'The ride save was not confirmed. Retry with the same request ID.',
@@ -367,26 +569,37 @@ export async function saveRideCommand(
       );
     }
     try {
-      const [commandSnapshot, rideSnapshot] = await Promise.all([
-        commandRef.get(),
-        rideRef.get(),
-      ]);
-      if (commandSnapshot.exists && rideSnapshot.exists) {
-        if (commandSnapshot.get('fingerprint') !== commandFingerprint
-            || commandSnapshot.get('targetId') !== command.requestId) {
+      const readDocuments = dependencies.readDocuments ?? batchGetFirestoreDocuments;
+      const documents = await readDocuments(
+        [commandRef.path, rideRef.path],
+        transportDependencies(dependencies),
+      );
+      const commandFields = fields(documents.get(commandRef.path));
+      const rideFields = fields(documents.get(rideRef.path));
+      if (commandFields && rideFields) {
+        if (commandFields.fingerprint !== commandFingerprint
+            || commandFields.targetId !== command.requestId) {
           throw new SaveCommandConflictError(
             'This request ID is already bound to a different ride payload.',
           );
         }
         saved = {
           result: 'replayed',
-          tripId: (commandSnapshot.get('tripId') as string | null | undefined) ?? null,
+          tripId: (commandFields.tripId as string | null | undefined) ?? null,
         };
       } else {
         throw new SaveCommandConflictError('The ride save ID is already in use.');
       }
     } catch (classificationError) {
-      if (classificationError instanceof SaveCommandConflictError) throw classificationError;
+      if (classificationError instanceof SaveCommandConflictError
+          || classificationError instanceof SaveCommandConfigurationError) {
+        throw classificationError;
+      }
+      if (isConfigurationFailure(classificationError)) {
+        throw new SaveCommandConfigurationError(
+          'The save classification service is not configured correctly.',
+        );
+      }
       throw new SaveCommandAmbiguousError(
         'The ride save could not be classified. Retry with the same request ID.',
         classificationError ?? writeError,
@@ -394,19 +607,16 @@ export async function saveRideCommand(
     }
   }
 
-  if (!saved.tripId) return { ...saved, statsUpdated: true };
-  try {
-    await refreshTripStats(uid, saved.tripId);
-    return { ...saved, statsUpdated: true };
-  } catch (error) {
-    console.warn('[saveRideCommand] Ride saved; trip stats refresh failed:', error);
-    return { ...saved, statsUpdated: false };
-  }
+  // The ride and command marker are the authoritative save. Derived trip
+  // summaries are refreshed separately so their read/query latency cannot
+  // turn a committed ride into an ambiguous client outcome.
+  return { ...saved, statsUpdated: saved.tripId === null };
 }
 
 export async function saveTripCommand(
   uid: string,
   command: TripSaveCommand,
+  dependencies: SaveCommandDependencies = {},
 ): Promise<'created' | 'replayed'> {
   assertFirestorePathSegment(uid, 'authenticated user ID');
   assertFirestorePathSegment(command.requestId, 'trip request ID');
@@ -417,8 +627,9 @@ export async function saveTripCommand(
   const tripRef = adminDb.doc(`users/${uid}/trips/${command.requestId}`);
   const shareRef = command.shareId ? adminDb.doc(`sharedTrips/${command.shareId}`) : null;
 
-  const batch = adminDb.batch();
-  batch.create(tripRef, {
+  const documents: FirestoreCommitDocument[] = [{
+    path: tripRef.path,
+    fields: {
       name: command.name,
       startDate: command.startDate,
       endDate: command.endDate,
@@ -434,19 +645,25 @@ export async function saveTripCommand(
         favoriteAttraction: null,
       },
       notes: command.notes,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-  });
-  batch.create(commandRef, {
+    },
+    serverTimestampFields: ['createdAt', 'updatedAt'],
+  }, {
+    path: commandRef.path,
+    fields: {
       fingerprint: commandFingerprint,
       targetId: command.requestId,
-      createdAt: FieldValue.serverTimestamp(),
-  });
+      shareId: command.shareId,
+    },
+    serverTimestampFields: ['createdAt'],
+  }];
   if (shareRef) {
-    batch.create(shareRef, {
+    documents.push({
+      path: shareRef.path,
+      fields: {
         userId: uid,
         tripId: command.requestId,
-        updatedAt: FieldValue.serverTimestamp(),
+      },
+      serverTimestampFields: ['updatedAt'],
     });
   }
 
@@ -455,34 +672,53 @@ export async function saveTripCommand(
     .digest('hex')
     .slice(0, 12);
   try {
-    await commitWithDeadline(batch, commitHash, 'saveTripCommand');
+    await commitWithTelemetry(documents, commitHash, 'saveTripCommand', dependencies);
     return 'created';
   } catch (writeError) {
+    if (writeError instanceof SaveCommandConfigurationError) throw writeError;
     if (!isAlreadyExists(writeError)) {
       // Deadline, network error, or any non-ALREADY_EXISTS failure.
-      // commitWithDeadline already logged the failure event.
+      // The transport already logged a safe, transport-neutral failure event.
       throw new SaveCommandAmbiguousError(
         'The trip creation was not confirmed. Retry with the same request ID.',
         writeError,
       );
     }
     try {
-      const [commandSnapshot, tripSnapshot] = await Promise.all([
-        commandRef.get(),
-        tripRef.get(),
-      ]);
-      if (commandSnapshot.exists && tripSnapshot.exists) {
-        if (commandSnapshot.get('fingerprint') !== commandFingerprint
-            || commandSnapshot.get('targetId') !== command.requestId) {
+      const paths = [commandRef.path, tripRef.path, ...(shareRef ? [shareRef.path] : [])];
+      const readDocuments = dependencies.readDocuments ?? batchGetFirestoreDocuments;
+      const documents = await readDocuments(paths, transportDependencies(dependencies));
+      const commandFields = fields(documents.get(commandRef.path));
+      const tripFields = fields(documents.get(tripRef.path));
+      const shareFields = shareRef ? fields(documents.get(shareRef.path)) : null;
+      if (commandFields && tripFields) {
+        if (commandFields.fingerprint !== commandFingerprint
+            || commandFields.targetId !== command.requestId
+            || (commandFields.shareId ?? null) !== command.shareId) {
           throw new SaveCommandConflictError(
             'This request ID is already bound to a different trip payload.',
+          );
+        }
+        if (shareRef && (!shareFields
+            || shareFields.userId !== uid
+            || shareFields.tripId !== command.requestId)) {
+          throw new SaveCommandConflictError(
+            'This trip share ID is missing or bound to a different trip.',
           );
         }
         return 'replayed';
       }
       throw new SaveCommandConflictError('The trip creation ID is already in use.');
     } catch (classificationError) {
-      if (classificationError instanceof SaveCommandConflictError) throw classificationError;
+      if (classificationError instanceof SaveCommandConflictError
+          || classificationError instanceof SaveCommandConfigurationError) {
+        throw classificationError;
+      }
+      if (isConfigurationFailure(classificationError)) {
+        throw new SaveCommandConfigurationError(
+          'The save classification service is not configured correctly.',
+        );
+      }
       throw new SaveCommandAmbiguousError(
         'The trip creation could not be classified. Retry with the same request ID.',
         classificationError ?? writeError,
@@ -502,19 +738,42 @@ export async function getTripCommandStatus(
   uid: string,
   requestId: string,
   expectedFingerprint: string,
+  expectedShareId: string | null = null,
+  dependencies: SaveCommandDependencies = {},
 ): Promise<TripCommandStatus> {
   assertFirestorePathSegment(uid, 'authenticated user ID');
   assertFirestorePathSegment(requestId, 'trip request ID');
+  if (expectedShareId) assertFirestorePathSegment(expectedShareId, 'share ID');
   const commandRef = adminDb.doc(`users/${uid}/tripCreateCommands/${requestId}`);
   const tripRef = adminDb.doc(`users/${uid}/trips/${requestId}`);
-  const [commandSnapshot, tripSnapshot] = await adminDb.getAll(commandRef, tripRef);
+  const shareRef = expectedShareId ? adminDb.doc(`sharedTrips/${expectedShareId}`) : null;
+  const paths = [commandRef.path, tripRef.path, ...(shareRef ? [shareRef.path] : [])];
+  const readDocuments = dependencies.readDocuments ?? batchGetFirestoreDocuments;
+  let documents: Map<string, FirestoreReadDocument | null>;
+  try {
+    documents = await readDocuments(paths, transportDependencies(dependencies));
+  } catch (error) {
+    if (isConfigurationFailure(error)) {
+      throw new SaveCommandConfigurationError(
+        'The save status service is not configured correctly.',
+      );
+    }
+    throw error;
+  }
+  const commandFields = fields(documents.get(commandRef.path));
+  const tripFields = fields(documents.get(tripRef.path));
+  const shareFields = shareRef ? fields(documents.get(shareRef.path)) : null;
 
-  if (!commandSnapshot.exists && !tripSnapshot.exists) return 'not-found';
-  if (!commandSnapshot.exists) return 'target-only';
-  if (!tripSnapshot.exists) return 'command-only';
-  if (commandSnapshot.get('targetId') !== requestId
-      || commandSnapshot.get('fingerprint') !== expectedFingerprint) {
+  if (!commandFields && !tripFields) return shareFields ? 'payload-conflict' : 'not-found';
+  if (!commandFields) return 'target-only';
+  if (!tripFields) return 'command-only';
+  if (commandFields.targetId !== requestId
+      || commandFields.fingerprint !== expectedFingerprint
+      || (commandFields.shareId ?? null) !== expectedShareId) {
     return 'payload-conflict';
   }
+  if (shareRef && (!shareFields
+      || shareFields.userId !== uid
+      || shareFields.tripId !== requestId)) return 'payload-conflict';
   return 'committed';
 }

@@ -2,10 +2,16 @@ export const maxDuration = 20;
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, readBoundedJson, RequestError } from '@/lib/server/authenticated-json';
+import {
+  authenticateRequest,
+  createRequestDeadline,
+  readBoundedJson,
+  RequestError,
+} from '@/lib/server/authenticated-json';
 import {
   RideSaveCommand,
   SaveCommandAmbiguousError,
+  SaveCommandConfigurationError,
   SaveCommandConflictError,
   saveRideCommand,
 } from '@/lib/services/save-command-service';
@@ -67,12 +73,17 @@ function validate(command: RideSaveCommand): string | null {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const deadlineAt = createRequestDeadline();
   try {
-    const uid = await authenticateRequest(request);
-    const command = await readBoundedJson<RideSaveCommand>(request, MAX_BODY_BYTES);
+    const uid = await authenticateRequest(request, deadlineAt);
+    const command = await readBoundedJson<RideSaveCommand>(
+      request,
+      MAX_BODY_BYTES,
+      deadlineAt,
+    );
     const validationError = validate(command);
     if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
-    const saved = await saveRideCommand(uid, command);
+    const saved = await saveRideCommand(uid, command, { deadlineAt });
     return NextResponse.json({ id: command.requestId, ...saved });
   } catch (error) {
     if (error instanceof RequestError) {
@@ -85,6 +96,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json(
         { error: error.message, outcome: 'ambiguous', retryable: true },
         { status: 503 },
+      );
+    }
+    if (error instanceof SaveCommandConfigurationError) {
+      return NextResponse.json(
+        { error: 'Ride saving is not configured', retryable: false },
+        { status: 412 },
       );
     }
     if (error instanceof InvalidFirestorePathSegmentError) {

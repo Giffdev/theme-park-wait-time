@@ -71,7 +71,8 @@ service cloud.firestore {
         function leavesServerDerivedTripFieldsUntouched() {
           return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             'stats',
-            'statsGeneration'
+            'statsGeneration',
+            'statsUpdatedAt'
           ]);
         }
 
@@ -593,12 +594,39 @@ service cloud.firestore {
       }
     }
 
-    // ── SHARED TRIPS (public read, authenticated create) ──
+    // ── SHARED TRIPS (private owner index; public access is server-routed) ──
     match /sharedTrips/{shareId} {
-      allow read: if true; // Anyone with the link can read
-      allow create: if request.auth != null; // Authenticated users can create share entries
-      allow update, delete: if request.auth != null
-                            && resource.data.userId == request.auth.uid; // Only owner can modify/delete
+      function isSharedTripOwner() {
+        return request.auth != null && resource.data.userId == request.auth.uid;
+      }
+
+      function isValidSharedTripCreate() {
+        return request.auth != null
+               && request.resource.data.keys().hasAll(['userId', 'tripId', 'updatedAt'])
+               && request.resource.data.keys().hasOnly(['userId', 'tripId', 'updatedAt'])
+               && request.resource.data.userId == request.auth.uid
+               && request.resource.data.tripId is string
+               && request.resource.data.tripId.size() > 0
+               && request.resource.data.tripId.size() <= 128
+               && request.resource.data.updatedAt == request.time;
+      }
+
+      function leavesSharedIdentityAndSummaryUntouched() {
+        return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'userId',
+          'tripId',
+          'stats',
+          'statsGeneration',
+          'statsUpdatedAt',
+          'parkNames'
+        ]);
+      }
+
+      allow get: if isSharedTripOwner();
+      allow list: if false;
+      allow create: if isValidSharedTripCreate();
+      allow update: if isSharedTripOwner() && leavesSharedIdentityAndSummaryUntouched();
+      allow delete: if isSharedTripOwner();
     }
 
     // Wait-time reports used by the current park and unified-log UI.

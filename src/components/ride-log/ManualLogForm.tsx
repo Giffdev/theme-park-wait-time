@@ -300,7 +300,6 @@ export default function ManualLogForm({ onSuccess, onCancel }: ManualLogFormProp
       await createRideLog(user.uid, rideCommandData(command), command.tripId, {
         requestId: command.requestId,
         timeoutMs: RIDE_SAVE_TIMEOUT_MS,
-        waitForTripStats: true,
       });
       await finishCommittedSave();
     } catch (saveError) {
