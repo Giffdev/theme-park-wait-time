@@ -12,26 +12,22 @@
 
 | Name | Role | Charter | Status |
 |------|------|---------|--------|
-| Mikey | Lead / Architect | `.squad/agents/mikey/charter.md` | 🏗️ Active |
-| Mouth | Frontend Dev | `.squad/agents/mouth/charter.md` | ⚛️ Active |
-| Brand | UX Reviewer | `.squad/agents/brand/charter.md` | 🔍 Active |
-| Data | Backend Dev | `.squad/agents/data/charter.md` | 🔧 Active |
-| Andy | Firestore Reliability Engineer | `.squad/agents/andy/charter.md` | 🔧 Active |
-| Sloth | Save Reliability Specialist | `.squad/agents/sloth/charter.md` | 🔧 Active |
-| Rosalita | Browser Concurrency Specialist | `.squad/agents/rosalita/charter.md` | 🔧 Active |
-| Troy | Storage Migration Specialist | `.squad/agents/troy/charter.md` | 🔧 Active |
-| Irene | Command Lifecycle Specialist | `.squad/agents/irene/charter.md` | 🔧 Active |
-| Francis | Degraded Flow Specialist | `.squad/agents/francis/charter.md` | ⚛️ Active |
-| Chunk | Data Engineer | `.squad/agents/chunk/charter.md` | 📊 Active |
-| Stef | Tester | `.squad/agents/stef/charter.md` | 🧪 Active |
-| Scribe | Session Logger | `.squad/agents/scribe/charter.md` | 📋 Active |
-| Ralph | Work Monitor | — | 🔄 Active |
+| Lead | Lead / Architect | `.squad/agents/lead/charter.md` | Active |
+| Frontend | Frontend Dev | `.squad/agents/frontend/charter.md` | Active |
+| Backend | Backend Dev | `.squad/agents/backend/charter.md` | Active |
+| Tester | Tester / QA | `.squad/agents/tester/charter.md` | Active |
+| Reliability | Reliability Engineer | `.squad/agents/reliability/charter.md` | Active |
+| Scribe | Session Logger | `.squad/agents/scribe/charter.md` | Active |
+| Ralph | Work Monitor | `.squad/agents/ralph/charter.md` | Active |
+| Rai | RAI Reviewer | `.squad/agents/Rai/charter.md` | Active |
+| Fact Checker | Devil's Advocate & Verification Agent | `.squad/agents/fact-checker/charter.md` | Active |
 
 ## Project Context
 
 - **Project:** theme-park-wait-times
 - **User:** Devin Sinha
 - **Created:** 2026-04-29
+- **Roster recast:** 2026-08-19T09:55:20.065-07:00
 - **Stack:** React/Next.js, TypeScript, Firebase (Firestore, Auth, Cloud Functions), Vercel, Tailwind CSS
 - **Origin:** Migrating from GitHub Spark prototype (Giffdev/theme-park-wait-time) — had fake data
 - **Reference apps:** Devin's arkham-horror-tracker and unmatched apps (same Firebase + Vercel pattern)
