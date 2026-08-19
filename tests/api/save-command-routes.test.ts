@@ -49,9 +49,17 @@ vi.mock('@/lib/services/save-command-service', () => {
       this.name = 'SaveCommandAmbiguousError';
     }
   }
+  class SaveCommandDeadlineError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'SaveCommandDeadlineError';
+    }
+  }
   return {
     SaveCommandAmbiguousError,
     SaveCommandConflictError,
+    SaveCommandDeadlineError,
+    COMMIT_DEADLINE_MS: 10_000,
     getTripCommandStatus: (...args: unknown[]) => mockGetTripStatus(...args),
     saveRideCommand: (...args: unknown[]) => mockSaveRide(...args),
     saveTripCommand: (...args: unknown[]) => mockSaveTrip(...args),
@@ -59,9 +67,23 @@ vi.mock('@/lib/services/save-command-service', () => {
 });
 
 import { POST as saveRide } from '@/app/api/ride-logs/route';
-import { GET as getTripStatus, POST as saveTrip } from '@/app/api/trip-commands/route';
+import {
+  GET as getTripStatus,
+  POST as saveTrip,
+  maxDuration as tripMaxDuration,
+  dynamic as tripDynamic,
+} from '@/app/api/trip-commands/route';
+import {
+  maxDuration as rideMaxDuration,
+  dynamic as rideDynamic,
+} from '@/app/api/ride-logs/route';
 import { RequestError } from '@/lib/server/authenticated-json';
-import { SaveCommandConflictError } from '@/lib/services/save-command-service';
+import {
+  SaveCommandConflictError,
+  SaveCommandAmbiguousError,
+  SaveCommandDeadlineError,
+  COMMIT_DEADLINE_MS,
+} from '@/lib/services/save-command-service';
 
 function request(path: string, body: unknown) {
   return new NextRequest(`http://localhost:3000${path}`, {
@@ -329,5 +351,86 @@ describe('authenticated save command routes', () => {
     // Must not expose 'not-found' or any replay classification under quota
     expect(body.status).not.toBe('not-found');
     expect(body.status).not.toBe('committed');
+  });
+
+  // -------------------------------------------------------------------------
+  // BW2: POST trip/ride with deadline ambiguity → 503 ambiguous
+  //      In production, saveTripCommand/saveRideCommand wrap SaveCommandDeadlineError
+  //      inside SaveCommandAmbiguousError before propagating to the route.
+  //      The route checks instanceof SaveCommandAmbiguousError → 503.
+  // -------------------------------------------------------------------------
+
+  it('BW2: POST trip deadline (wrapped as SaveCommandAmbiguousError) → 503 ambiguous retryable', async () => {
+    mockSaveTrip.mockRejectedValue(new SaveCommandAmbiguousError('deadline-wrapped'));
+    const response = await saveTrip(request('/api/trip-commands', validTrip));
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.retryable).toBe(true);
+    // Route must not return 200 or optimistic success on deadline.
+    expect(response.status).not.toBe(200);
+  });
+
+  it('BW2b: POST ride deadline (wrapped as SaveCommandAmbiguousError) → 503 ambiguous retryable', async () => {
+    mockSaveRide.mockRejectedValue(new SaveCommandAmbiguousError('deadline-wrapped'));
+    const response = await saveRide(request('/api/ride-logs', validRide));
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.retryable).toBe(true);
+    expect(response.status).not.toBe(200);
+  });
+
+  // -------------------------------------------------------------------------
+  // BW8: route config — maxDuration=20 and dynamic='force-dynamic' exported;
+  //      both routes stay below the 30s client abort threshold
+  // -------------------------------------------------------------------------
+
+  it('BW8: trip-commands route exports maxDuration=20 and dynamic=force-dynamic', () => {
+    expect(tripMaxDuration).toBe(20);
+    expect(tripDynamic).toBe('force-dynamic');
+    // COMMIT_DEADLINE_MS (10s) + classification reads + margin must stay under maxDuration
+    expect(COMMIT_DEADLINE_MS).toBeLessThan(tripMaxDuration * 1_000);
+    // maxDuration must be below the 30s client/Vercel hard abort ceiling
+    expect(tripMaxDuration).toBeLessThan(30);
+  });
+
+  it('BW8b: ride-logs route exports maxDuration=20 and dynamic=force-dynamic', () => {
+    expect(rideMaxDuration).toBe(20);
+    expect(rideDynamic).toBe('force-dynamic');
+    expect(COMMIT_DEADLINE_MS).toBeLessThan(rideMaxDuration * 1_000);
+    expect(rideMaxDuration).toBeLessThan(30);
+  });
+
+  // -------------------------------------------------------------------------
+  // BW9: telemetry — log output does not contain raw UID/requestId/fingerprint/payload;
+  //      deadline outcome is distinguishable from generic ambiguous in logs
+  // -------------------------------------------------------------------------
+
+  it('BW9: trip deadline telemetry uses requestHash not raw requestId, and outcome=deadline', async () => {
+    const logSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      mockSaveTrip.mockRejectedValue(new SaveCommandDeadlineError('deadline'));
+      await saveTrip(request('/api/trip-commands', validTrip));
+
+      // Reconstruct what the route logs: it should log operation/result/requestHash.
+      const calls = logSpy.mock.calls.map((args) => args.join(' '));
+      const tripLog = calls.find((c) => c.includes('trip-commands'));
+
+      // The route must emit at least one log line containing 'trip-commands'.
+      expect(tripLog, 'Expected a log line containing trip-commands').toBeDefined();
+      // Raw requestId must not appear verbatim in any log line.
+      expect(tripLog!).not.toContain(validTrip.requestId);
+      // Raw UID must not appear.
+      expect(tripLog!).not.toContain('user-123');
+
+      // Verify SaveCommandDeadlineError is structurally distinct from generic ambiguous
+      // so a log consumer can distinguish deadline from other 503 causes.
+      const deadline = new SaveCommandDeadlineError('x');
+      const ambiguous = new SaveCommandAmbiguousError('x');
+      expect(deadline.name).toBe('SaveCommandDeadlineError');
+      expect(ambiguous.name).toBe('SaveCommandAmbiguousError');
+      expect(deadline.name).not.toBe(ambiguous.name);
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 });

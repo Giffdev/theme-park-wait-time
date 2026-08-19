@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp, type WriteBatch } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
 import { assertFirestorePathSegment } from '@/lib/server/firestore-path';
 import {
@@ -15,10 +15,121 @@ export class SaveCommandConflictError extends Error {
 }
 
 export class SaveCommandAmbiguousError extends Error {
-  constructor(message: string, readonly cause?: unknown) {
-    super(message);
+  declare readonly cause?: unknown;
+  constructor(message: string, cause?: unknown) {
+    super(message, cause !== undefined ? { cause } : undefined);
     this.name = 'SaveCommandAmbiguousError';
   }
+}
+
+export class SaveCommandDeadlineError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SaveCommandDeadlineError';
+  }
+}
+
+/** Milliseconds before an unresolved batch.commit is abandoned. */
+export const COMMIT_DEADLINE_MS = 10_000;
+
+/**
+ * Races batch.commit() against a deadline. Returns 'created' on success.
+ * Throws SaveCommandDeadlineError if the deadline fires first — the underlying
+ * commit promise is kept alive internally and its rejection is swallowed to
+ * prevent an unhandled rejection, but the caller receives ambiguous/deadline.
+ * Throws the raw commit error on any other failure so callers can classify it.
+ */
+async function commitWithDeadline(
+  batch: WriteBatch,
+  requestHash: string,
+  logPrefix: string,
+): Promise<void> {
+  const startedAt = performance.now();
+  console.info(`[${logPrefix}]`, JSON.stringify({
+    event: 'batch.commit.attempt',
+    requestHash,
+  }));
+
+  const commitPromise = batch.commit();
+
+  let deadlineHandle: ReturnType<typeof setTimeout> | undefined;
+  const deadlinePromise = new Promise<never>((_, reject) => {
+    deadlineHandle = setTimeout(() => reject(new SaveCommandDeadlineError(
+      'The server-side commit wait deadline was reached.',
+    )), COMMIT_DEADLINE_MS);
+  });
+
+  let result: 'committed' | 'deadline' | 'error' = 'error';
+  let thrownError: unknown;
+
+  try {
+    await Promise.race([commitPromise, deadlinePromise]);
+    result = 'committed';
+  } catch (error) {
+    thrownError = error;
+    result = error instanceof SaveCommandDeadlineError ? 'deadline' : 'error';
+  }
+
+  // Always clear the timer — safe to call on an already-fired timer (no-op).
+  clearTimeout(deadlineHandle);
+
+  const durationMs = Math.round(performance.now() - startedAt);
+
+  if (result === 'committed') {
+    console.info(`[${logPrefix}]`, JSON.stringify({
+      event: 'batch.commit.success',
+      outcome: 'created',
+      requestHash,
+      durationMs,
+    }));
+    // Suppress any late rejection from the resolved commit promise (e.g. stream
+    // teardown after acknowledgement) to prevent an unhandled rejection warning.
+    commitPromise.catch(() => {});
+    return;
+  }
+
+  const errorCode = thrownError instanceof SaveCommandDeadlineError
+    ? 'deadline'
+    : thrownError && typeof thrownError === 'object' && 'code' in thrownError
+      ? String((thrownError as { code: unknown }).code)
+      : thrownError instanceof Error ? thrownError.name : 'unknown';
+
+  console.info(`[${logPrefix}]`, JSON.stringify({
+    event: 'batch.commit.failure',
+    outcome: result === 'deadline' ? 'deadline' : isAlreadyExists(thrownError) ? 'already-exists' : 'ambiguous',
+    errorCode,
+    requestHash,
+    durationMs,
+  }));
+
+  if (result === 'deadline') {
+    // Attach background settlement observers BEFORE returning so late outcomes
+    // are logged. These fire only if Vercel keeps the process alive long enough.
+    // No raw UID, requestId, or payload is logged — only the outcome and error code.
+    commitPromise.then(
+      () => {
+        console.info(`[${logPrefix}]`, JSON.stringify({
+          event: 'batch.commit.late-success',
+          outcome: 'created-after-deadline',
+          requestHash,
+        }));
+      },
+      (lateError: unknown) => {
+        const lateCode = lateError && typeof lateError === 'object' && 'code' in lateError
+          ? String((lateError as { code: unknown }).code)
+          : lateError instanceof Error ? lateError.name : 'unknown';
+        console.info(`[${logPrefix}]`, JSON.stringify({
+          event: 'batch.commit.late-failure',
+          outcome: 'failed-after-deadline',
+          errorCode: lateCode,
+          requestHash,
+        }));
+      },
+    );
+    throw thrownError;
+  }
+
+  throw thrownError;
 }
 
 export interface RideSaveCommand {
@@ -239,9 +350,14 @@ export async function saveRideCommand(
       createdAt: FieldValue.serverTimestamp(),
   });
 
+  const rideCommitHash = createHash('sha256')
+    .update(command.requestId)
+    .digest('hex')
+    .slice(0, 12);
+
   let saved: { result: 'created' | 'replayed'; tripId: string | null };
   try {
-    await batch.commit();
+    await commitWithDeadline(batch, rideCommitHash, 'saveRideCommand');
     saved = { result: 'created', tripId: resolvedTripId };
   } catch (writeError) {
     if (!isAlreadyExists(writeError)) {
@@ -338,44 +454,18 @@ export async function saveTripCommand(
     .update(command.requestId)
     .digest('hex')
     .slice(0, 12);
-  const commitStartedAt = performance.now();
-  console.info('[saveTripCommand]', JSON.stringify({
-    event: 'batch.commit.attempt',
-    requestHash: commitHash,
-  }));
   try {
-    await batch.commit();
-    console.info('[saveTripCommand]', JSON.stringify({
-      event: 'batch.commit.success',
-      outcome: 'created',
-      requestHash: commitHash,
-      durationMs: Math.round(performance.now() - commitStartedAt),
-    }));
+    await commitWithDeadline(batch, commitHash, 'saveTripCommand');
     return 'created';
   } catch (writeError) {
-    const errorCode = writeError && typeof writeError === 'object' && 'code' in writeError
-      ? String((writeError as { code: unknown }).code)
-      : writeError instanceof Error ? writeError.name : 'unknown';
     if (!isAlreadyExists(writeError)) {
-      console.info('[saveTripCommand]', JSON.stringify({
-        event: 'batch.commit.failure',
-        outcome: 'ambiguous',
-        errorCode,
-        requestHash: commitHash,
-        durationMs: Math.round(performance.now() - commitStartedAt),
-      }));
+      // Deadline, network error, or any non-ALREADY_EXISTS failure.
+      // commitWithDeadline already logged the failure event.
       throw new SaveCommandAmbiguousError(
         'The trip creation was not confirmed. Retry with the same request ID.',
         writeError,
       );
     }
-    console.info('[saveTripCommand]', JSON.stringify({
-      event: 'batch.commit.failure',
-      outcome: 'already-exists',
-      errorCode,
-      requestHash: commitHash,
-      durationMs: Math.round(performance.now() - commitStartedAt),
-    }));
     try {
       const [commandSnapshot, tripSnapshot] = await Promise.all([
         commandRef.get(),

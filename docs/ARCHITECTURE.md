@@ -958,7 +958,13 @@ SHA-256 request hash plus authentication, parsing, Firestore write, and total
 timings — never payloads or user identifiers. `batch.commit` is additionally
 instrumented with structured attempt/success/failure events (including
 normalized error code and duration) so production logs can confirm whether
-commits land even after a client abort.
+commits land even after a client abort. A `batch.commit.failure` event with
+`outcome: "deadline"` means the server-side commit wait deadline was reached
+(the write may still land asynchronously in Firestore); it does NOT claim the
+write was lost. Background settlement observers attached before the deadline
+return logs a `batch.commit.late-success` (`outcome: "created-after-deadline"`)
+or `batch.commit.late-failure` event — these fire only if the Vercel function
+is still alive when the late settlement occurs.
 
 All four production ride writers (unified sheet, manual form, timer completion,
 and trip ride page) use the same complete-command service. The stored command

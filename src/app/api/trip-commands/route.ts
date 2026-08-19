@@ -1,3 +1,6 @@
+export const maxDuration = 20;
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { authenticateRequest, readBoundedJson, RequestError } from '@/lib/server/authenticated-json';

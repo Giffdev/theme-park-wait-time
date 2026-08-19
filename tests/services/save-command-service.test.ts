@@ -7,6 +7,17 @@ const { documents, queryResults, firestoreControl, mockAdminDb } = vi.hoisted(()
     readTime: { seconds: number; nanoseconds: number };
   };
   const queuedQueries: Array<QueryResult | Promise<QueryResult>> = [];
+
+  // Hang-commit state: when hangCommit=true batch.commit() never resolves until
+  // releasePendingCommit() is called, at which point it writes the docs and resolves.
+  // This lets fake-timer tests advance past COMMIT_DEADLINE_MS and then optionally
+  // let the late commit land to prove idempotent retry semantics.
+  type PendingCommit = {
+    creates: Array<{ ref: { path: string }; data: Record<string, unknown> }>;
+    resolve: () => void;
+    reject: (err: Error) => void;
+  };
+
   const control = {
     readAttempts: 0,
     queryAttempts: 0,
@@ -14,6 +25,10 @@ const { documents, queryResults, firestoreControl, mockAdminDb } = vi.hoisted(()
     batchCommits: 0,
     exhaustReads: false,
     nextBatchError: null as Error | null,
+    // When true the next batch.commit() hangs until releasePendingCommit is called.
+    hangCommit: false,
+    // Resolves (and writes) or rejects the hung commit promise. Set by batch.commit().
+    releasePendingCommit: null as null | ((err?: Error) => void),
   };
   const makeSnapshot = (path: string) => {
     const data = stored.get(path);
@@ -71,6 +86,20 @@ const { documents, queryResults, firestoreControl, mockAdminDb } = vi.hoisted(()
               const error = control.nextBatchError;
               control.nextBatchError = null;
               throw error;
+            }
+            if (control.hangCommit) {
+              // Return a promise that hangs until releasePendingCommit is called.
+              return new Promise<void>((resolve, reject) => {
+                control.releasePendingCommit = (err?: Error) => {
+                  control.releasePendingCommit = null;
+                  if (err) { reject(err); return; }
+                  // Write docs only if not already present (idempotent write guard).
+                  if (!creates.some(({ ref }) => stored.has(ref.path))) {
+                    for (const { ref, data } of creates) stored.set(ref.path, data);
+                  }
+                  resolve();
+                };
+              });
             }
             if (creates.some(({ ref }) => stored.has(ref.path))) {
               throw Object.assign(new Error('already exists'), { code: 6 });
@@ -141,6 +170,8 @@ vi.mock('firebase-admin/firestore', () => ({
 import {
   SaveCommandAmbiguousError,
   SaveCommandConflictError,
+  SaveCommandDeadlineError,
+  COMMIT_DEADLINE_MS,
   getTripCommandStatus,
   saveRideCommand,
   saveTripCommand,
@@ -186,6 +217,8 @@ describe('durable save commands', () => {
     firestoreControl.transactionAttempts = 0;
     firestoreControl.exhaustReads = false;
     firestoreControl.nextBatchError = null;
+    firestoreControl.hangCommit = false;
+    firestoreControl.releasePendingCommit = null;
   });
 
   it('classifies committed, not-found, and each structural trip state', async () => {
@@ -559,5 +592,413 @@ describe('durable save commands', () => {
     expect(documents.has('users/user-123/trips/trip-request-durable')).toBe(false);
     expect(documents.has('users/user-123/tripCreateCommands/trip-request-durable')).toBe(false);
   });
+
+  // =========================================================================
+  // Bounded-write regression tests (COMMIT_DEADLINE_MS = 10 s)
+  //
+  // Synchronization: saveTripCommand calls `await tripCommandFingerprint`
+  // (which uses real crypto.subtle.digest) before registering the deadline
+  // setTimeout inside commitWithDeadline. We must not advance fake time until
+  // batch.commit() has been entered and releasePendingCommit is installed,
+  // because only then is the deadline setTimeout registered.
+  //
+  // waitForCommitEntry(): condition-based drain — yields to the real event
+  // loop via vi.advanceTimersByTimeAsync(0) until firestoreControl
+  // .releasePendingCommit transitions from null to non-null. This is
+  // deterministic (exits as soon as the signal fires, never earlier) and
+  // does not depend on a fixed microtask count. The test's own 15 s wall-
+  // clock timeout is the only safety net needed.
+  //
+  // Each test that switches to fake timers restores real timers in afterEach
+  // via vi.useRealTimers(). The explicit finally blocks below provide
+  // belt-and-suspenders restoration even on mid-test throws.
+  // =========================================================================
+
+  // Condition-based drain: resolves deterministically when batch.commit()
+  // has been entered and the deadline setTimeout is registered.
+  async function waitForCommitEntry(): Promise<void> {
+    while (firestoreControl.releasePendingCommit === null) {
+      await vi.advanceTimersByTimeAsync(0);
+    }
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    firestoreControl.releasePendingCommit = null;
+    firestoreControl.hangCommit = false;
+  });
+
+  // BW1: never-resolving trip commit → SaveCommandAmbiguousError, no partial docs
+  it('BW1: never-resolving trip commit → SaveCommandAmbiguousError, no partial docs written', async () => {
+    vi.useFakeTimers();
+    firestoreControl.hangCommit = true;
+    let err: unknown;
+    try {
+      const savePromise = saveTripCommand('user-123', tripCommand).catch((e) => {
+        err = e;
+      });
+      // Flush the fingerprint microtask so commitWithDeadline's setTimeout is registered.
+      await waitForCommitEntry();
+      // Advance past the deadline; the timer fires, rejects commitWithDeadline,
+      // which propagates through saveTripCommand into savePromise.
+      await vi.advanceTimersByTimeAsync(COMMIT_DEADLINE_MS + 1);
+      // Drain any remaining microtasks from the async chain.
+      await savePromise;
+      // saveTripCommand wraps SaveCommandDeadlineError in SaveCommandAmbiguousError.
+      expect(err).toBeInstanceOf(SaveCommandAmbiguousError);
+      // The cause carries the deadline subtype so callers can distinguish it.
+      expect((err as SaveCommandAmbiguousError).cause).toBeInstanceOf(SaveCommandDeadlineError);
+      // No docs written — the batch was abandoned at the deadline.
+      expect(documents.size).toBe(0);
+    } finally {
+      firestoreControl.releasePendingCommit?.();
+      vi.useRealTimers();
+    }
+  }, 15_000);
+
+  // BW3: slow-but-under-deadline commit → 'created', docs present
+  it('BW3: commit that resolves before the deadline → created with docs written', async () => {
+    vi.useFakeTimers();
+    firestoreControl.hangCommit = true;
+    try {
+      const savePromise = saveTripCommand('user-123', tripCommand);
+      // Flush async setup.
+      await waitForCommitEntry();
+      // Advance to just under the deadline, then release the commit.
+      await vi.advanceTimersByTimeAsync(COMMIT_DEADLINE_MS - 1);
+      firestoreControl.releasePendingCommit?.();
+      // Settle the resolved commit and any remaining timers.
+      await vi.runAllTimersAsync();
+      await expect(savePromise).resolves.toBe('created');
+      expect(documents.has('users/user-123/trips/trip-request-durable')).toBe(true);
+      expect(documents.has('users/user-123/tripCreateCommands/trip-request-durable')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 15_000);
+
+  // BW4: deadline fires, late commit lands, same-ID retry → replayed; status → committed
+  it('BW4: late commit lands after deadline; same-ID retry → replayed; status reads committed', async () => {
+    vi.useFakeTimers();
+    firestoreControl.hangCommit = true;
+    try {
+      let firstErr: unknown;
+      const firstSave = saveTripCommand('user-123', tripCommand).catch((e) => { firstErr = e; });
+      await waitForCommitEntry();
+      await vi.advanceTimersByTimeAsync(COMMIT_DEADLINE_MS + 1);
+      await firstSave;
+      expect(firstErr).toBeInstanceOf(SaveCommandAmbiguousError);
+      expect((firstErr as SaveCommandAmbiguousError).cause).toBeInstanceOf(SaveCommandDeadlineError);
+
+      // Release the late commit while still under fake timers — docs land.
+      const releaseRef = firestoreControl.releasePendingCommit;
+      firestoreControl.hangCommit = false;
+      releaseRef?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(documents.has('users/user-123/trips/trip-request-durable')).toBe(true);
+      expect(documents.has('users/user-123/tripCreateCommands/trip-request-durable')).toBe(true);
+
+      // Same-ID retry → ALREADY_EXISTS → classification reads match → replayed.
+      // hangCommit=false: batch.commit() resolves synchronously, no need to
+      // wait for releasePendingCommit. Direct await resolves via microtasks.
+      const secondSave = saveTripCommand('user-123', tripCommand);
+      await expect(secondSave).resolves.toBe('replayed');
+    } finally {
+      firestoreControl.releasePendingCommit?.();
+      vi.useRealTimers();
+    }
+
+    // Status endpoint confirms committed — uses real crypto and real timers.
+    const fp = await tripCommandFingerprint(tripCommand);
+    expect(await getTripCommandStatus('user-123', 'trip-request-durable', fp)).toBe('committed');
+  }, 15_000);
+
+  // BW5: deadline fires, late commit lands, same-ID DIFFERENT payload → conflict
+  it('BW5: after deadline+late-write, same-ID different payload → SaveCommandConflictError', async () => {
+    vi.useFakeTimers();
+    firestoreControl.hangCommit = true;
+    try {
+      let firstErr: unknown;
+      const firstSave = saveTripCommand('user-123', tripCommand).catch((e) => { firstErr = e; });
+      await waitForCommitEntry();
+      await vi.advanceTimersByTimeAsync(COMMIT_DEADLINE_MS + 1);
+      await firstSave;
+      expect(firstErr).toBeInstanceOf(SaveCommandAmbiguousError);
+
+      // Release the late commit — docs land — while still under fake timers.
+      const releaseRef = firestoreControl.releasePendingCommit;
+      firestoreControl.hangCommit = false;
+      releaseRef?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Retry with conflicting payload — hangCommit=false: batch resolves
+      // synchronously with ALREADY_EXISTS, deadline timer is immediately cleared.
+      // Attach .catch BEFORE awaiting to prevent an unhandled rejection.
+      const secondSave = saveTripCommand('user-123', { ...tripCommand, name: 'Different Trip' });
+      const secondSettled = secondSave.catch((e: unknown) => e);
+      expect(await secondSettled).toBeInstanceOf(SaveCommandConflictError);
+    } finally {
+      firestoreControl.releasePendingCommit?.();
+      vi.useRealTimers();
+    }
+  }, 15_000);
+
+  // BW6: share-ID collision under deadline path → conflict, no user docs
+  it('BW6: sharedTrips collision after deadline-miss → conflict, no user docs written', async () => {
+    documents.set('sharedTrips/share-deadlinetest', { userId: 'other', tripId: 'other' });
+    const commandWithShare = { ...tripCommand, shareId: 'share-deadlinetest' };
+
+    vi.useFakeTimers();
+    firestoreControl.hangCommit = true;
+    let saveErr: unknown;
+    try {
+      const savePromise = saveTripCommand('user-123', commandWithShare).catch((e) => { saveErr = e; });
+      await waitForCommitEntry();
+      await vi.advanceTimersByTimeAsync(COMMIT_DEADLINE_MS + 1);
+      await savePromise;
+      expect(saveErr).toBeInstanceOf(SaveCommandAmbiguousError);
+    } finally {
+      // Drain the late-settlement microtask queue before restoring real timers
+      // so the background .then()/.catch() observer from commitWithDeadline
+      // can run synchronously and not race the next test's cleanup.
+      await Promise.resolve();
+      firestoreControl.releasePendingCommit?.();
+      await Promise.resolve();
+      firestoreControl.hangCommit = false;
+      vi.useRealTimers();
+    }
+
+    // With real timers and no hang: collision is synchronous → conflict.
+    await expect(saveTripCommand('user-123', commandWithShare))
+      .rejects.toBeInstanceOf(SaveCommandConflictError);
+    expect(documents.has('users/user-123/trips/trip-request-durable')).toBe(false);
+    expect(documents.has('users/user-123/tripCreateCommands/trip-request-durable')).toBe(false);
+  }, 15_000);
+
+  // BW7: ride commit hang → SaveCommandAmbiguousError; late-arriving same-ID retry → replayed
+  it('BW7: never-resolving ride commit → SaveCommandAmbiguousError; late-retry same ID → replayed', async () => {
+    vi.useFakeTimers();
+    firestoreControl.hangCommit = true;
+    try {
+      let rideErr: unknown;
+      const ridePromise = saveRideCommand('user-123', rideCommand).catch((e) => { rideErr = e; });
+      await waitForCommitEntry();
+      await vi.advanceTimersByTimeAsync(COMMIT_DEADLINE_MS + 1);
+      await ridePromise;
+      expect(rideErr).toBeInstanceOf(SaveCommandAmbiguousError);
+      expect((rideErr as SaveCommandAmbiguousError).cause).toBeInstanceOf(SaveCommandDeadlineError);
+
+      // Release the late commit while still under fake timers — docs land.
+      const releaseRef = firestoreControl.releasePendingCommit;
+      firestoreControl.hangCommit = false;
+      releaseRef?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(documents.has('users/user-123/rideLogs/ride-request-durable')).toBe(true);
+      expect(documents.has('users/user-123/rideLogCommands/ride-request-durable')).toBe(true);
+
+      // Same-ID retry → replayed (idempotent recovery). hangCommit=false:
+      // batch.commit() throws ALREADY_EXISTS synchronously; no commit entry wait needed.
+      const retryPromise = saveRideCommand('user-123', rideCommand);
+      await expect(retryPromise).resolves.toMatchObject({ result: 'replayed' });
+    } finally {
+      firestoreControl.releasePendingCommit?.();
+      vi.useRealTimers();
+    }
+  }, 15_000);
+
+  // =========================================================================
+  // BW8: timer is cleared after fast success — no pending timers remain
+  // =========================================================================
+  it('BW8: no deadline timer remains after a fast-succeeding commit', async () => {
+    vi.useFakeTimers();
+    try {
+      // Normal commit: hangCommit=false → batch resolves immediately.
+      await saveTripCommand('user-123', tripCommand);
+      // After successful return, the deadline setTimeout must have been cleared.
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 15_000);
+
+  // BW8b: timer is cleared after an early (non-deadline) batch error
+  it('BW8b: no deadline timer remains after an early non-deadline batch error', async () => {
+    vi.useFakeTimers();
+    firestoreControl.nextBatchError = Object.assign(new Error('RESOURCE_EXHAUSTED'), { code: 8 });
+    try {
+      await expect(saveTripCommand('user-123', tripCommand))
+        .rejects.toBeInstanceOf(SaveCommandAmbiguousError);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 15_000);
+
+  // =========================================================================
+  // BW9: deadline fires, late commit resolves → batch.commit.late-success logged;
+  //       log contains no raw UID, requestId, or payload.
+  // =========================================================================
+  it('BW9: deadline + late commit resolve → batch.commit.late-success logged without raw user context', async () => {
+    const logSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.useFakeTimers();
+    firestoreControl.hangCommit = true;
+    let releaseRef: null | ((err?: Error) => void) = null;
+    try {
+      const savePromise = saveTripCommand('user-123', tripCommand).catch(() => {});
+      await waitForCommitEntry();
+      await vi.advanceTimersByTimeAsync(COMMIT_DEADLINE_MS + 1);
+      await savePromise;
+      releaseRef = firestoreControl.releasePendingCommit;
+      firestoreControl.hangCommit = false;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    try {
+      // Release the hanging commit so the background .then() observer fires.
+      releaseRef?.();
+      // Drain the microtask queue so the .then() observer logs before assertions.
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Find the late-success log entry.
+      const lateSuccessCall = logSpy.mock.calls.find((args) => {
+        const json = typeof args[1] === 'string' ? args[1] : '';
+        return json.includes('late-success');
+      });
+      expect(lateSuccessCall, 'Expected batch.commit.late-success log to exist').toBeDefined();
+      const parsed = JSON.parse(lateSuccessCall![1] as string) as Record<string, unknown>;
+      expect(parsed.event).toBe('batch.commit.late-success');
+      expect(parsed.outcome).toBe('created-after-deadline');
+      // Privacy: no raw UID, no full requestId, no payload fields.
+      expect(parsed).not.toHaveProperty('uid');
+      expect(parsed).not.toHaveProperty('requestId');
+      expect(parsed).not.toHaveProperty('fingerprint');
+      expect(parsed).not.toHaveProperty('name');
+    } finally {
+      logSpy.mockRestore();
+    }
+  }, 15_000);
+
+  // =========================================================================
+  // BW10: deadline fires, late commit rejects → batch.commit.late-failure logged;
+  //        log contains normalized errorCode, no raw user context.
+  // =========================================================================
+  it('BW10: deadline + late commit rejection → batch.commit.late-failure logged with normalized errorCode', async () => {
+    const logSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.useFakeTimers();
+    firestoreControl.hangCommit = true;
+    let releaseRef: null | ((err?: Error) => void) = null;
+    try {
+      const savePromise = saveTripCommand('user-123', tripCommand).catch(() => {});
+      await waitForCommitEntry();
+      await vi.advanceTimersByTimeAsync(COMMIT_DEADLINE_MS + 1);
+      await savePromise;
+      releaseRef = firestoreControl.releasePendingCommit;
+      firestoreControl.hangCommit = false;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    try {
+      // Reject the late commit with a network error.
+      releaseRef?.(Object.assign(new Error('network'), { code: 14 }));
+      // Drain the microtask queue so the .catch() observer logs before assertions.
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const lateFailCall = logSpy.mock.calls.find((args) => {
+        const json = typeof args[1] === 'string' ? args[1] : '';
+        return json.includes('late-failure');
+      });
+      expect(lateFailCall, 'Expected batch.commit.late-failure log to exist').toBeDefined();
+      const parsed = JSON.parse(lateFailCall![1] as string) as Record<string, unknown>;
+      expect(parsed.event).toBe('batch.commit.late-failure');
+      expect(parsed.outcome).toBe('failed-after-deadline');
+      // errorCode must be a normalized string — not a raw Error object or stack.
+      expect(typeof parsed.errorCode).toBe('string');
+      // Privacy: no raw UID, requestId, or payload.
+      expect(parsed).not.toHaveProperty('uid');
+      expect(parsed).not.toHaveProperty('requestId');
+      expect(parsed).not.toHaveProperty('fingerprint');
+    } finally {
+      logSpy.mockRestore();
+    }
+  }, 15_000);
+
+  // =========================================================================
+  // BW11: commit wins when it resolves at the exact same tick as the deadline
+  //        (same-tick boundary / winner semantics).
+  // =========================================================================
+  it('BW11: commit resolving strictly before deadline is always treated as success', async () => {
+    // Releasing commit at COMMIT_DEADLINE_MS - 1 guarantees it fires before the
+    // deadline timer. Drain microtasks after release so commitPromise settles
+    // before vi.runAllTimersAsync advances the remaining 1ms and fires the timer.
+    vi.useFakeTimers();
+    firestoreControl.hangCommit = true;
+    try {
+      const savePromise = saveTripCommand('user-123', tripCommand);
+      // Attach catch immediately so no rejection is ever unhandled.
+      const settled = savePromise.catch((e: unknown) => e);
+      await waitForCommitEntry();
+      // Advance to 1 ms before deadline.
+      await vi.advanceTimersByTimeAsync(COMMIT_DEADLINE_MS - 1);
+      // Release the commit, then drain microtasks so Promise.race settles with
+      // the commit BEFORE vi.runAllTimersAsync fires the 1ms remaining timer.
+      // releasePendingCommit() sets it to null after calling resolve(), so
+      // we drain via Promise.resolve() instead of waitForCommitEntry().
+      firestoreControl.releasePendingCommit?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.runAllTimersAsync();
+      expect(await settled).toBe('created');
+      expect(documents.has('users/user-123/trips/trip-request-durable')).toBe(true);
+    } finally {
+      firestoreControl.releasePendingCommit?.();
+      vi.useRealTimers();
+    }
+  }, 15_000);
+
+  // =========================================================================
+  // BW12: deadline path attaches late-settlement observers before returning;
+  //        commitPromise has a handler so no rejection can go unhandled.
+  // =========================================================================
+  it('BW12: deadline path registers late-settlement handler; commitPromise is always handled', async () => {
+    // Verify that after the deadline fires and commitPromise later resolves,
+    // the background .then() observer runs (not an unhandled rejection).
+    // This is the structural proof — BW9/BW10 prove the log content.
+    vi.useFakeTimers();
+    firestoreControl.hangCommit = true;
+    let releaseRef: null | ((err?: Error) => void) = null;
+    try {
+      const savePromise = saveTripCommand('user-123', tripCommand).catch(() => {});
+      await waitForCommitEntry();
+      await vi.advanceTimersByTimeAsync(COMMIT_DEADLINE_MS + 1);
+      await savePromise;
+      releaseRef = firestoreControl.releasePendingCommit;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // Late commit resolves — background observer should run without throwing.
+    releaseRef?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    // If we reach here without Vitest reporting an unhandled rejection,
+    // the commitPromise handler is working correctly.
+    expect(documents.has('users/user-123/trips/trip-request-durable')).toBe(true);
+  }, 15_000);
 
 });
