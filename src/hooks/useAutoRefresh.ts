@@ -47,6 +47,8 @@ export interface UseAutoRefreshOptions {
 export interface UseAutoRefreshReturn {
   /** True while a background (visibility- or arrival-triggered) refresh is in progress */
   isBackgroundRefreshing: boolean;
+  /** True only while the one-time initial-arrival refresh is in progress */
+  isInitialRefreshing: boolean;
   /** Epoch ms of last successful refresh, or null if never refreshed */
   lastRefreshedAt: number | null;
   /**
@@ -81,10 +83,16 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
   const hasConcreteInitialDataAge = typeof initialDataAge === 'number';
 
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
+  const [isInitialRefreshing, setIsInitialRefreshing] = useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
   const [lastRefreshError, setLastRefreshError] = useState<unknown>(null);
 
-  const inFlightRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  const inFlightRef = useRef<{
+    key: string;
+    promise: Promise<void>;
+    background: boolean;
+    initial: boolean;
+  } | null>(null);
   const activeKeyRef = useRef(key);
   const enabledRef = useRef(enabled);
   const stalenessRef = useRef(staleness);
@@ -118,9 +126,20 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
   }, []);
 
   const doRefresh = useCallback(
-    (background: boolean, propagateError = false): Promise<void> => {
+    (background: boolean, propagateError = false, initial = false): Promise<void> => {
       const existing = inFlightRef.current;
       if (existing?.key === key) {
+        if (
+          background
+          && initial
+          && mountedRef.current
+          && activeKeyRef.current === key
+        ) {
+          existing.background = true;
+          existing.initial = true;
+          setIsBackgroundRefreshing(true);
+          setIsInitialRefreshing(true);
+        }
         return propagateError ? existing.promise : existing.promise.catch(() => {});
       }
       if (!enabled) return Promise.resolve();
@@ -128,11 +147,16 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
       const refreshKey = key;
       if (background && mountedRef.current && activeKeyRef.current === refreshKey) {
         setIsBackgroundRefreshing(true);
+        if (initial) {
+          setIsInitialRefreshing(true);
+        }
       }
 
       const flight = {
         key: refreshKey,
         promise: Promise.resolve(),
+        background,
+        initial,
       };
       flight.promise = (async () => {
         try {
@@ -153,10 +177,10 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
             scheduleNextPollRef.current?.(activePollInterval);
           }
         } catch (error) {
-          if (background) {
+          if (flight.background) {
             console.error(`[useAutoRefresh:${refreshKey}] refresh failed:`, error);
           }
-          if (background && mountedRef.current && activeKeyRef.current === refreshKey) {
+          if (flight.background && mountedRef.current && activeKeyRef.current === refreshKey) {
             setLastRefreshError(error);
           }
           throw error;
@@ -164,8 +188,11 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
           if (inFlightRef.current === flight) {
             inFlightRef.current = null;
           }
-          if (background && mountedRef.current && activeKeyRef.current === refreshKey) {
+          if (flight.background && mountedRef.current && activeKeyRef.current === refreshKey) {
             setIsBackgroundRefreshing(false);
+          }
+          if (flight.initial && mountedRef.current && activeKeyRef.current === refreshKey) {
+            setIsInitialRefreshing(false);
           }
         }
       })();
@@ -180,7 +207,7 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
   doRefreshRef.current = doRefresh;
 
   const maybeRefresh = useCallback(
-    (background: boolean): Promise<void> => {
+    (background: boolean, initial = false): Promise<void> => {
       if (!enabledRef.current) return Promise.resolve();
       if (pollingEnabledRef.current && !initialCheckDoneRef.current) {
         return Promise.resolve();
@@ -193,7 +220,7 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
       const last = lastRefreshedAtRef.current;
       const age = last === null ? Infinity : Date.now() - last;
       if (age >= stalenessRef.current) {
-        return doRefreshRef.current(background);
+        return doRefreshRef.current(background, false, initial);
       }
       return Promise.resolve();
     },
@@ -250,6 +277,7 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
     setLastRefreshedAt(null);
     setLastRefreshError(null);
     setIsBackgroundRefreshing(false);
+    setIsInitialRefreshing(false);
   }, [key]);
 
   // On initial arrival: if the data already on screen is stale, refresh once,
@@ -280,11 +308,11 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
 
     if (age >= staleness) {
       if (pollingEnabledRef.current) {
-        void maybeRefresh(true);
+        void maybeRefresh(true, true);
       } else {
         // Preserve the shared legacy arrival contract for non-poll callers:
         // rendered stale data refreshes even when mounted hidden or offline.
-        void doRefreshRef.current(true);
+        void doRefreshRef.current(true, false, true);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -362,5 +390,11 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
     await doRefresh(false, true);
   }, [doRefresh]);
 
-  return { isBackgroundRefreshing, lastRefreshedAt, lastRefreshError, forceRefresh };
+  return {
+    isBackgroundRefreshing,
+    isInitialRefreshing,
+    lastRefreshedAt,
+    lastRefreshError,
+    forceRefresh,
+  };
 }
