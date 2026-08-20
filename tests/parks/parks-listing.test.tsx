@@ -62,10 +62,21 @@ vi.mock('@/lib/parks/park-locations', () => ({
 
 // Mock ParkCard component
 vi.mock('@/components/ParkCard', () => ({
-  default: ({ name, destinationName }: { name: string; destinationName: string; slug?: string; shortestWait?: number | null; isOpen?: boolean; todayHours?: unknown; timezone?: string; localTime?: string; location?: string }) => (
+  default: ({
+    name,
+    destinationName,
+    averageWait,
+    activeRideCount,
+  }: {
+    name: string;
+    destinationName: string;
+    averageWait?: number | null;
+    activeRideCount?: number;
+  }) => (
     <div data-testid={`park-card-${name}`}>
       <span>{name}</span>
       <span>{destinationName}</span>
+      <span>{`Average: ${averageWait ?? 'none'}; active rides: ${activeRideCount ?? 0}`}</span>
     </div>
   ),
 }));
@@ -92,13 +103,73 @@ const mockParks = [
   { id: 'universal-studios', name: 'Universal Studios', slug: 'universal-studios', destinationName: 'Universal Orlando', destinationId: 'uni' },
 ];
 
+function waitTimesResponse(
+  fetchedAt = new Date().toISOString(),
+  waitMinutes = 20
+) {
+  return {
+    fetchedAt,
+    stale: false,
+    parkMeta: Object.fromEntries(
+      mockParks.map((park) => [
+        park.id,
+        {
+          stale: false,
+          source: 'upstream',
+          fetchedAt,
+          ageSeconds: 0,
+        },
+      ])
+    ),
+    parks: Object.fromEntries(
+      mockParks.map((park) => [
+        park.id,
+        [
+          {
+            attractionId: 'a1',
+            attractionName: 'Ride',
+            status: 'OPERATING',
+            waitMinutes,
+            fetchedAt,
+          },
+        ],
+      ])
+    ),
+  };
+}
+
+function staleWaitTimesByPark(fetchedAt: string) {
+  return mockParks.reduce<Record<string, Array<{
+    attractionId: string;
+    attractionName: string;
+    status: string;
+    waitMinutes: number;
+    fetchedAt: string;
+  }>>>((acc, park) => {
+    acc[park.id] = [
+      {
+        attractionId: 'a1',
+        attractionName: 'Ride',
+        status: 'OPERATING',
+        waitMinutes: 20,
+        fetchedAt,
+      },
+    ];
+    return acc;
+  }, {});
+}
+
 describe('Parks Listing Page', () => {
   let ParksPage: React.ComponentType;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     localStorageMock.clear();
-    mockFetch.mockResolvedValue({ ok: true, json: async () => [] });
+    mockFetch.mockImplementation((url: string) => Promise.resolve({
+      ok: true,
+      status: 200,
+      json: async () => url === '/api/wait-times' ? waitTimesResponse() : [],
+    }));
     const mod = await import('@/app/parks/page');
     ParksPage = mod.default;
   });
@@ -119,6 +190,22 @@ describe('Parks Listing Page', () => {
       render(<ParksPage />);
 
       expect(screen.getByText('Theme Parks')).toBeInTheDocument();
+    });
+
+    it('disables manual refresh until the supported park directory has loaded', async () => {
+      const user = userEvent.setup();
+      mockGetCollection.mockReturnValue(new Promise(() => {}));
+
+      render(<ParksPage />);
+
+      const refreshButton = screen.getByRole('button', { name: /Refresh Data/ });
+      expect(refreshButton).toBeDisabled();
+
+      await user.click(refreshButton);
+
+      expect(
+        mockFetch.mock.calls.filter(([url]) => url === '/api/wait-times')
+      ).toHaveLength(0);
     });
   });
 
@@ -213,18 +300,42 @@ describe('Parks Listing Page', () => {
       await waitFor(() => {
         expect(screen.getByText('Refresh Data')).toBeInTheDocument();
       });
+      await waitFor(() => {
+        const initialWaitReads = mockGetCollection.mock.calls.filter(
+          (call) => typeof call[0] === 'string' && call[0].startsWith('waitTimes/')
+        );
+        expect(initialWaitReads).toHaveLength(mockParks.length);
+      });
+      const waitReadsBeforeRefresh = mockGetCollection.mock.calls.filter(
+        (call) => typeof call[0] === 'string' && call[0].startsWith('waitTimes/')
+      ).length;
 
       await user.click(screen.getByText('Refresh Data'));
 
       expect(mockFetch).toHaveBeenCalledWith('/api/wait-times', {
-        cache: 'no-store',
         signal: expect.any(AbortSignal),
       });
+      await waitFor(() => {
+        expect(screen.getByText('Refresh Data')).toBeInTheDocument();
+      });
+      const waitReadsAfterRefresh = mockGetCollection.mock.calls.filter(
+        (call) => typeof call[0] === 'string' && call[0].startsWith('waitTimes/')
+      ).length;
+      expect(waitReadsAfterRefresh).toBe(waitReadsBeforeRefresh);
+      expect(screen.getAllByText('Average: 20; active rides: 1')).toHaveLength(mockParks.length);
     });
 
     it('shows "Refreshing..." text while refresh is in progress', async () => {
       const user = userEvent.setup();
-      mockFetch.mockReturnValue(new Promise(() => {}));
+      let resolveRefresh!: (response: unknown) => void;
+      mockFetch.mockImplementation((url: string) => {
+        if (url !== '/api/wait-times') {
+          return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+        }
+        return new Promise((resolve) => {
+          resolveRefresh = resolve;
+        });
+      });
 
       render(<ParksPage />);
 
@@ -235,12 +346,64 @@ describe('Parks Listing Page', () => {
       await user.click(screen.getByText('Refresh Data'));
 
       expect(screen.getByText('Refreshing...')).toBeInTheDocument();
+
+      await act(async () => {
+        resolveRefresh({
+          ok: true,
+          status: 200,
+          json: async () => waitTimesResponse(new Date().toISOString(), 35),
+        });
+      });
+    });
+
+    it('counts provider failures only for supported parks rendered by the listing', async () => {
+      const user = userEvent.setup();
+      const providerResponse = waitTimesResponse();
+      delete providerResponse.parkMeta['magic-kingdom'];
+      providerResponse.parks['magic-kingdom'] = [];
+      providerResponse.parks['unsupported-catalog-park'] = [];
+      const responseWithErrors = {
+        ...providerResponse,
+        errors: {
+          'magic-kingdom': 'Wait-time provider and persistent cache are unavailable.',
+          'unsupported-catalog-park': 'Park is not present in the supported park registry.',
+        },
+      };
+      mockFetch.mockImplementation((url: string) => Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => url === '/api/wait-times' ? responseWithErrors : [],
+      }));
+
+      render(<ParksPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
+      });
+      await user.click(screen.getByRole('button', { name: /Refresh Data/ }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('status')).toHaveTextContent(
+          'Live wait times are unavailable for 1 parks'
+        );
+      });
+      expect(screen.getByRole('status')).not.toHaveTextContent('2 parks');
     });
   });
 
   describe('initial-arrival refresh', () => {
     it('automatically refreshes the wait-time feed on arrival when the cached snapshot is stale', async () => {
       const staleFetchedAt = new Date(Date.now() - 15 * 60 * 1000).toISOString(); // 15 min old — past the 10 min threshold
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/wait-times') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => waitTimesResponse(new Date().toISOString(), 35),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => [] });
+      });
       mockGetCollection.mockImplementation((collectionPath: string) => {
         if (collectionPath === 'parks') return Promise.resolve(mockParks);
         if (typeof collectionPath === 'string' && collectionPath.startsWith('waitTimes/')) {
@@ -257,14 +420,21 @@ describe('Parks Listing Page', () => {
         expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
       });
 
-      // A background refresh should fire automatically on arrival (without a
-      // manual click), re-querying the wait-times collections a second time —
-      // i.e. more than the single initial-load round (3 parks × 1 round).
       await waitFor(() => {
-        const waitTimesCalls = mockGetCollection.mock.calls.filter(
-          (call) => typeof call[0] === 'string' && call[0].startsWith('waitTimes/')
-        ).length;
-        expect(waitTimesCalls).toBeGreaterThan(mockParks.length);
+        expect(mockFetch).toHaveBeenCalledWith('/api/wait-times', {
+          signal: expect.any(AbortSignal),
+        });
+      });
+
+      // The provider response is applied directly; stale Firestore data is
+      // not reread and allowed to overwrite the fresher server response.
+      const waitTimesCalls = mockGetCollection.mock.calls.filter(
+        (call) => typeof call[0] === 'string' && call[0].startsWith('waitTimes/')
+      ).length;
+      expect(waitTimesCalls).toBe(mockParks.length);
+      expect(screen.getAllByText('Oldest wait data updated just now')).toHaveLength(2);
+      await waitFor(() => {
+        expect(screen.getAllByText('Average: 35; active rides: 1')).toHaveLength(mockParks.length);
       });
     });
 
@@ -323,6 +493,63 @@ describe('Parks Listing Page', () => {
       expect(await screen.findByText('Live wait times are temporarily unavailable')).toBeInTheDocument();
       expect(screen.getByText(/Park hours and directory links still work/i)).toBeInTheDocument();
       expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
+    });
+
+    it('keeps the last-known cards visible after a failed provider refresh and recovers on the next success', async () => {
+      const staleFetchedAt = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      let waitTimesRefreshCount = 0;
+
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/park-hours') {
+          return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+        }
+        if (url !== '/api/wait-times') {
+          return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+        }
+
+        waitTimesRefreshCount += 1;
+        if (waitTimesRefreshCount === 1) {
+          return Promise.resolve({
+            ok: false,
+            status: 503,
+            json: async () => ({ message: 'temporarily unavailable' }),
+          });
+        }
+
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => waitTimesResponse(),
+        });
+      });
+
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') return Promise.resolve(mockParks);
+        if (typeof collectionPath === 'string' && collectionPath.startsWith('waitTimes/')) {
+          return Promise.resolve(staleWaitTimesByPark(staleFetchedAt)[collectionPath.split('/')[1]]);
+        }
+        return Promise.resolve([]);
+      });
+
+      const user = userEvent.setup();
+      render(<ParksPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
+      });
+
+      expect(screen.getAllByText('Oldest wait data updated 15 min ago')).toHaveLength(2);
+      expect(await screen.findByText('Background refresh failed — showing the last known data.')).toBeInTheDocument();
+
+      await user.click(screen.getByText('Refresh Data'));
+
+      await waitFor(() => {
+        expect(screen.queryByText('Background refresh failed — showing the last known data.')).not.toBeInTheDocument();
+      });
+      expect(screen.getAllByText('Oldest wait data updated just now')).toHaveLength(2);
+      expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
+      expect(screen.getByText('EPCOT')).toBeInTheDocument();
+      expect(screen.getByText('Universal Studios')).toBeInTheDocument();
     });
   });
 });

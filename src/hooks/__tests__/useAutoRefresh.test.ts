@@ -110,6 +110,33 @@ describe('useAutoRefresh', () => {
     expect(onRefresh).not.toHaveBeenCalled();
   });
 
+  it('anchors staleness to a source timestamp returned by a cached refresh', async () => {
+    const sourceTimestamp = Date.now() - 3 * 60 * 1000;
+    const onRefresh = vi.fn().mockResolvedValue({ refreshedAt: sourceTimestamp });
+
+    const { result } = renderHook(() =>
+      useAutoRefresh({
+        key: 'source-timestamp',
+        staleness: 2 * 60 * 1000,
+        onRefresh,
+        enabled: true,
+      })
+    );
+
+    await act(async () => {
+      await result.current.forceRefresh();
+    });
+
+    expect(result.current.lastRefreshedAt).toBe(sourceTimestamp);
+    onRefresh.mockClear();
+
+    await act(async () => {
+      simulateVisible();
+    });
+
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
   it('does NOT call onRefresh when enabled=false', async () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined);
 
