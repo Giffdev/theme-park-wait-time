@@ -1,24 +1,16 @@
 /**
- * Contract: the all-parks (no-parkId) branch of GET /api/wait-times must be
- * able to engage CDN caching, and must distinguish a *static catalog
- * mismatch* from a *transient failure* when deciding whether it can.
+ * Contract: the all-parks (no-parkId) branch of GET /api/wait-times uses the
+ * canonical static registry as its provider-refresh boundary. A quota-failed
+ * Firestore catalog observation must remain visible in logs without blocking
+ * provider-backed data or becoming a top-level 503.
  *
- * Production evidence: the Firestore `parks` collection contains 57
- * documents that park-registry.ts does not support (parks seeded before the
- * registry existed / retired upstream entities). Every one of them was
- * folded into the response's `errors` map, and any entry in `errors` forced
- * `Cache-Control: no-store`. Because those 57 documents are always present,
- * the all-parks response was *permanently* uncacheable: the CDN coalescing
- * this route was given cache headers for could never engage even once, and
- * the parks listing paid the full 11–12.7s fan-out on every request.
+ * Firestore remains a bounded catastrophic fallback if the static registry
+ * is empty. That fallback still filters unknown documents, reports catalog
+ * mismatches honestly, and fails explicitly if neither source can produce a
+ * supported provider id.
  *
- * A registry mismatch cannot resolve itself between two requests seconds
- * apart, so sharing that response at the edge for a few seconds is safe. A
- * transient failure (upstream down, deadline elapsed) can resolve on the
- * very next request and must never be pinned at the edge.
- *
- * Both conditions stay fully visible in the JSON body either way — degraded
- * caching must not buy honesty-in-the-response as a trade.
+ * Cache-control still distinguishes static fallback mismatches from transient
+ * per-park provider failures.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
@@ -27,17 +19,28 @@ const mockUpdateForecastAggregates = vi.hoisted(() => vi.fn().mockResolvedValue(
 const mockBatchSet = vi.fn();
 const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
 const mockBatch = { set: mockBatchSet, commit: mockBatchCommit };
-const mockGet = vi.hoisted(() => vi.fn());
+const mockConfiguredGet = vi.hoisted(() => vi.fn());
+const mockDataGet = vi.hoisted(() => vi.fn());
+const mockRegistryParkIds = vi.hoisted(() => ({ current: [] as string[] }));
+
+vi.mock('@/lib/parks/park-registry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/parks/park-registry')>();
+  return {
+    ...actual,
+    getAllParks: () =>
+      mockRegistryParkIds.current.map((id) => actual.getParkById(id)!),
+  };
+});
 
 vi.mock('@/lib/firebase/admin', () => ({
   adminApp: { name: 'mock-app' },
   adminDb: {
     batch: () => mockBatch,
-    collection: () => {
+    collection: (collectionName: string) => {
       const mock: Record<string, unknown> = {};
       mock.doc = vi.fn().mockReturnValue(mock);
       mock.collection = vi.fn().mockReturnValue(mock);
-      mock.get = mockGet;
+      mock.get = collectionName === 'parks' ? mockConfiguredGet : mockDataGet;
       mock.id = 'mock-doc';
       return mock;
     },
@@ -101,25 +104,48 @@ function liveResponseFor(url: string) {
 describe('GET /api/wait-times — all-parks cache-control', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGet.mockReset();
+    mockConfiguredGet.mockReset();
+    mockDataGet.mockReset();
     mockFetch.mockReset();
+    mockRegistryParkIds.current = [];
+    mockConfiguredGet.mockResolvedValue(catalogDocs([]));
+    mockDataGet.mockResolvedValue({ docs: [] });
     mockUpdateForecastAggregates.mockResolvedValue(undefined);
   });
 
-  it('advertises a CDN-cacheable window when every supported park is fresh', async () => {
-    mockGet.mockResolvedValue(catalogDocs([MAGIC_KINGDOM_ID, EPCOT_ID]));
+  it('returns provider data when the Firestore configured-list observation rejects with quota code 8', async () => {
+    const quotaError = Object.assign(new Error('Quota exceeded.'), { code: 8 });
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockRegistryParkIds.current = [MAGIC_KINGDOM_ID, EPCOT_ID];
+    mockConfiguredGet.mockRejectedValue(quotaError);
     mockFetch.mockImplementation(async (url: string) => liveResponseFor(url));
 
     const response = await GET(request());
+    const data = await response.json();
     const cacheControl = response.headers.get('cache-control') ?? '';
 
     expect(response.status).toBe(200);
+    expect(data.parks[MAGIC_KINGDOM_ID]).toEqual([
+      expect.objectContaining({ attractionId: `${MAGIC_KINGDOM_ID}-attraction` }),
+    ]);
+    expect(data.parks[EPCOT_ID]).toEqual([
+      expect.objectContaining({ attractionId: `${EPCOT_ID}-attraction` }),
+    ]);
+    expect(data.parkMeta[MAGIC_KINGDOM_ID]).toEqual(
+      expect.objectContaining({ source: 'upstream', stale: false })
+    );
+    await vi.waitFor(() => expect(mockConfiguredGet).toHaveBeenCalledOnce());
+    expect(errorLog).toHaveBeenCalledWith(
+      'Wait-time configured park catalog read failed:',
+      quotaError
+    );
     expect(cacheControl).toMatch(/s-maxage=30\b/);
     expect(cacheControl).not.toMatch(/no-store/);
+    errorLog.mockRestore();
   });
 
-  it('still allows a degraded CDN window when the only errors are registry/catalog mismatches', async () => {
-    mockGet.mockResolvedValue(
+  it('filters unsupported Firestore-only documents in the empty-registry fallback', async () => {
+    mockConfiguredGet.mockResolvedValue(
       catalogDocs([MAGIC_KINGDOM_ID, EPCOT_ID, ...UNREGISTERED_PARK_IDS])
     );
     mockFetch.mockImplementation(async (url: string) => liveResponseFor(url));
@@ -142,14 +168,12 @@ describe('GET /api/wait-times — all-parks cache-control', () => {
     expect(cacheControl).not.toMatch(/no-store/);
   });
 
-  it('forces no-store when a supported park fails transiently, even alongside catalog mismatches', async () => {
+  it('preserves successful registry parks when another supported park fails transiently', async () => {
     // Distinct park ids per test: refresh.ts keeps a module-level in-memory
     // last-known-good cache per park, so reusing a park that already
     // succeeded earlier in this file would degrade to a stale success
     // instead of the transient failure under test.
-    mockGet.mockResolvedValue(
-      catalogDocs([HOLLYWOOD_STUDIOS_ID, ANIMAL_KINGDOM_ID, ...UNREGISTERED_PARK_IDS])
-    );
+    mockRegistryParkIds.current = [HOLLYWOOD_STUDIOS_ID, ANIMAL_KINGDOM_ID];
     mockFetch.mockImplementation(async (url: string) => {
       if (url.includes(ANIMAL_KINGDOM_ID)) {
         return { ok: false, status: 503, statusText: 'Service Unavailable' };
@@ -162,18 +186,25 @@ describe('GET /api/wait-times — all-parks cache-control', () => {
     const cacheControl = response.headers.get('cache-control') ?? '';
 
     expect(response.status).toBe(200);
+    expect(data.parks[HOLLYWOOD_STUDIOS_ID]).toEqual([
+      expect.objectContaining({ attractionId: `${HOLLYWOOD_STUDIOS_ID}-attraction` }),
+    ]);
+    expect(data.parkMeta[HOLLYWOOD_STUDIOS_ID]).toEqual(
+      expect.objectContaining({ source: 'upstream' })
+    );
     expect(data.errors[ANIMAL_KINGDOM_ID]).toBeDefined();
     expect(data.errors[ANIMAL_KINGDOM_ID]).not.toBe(CATALOG_MISMATCH_MESSAGE);
-    // Catalog mismatches remain reported alongside the transient failure.
+    // Firestore-only documents are not provider targets on the registry path.
     for (const parkId of UNREGISTERED_PARK_IDS) {
-      expect(data.errors[parkId]).toBe(CATALOG_MISMATCH_MESSAGE);
+      expect(data.parks[parkId]).toBeUndefined();
+      expect(data.errors[parkId]).toBeUndefined();
     }
     expect(cacheControl).toMatch(/no-store/);
     expect(cacheControl).not.toMatch(/s-maxage/);
   });
 
   it('keeps the all-failed case an explicit, uncacheable 502', async () => {
-    mockGet.mockResolvedValue(catalogDocs([UNIVERSAL_STUDIOS_FLORIDA_ID, VOLCANO_BAY_ID]));
+    mockRegistryParkIds.current = [UNIVERSAL_STUDIOS_FLORIDA_ID, VOLCANO_BAY_ID];
     mockFetch.mockResolvedValue({ ok: false, status: 500, statusText: 'Internal Server Error' });
 
     const response = await GET(request());
@@ -181,5 +212,17 @@ describe('GET /api/wait-times — all-parks cache-control', () => {
 
     expect(response.status).toBe(502);
     expect(cacheControl).toMatch(/no-store/);
+  });
+
+  it('returns an explicit 503 when neither registry nor Firestore can supply a supported id', async () => {
+    mockConfiguredGet.mockResolvedValue(catalogDocs(UNREGISTERED_PARK_IDS));
+
+    const response = await GET(request());
+    const data = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(data).toEqual({ error: 'Configured park list is temporarily unavailable.' });
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(response.headers.get('cache-control')).toMatch(/no-store/);
   });
 });

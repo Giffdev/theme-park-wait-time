@@ -49,6 +49,8 @@ export interface UseAutoRefreshReturn {
   isBackgroundRefreshing: boolean;
   /** True only while the one-time initial-arrival refresh is in progress */
   isInitialRefreshing: boolean;
+  /** True while visibility and connectivity allow an automatic refresh to start */
+  isAutoRefreshRunnable: boolean;
   /** Epoch ms of last successful refresh, or null if never refreshed */
   lastRefreshedAt: number | null;
   /**
@@ -60,6 +62,13 @@ export interface UseAutoRefreshReturn {
   lastRefreshError: unknown;
   /** Manually trigger a refresh; rejects on failure and resets staleness on success. */
   forceRefresh: () => Promise<void>;
+}
+
+function isBrowserRefreshRunnable(): boolean {
+  const isVisible =
+    typeof document === 'undefined' || document.visibilityState !== 'hidden';
+  const isOnline = typeof navigator === 'undefined' || navigator.onLine;
+  return isVisible && isOnline;
 }
 
 /**
@@ -84,6 +93,9 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
 
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
   const [isInitialRefreshing, setIsInitialRefreshing] = useState(false);
+  const [isAutoRefreshRunnable, setIsAutoRefreshRunnable] = useState(
+    () => enabled && isBrowserRefreshRunnable()
+  );
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
   const [lastRefreshError, setLastRefreshError] = useState<unknown>(null);
 
@@ -319,25 +331,41 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
   }, [enabled, key, staleness, maybeRefresh, initialDataAge]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      setIsAutoRefreshRunnable(false);
+      return;
+    }
+
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      setIsAutoRefreshRunnable(enabled);
+      return;
+    }
 
     onlineRef.current = typeof navigator === 'undefined' ? true : navigator.onLine;
+    const syncRefreshAvailability = () => {
+      setIsAutoRefreshRunnable(enabled && isBrowserRefreshRunnable());
+    };
+    syncRefreshAvailability();
 
     function handleOnline() {
       onlineRef.current = true;
+      syncRefreshAvailability();
       void maybeRefresh(true);
     }
 
     function handleOffline() {
       onlineRef.current = false;
+      syncRefreshAvailability();
     }
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    document.addEventListener('visibilitychange', syncRefreshAvailability);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      document.removeEventListener('visibilitychange', syncRefreshAvailability);
     };
   }, [enabled, key, maybeRefresh]);
 
@@ -393,6 +421,7 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
   return {
     isBackgroundRefreshing,
     isInitialRefreshing,
+    isAutoRefreshRunnable,
     lastRefreshedAt,
     lastRefreshError,
     forceRefresh,
