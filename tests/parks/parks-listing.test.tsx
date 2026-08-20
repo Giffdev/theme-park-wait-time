@@ -438,6 +438,156 @@ describe('Parks Listing Page', () => {
       });
     });
 
+    it('hydrates an empty California Adventure cache from the provider even when other park data is fresh', async () => {
+      const californiaAdventureId = '832fcd51-ea19-4e77-85c7-75d5843b127c';
+      const magicKingdomId = '75ea578a-adc8-4116-a54d-dccb60765ef9';
+      const californiaAdventure = {
+        id: californiaAdventureId,
+        name: 'Disney California Adventure',
+        slug: 'disney-california-adventure',
+        destinationName: 'Disneyland Resort',
+        destinationId: 'bfc89fd6-314d-44b4-b89e-df1a89cf991e',
+      };
+      const magicKingdom = {
+        id: magicKingdomId,
+        name: 'Magic Kingdom',
+        slug: 'magic-kingdom',
+        destinationName: 'Walt Disney World',
+        destinationId: 'e957da41-3552-4cf6-b636-5babc5cbc4e5',
+      };
+      const cachedAt = new Date(Date.now() - 30 * 1000).toISOString();
+      const providerFetchedAt = new Date().toISOString();
+
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') {
+          return Promise.resolve([californiaAdventure, magicKingdom]);
+        }
+        if (collectionPath === `waitTimes/${californiaAdventureId}/current`) {
+          return Promise.resolve([]);
+        }
+        if (collectionPath === `waitTimes/${magicKingdomId}/current`) {
+          return Promise.resolve([
+            {
+              attractionId: 'magic-ride',
+              attractionName: 'Magic Ride',
+              status: 'OPERATING',
+              waitMinutes: 20,
+              fetchedAt: cachedAt,
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+      mockFetch.mockImplementation((url: string) => Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => url === '/api/wait-times'
+          ? {
+              fetchedAt: providerFetchedAt,
+              stale: false,
+              parkMeta: {
+                [californiaAdventureId]: {
+                  stale: false,
+                  source: 'upstream',
+                  fetchedAt: providerFetchedAt,
+                  ageSeconds: 0,
+                },
+                [magicKingdomId]: {
+                  stale: false,
+                  source: 'upstream',
+                  fetchedAt: providerFetchedAt,
+                  ageSeconds: 0,
+                },
+              },
+              parks: {
+                [californiaAdventureId]: [
+                  {
+                    attractionId: 'radiator-springs-racers',
+                    attractionName: 'Radiator Springs Racers',
+                    status: 'OPERATING',
+                    waitMinutes: 45,
+                    fetchedAt: providerFetchedAt,
+                  },
+                ],
+                [magicKingdomId]: [
+                  {
+                    attractionId: 'magic-ride',
+                    attractionName: 'Magic Ride',
+                    status: 'OPERATING',
+                    waitMinutes: 20,
+                    fetchedAt: providerFetchedAt,
+                  },
+                ],
+              },
+            }
+          : [],
+      }));
+
+      render(<ParksPage />);
+
+      expect(await screen.findByText('Disney California Adventure')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith('/api/wait-times', {
+          signal: expect.any(AbortSignal),
+        });
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId('park-card-Disney California Adventure')).toHaveTextContent(
+          'Average: 45; active rides: 1'
+        );
+      });
+    });
+
+    it('keeps California Adventure unavailable when the provider also has no usable waits', async () => {
+      const californiaAdventureId = '832fcd51-ea19-4e77-85c7-75d5843b127c';
+      const californiaAdventure = {
+        id: californiaAdventureId,
+        name: 'Disney California Adventure',
+        slug: 'disney-california-adventure',
+        destinationName: 'Disneyland Resort',
+        destinationId: 'bfc89fd6-314d-44b4-b89e-df1a89cf991e',
+      };
+      const providerFetchedAt = new Date().toISOString();
+
+      mockGetCollection.mockImplementation((collectionPath: string) => {
+        if (collectionPath === 'parks') return Promise.resolve([californiaAdventure]);
+        if (collectionPath === `waitTimes/${californiaAdventureId}/current`) {
+          return Promise.resolve([]);
+        }
+        return Promise.resolve([]);
+      });
+      mockFetch.mockImplementation((url: string) => Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => url === '/api/wait-times'
+          ? {
+              fetchedAt: providerFetchedAt,
+              stale: false,
+              parkMeta: {
+                [californiaAdventureId]: {
+                  stale: false,
+                  source: 'upstream',
+                  fetchedAt: providerFetchedAt,
+                  ageSeconds: 0,
+                },
+              },
+              parks: { [californiaAdventureId]: [] },
+            }
+          : [],
+      }));
+
+      render(<ParksPage />);
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith('/api/wait-times', {
+          signal: expect.any(AbortSignal),
+        });
+      });
+      expect(screen.getByTestId('park-card-Disney California Adventure')).toHaveTextContent(
+        'Average: none; active rides: 0'
+      );
+    });
+
     it('does not auto-refresh on arrival when the cached snapshot is already fresh', async () => {
       const freshFetchedAt = new Date(Date.now() - 30 * 1000).toISOString(); // 30s old
       mockGetCollection.mockImplementation((collectionPath: string) => {
@@ -483,10 +633,15 @@ describe('Parks Listing Page', () => {
       expect(screen.queryByText(/No parks match/)).not.toBeInTheDocument();
     });
 
-    it('keeps the directory useful when every live wait-time read fails', async () => {
+    it('keeps the directory useful when both cache reads and the provider fail', async () => {
       mockGetCollection
         .mockResolvedValueOnce(mockParks)
         .mockRejectedValue(new Error('Missing permission'));
+      mockFetch.mockImplementation((url: string) => Promise.resolve(
+        url === '/api/wait-times'
+          ? { ok: false, status: 503, json: async () => ({ message: 'temporarily unavailable' }) }
+          : { ok: true, status: 200, json: async () => [] }
+      ));
 
       render(<ParksPage />);
 

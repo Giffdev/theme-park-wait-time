@@ -327,13 +327,30 @@ export default function ParksPage() {
     fetchParkHours();
   }, [fetchParks, fetchParkHours]);
 
+  const providerInitialDataAge = useMemo(() => {
+    if (waitMetricsLoading || parks.length === 0) return null;
+
+    // A fresh timestamp from one park must not make an incomplete listing
+    // snapshot look healthy. Hydrate once from the provider when any rendered
+    // park has no reporting waits; the provider response then confirms whether
+    // "unavailable" is truthful for that park.
+    const hasCoverageGap = parks.some(
+      (park) => (waitMetrics[park.id]?.activeRideCount ?? 0) === 0
+    );
+    if (hasCoverageGap || latestFetchedAt === null) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    return Date.now() - latestFetchedAt;
+  }, [latestFetchedAt, parks, waitMetrics, waitMetricsLoading]);
+
   const {
     isBackgroundRefreshing,
     lastRefreshError: parksRefreshError,
     forceRefresh: forceParksRefresh,
   } = useAllParksAutoRefresh({
     enabled: !loading,
-    initialDataAge: latestFetchedAt ? Date.now() - latestFetchedAt : null,
+    initialDataAge: providerInitialDataAge,
     onSnapshot: applyProviderSnapshot,
   });
 
