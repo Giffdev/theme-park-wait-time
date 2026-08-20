@@ -8,8 +8,13 @@ export interface UseAutoRefreshOptions {
   key: string;
   /** Milliseconds before data is considered stale */
   staleness: number;
-  /** Async function to refresh data — should update component state internally */
-  onRefresh: () => Promise<void>;
+  /**
+   * Async function to refresh data — should update component state internally.
+   * Return the source snapshot timestamp when a successful response can still
+   * contain older cached data, so staleness remains anchored to the data rather
+   * than the request completion time.
+   */
+  onRefresh: () => Promise<void | { refreshedAt: number }>;
   /** Disable auto-refresh (e.g., while page is still loading) */
   enabled?: boolean;
   /**
@@ -96,6 +101,7 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
   const onlineRef = useRef(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const lastRefreshedAtRef = useRef<number | null>(null);
   const initialCheckDoneRef = useRef(false);
+  const mountedRef = useRef(false);
   const initialDataAgeRef = useRef(initialDataAge);
   initialDataAgeRef.current = initialDataAge;
   enabledRef.current = enabled;
@@ -103,6 +109,13 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
   pollingEnabledRef.current = typeof pollIntervalMs === 'number' && pollIntervalMs > 0;
   pollIntervalRef.current =
     typeof pollIntervalMs === 'number' && pollIntervalMs > 0 ? pollIntervalMs : null;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const doRefresh = useCallback(
     (background: boolean, propagateError = false): Promise<void> => {
@@ -113,7 +126,7 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
       if (!enabled) return Promise.resolve();
 
       const refreshKey = key;
-      if (background && activeKeyRef.current === refreshKey) {
+      if (background && mountedRef.current && activeKeyRef.current === refreshKey) {
         setIsBackgroundRefreshing(true);
       }
 
@@ -123,11 +136,16 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
       };
       flight.promise = (async () => {
         try {
-          await onRefresh();
-          if (activeKeyRef.current !== refreshKey) return;
+          const refreshResult = await onRefresh();
+          if (!mountedRef.current || activeKeyRef.current !== refreshKey) return;
           const now = Date.now();
-          lastRefreshedAtRef.current = now;
-          setLastRefreshedAt(now);
+          const reportedRefreshedAt = refreshResult?.refreshedAt;
+          const refreshedAt =
+            typeof reportedRefreshedAt === 'number' && Number.isFinite(reportedRefreshedAt)
+              ? Math.min(now, reportedRefreshedAt)
+              : now;
+          lastRefreshedAtRef.current = refreshedAt;
+          setLastRefreshedAt(refreshedAt);
           setLastRefreshError(null);
 
           const activePollInterval = pollIntervalRef.current;
@@ -138,7 +156,7 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
           if (background) {
             console.error(`[useAutoRefresh:${refreshKey}] refresh failed:`, error);
           }
-          if (background && activeKeyRef.current === refreshKey) {
+          if (background && mountedRef.current && activeKeyRef.current === refreshKey) {
             setLastRefreshError(error);
           }
           throw error;
@@ -146,7 +164,7 @@ export function useAutoRefresh(options: UseAutoRefreshOptions): UseAutoRefreshRe
           if (inFlightRef.current === flight) {
             inFlightRef.current = null;
           }
-          if (background && activeKeyRef.current === refreshKey) {
+          if (background && mountedRef.current && activeKeyRef.current === refreshKey) {
             setIsBackgroundRefreshing(false);
           }
         }

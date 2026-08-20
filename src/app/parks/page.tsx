@@ -2,11 +2,15 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { RefreshCw, Search, X, Star } from 'lucide-react';
-import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { useAllParksAutoRefresh } from '@/hooks/useAllParksAutoRefresh';
 import { getCollection } from '@/lib/firebase/firestore';
 import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
 import { getLocationByDestinationId, formatLocation } from '@/lib/parks/park-locations';
 import { loadFavoriteFamilyIds, saveFavoriteFamilyIds } from '@/lib/parks/favorite-families';
+import type {
+  AllParksWaitTimeEntry,
+  AllParksWaitTimesResponse,
+} from '@/lib/wait-times/client';
 
 /** Map family names to familyIds and vice versa for localStorage persistence */
 const FAMILY_NAME_TO_ID: Record<string, string> = {};
@@ -25,13 +29,7 @@ interface Park {
   destinationId: string;
 }
 
-interface WaitTimeEntry {
-  attractionId: string;
-  attractionName: string;
-  status: string;
-  waitMinutes: number | null;
-  fetchedAt?: string;
-}
+type WaitTimeEntry = AllParksWaitTimeEntry;
 
 interface ParkHoursEntry {
   parkId: string;
@@ -84,12 +82,16 @@ export default function ParksPage() {
   const [waitMetrics, setWaitMetrics] = useState<Record<string, { average: number | null; activeRideCount: number }>>({});
   const [parkHours, setParkHours] = useState<Record<string, ParkHoursEntry>>({});
   const [latestFetchedAt, setLatestFetchedAt] = useState<number | null>(null);
+  const [waitTimesSourceStale, setWaitTimesSourceStale] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFamily, setSelectedFamily] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const waitDataGenerationRef = useRef(0);
+  const latestFetchedAtRef = useRef<number | null>(null);
+  const parkFetchedAtRef = useRef<Record<string, number>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -132,19 +134,19 @@ export default function ParksPage() {
     if (!latestFetchedAt) return null;
     const ageMs = now - latestFetchedAt;
     const ageMin = Math.round(ageMs / 60_000);
-    const isStale = ageMin >= 10;
+    const isStale = waitTimesSourceStale || ageMin >= 10;
     let label: string;
     if (ageMin < 1) {
-      label = 'Updated just now';
+      label = 'Oldest wait data updated just now';
     } else if (ageMin === 1) {
-      label = 'Updated 1 min ago';
+      label = 'Oldest wait data updated 1 min ago';
     } else if (ageMin < 60) {
-      label = `Updated ${ageMin} min ago`;
+      label = `Oldest wait data updated ${ageMin} min ago`;
     } else {
-      label = `Updated as of ${new Date(latestFetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+      label = `Oldest wait data updated as of ${new Date(latestFetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
     }
     return { label, isStale };
-  }, [latestFetchedAt, now]);
+  }, [latestFetchedAt, now, waitTimesSourceStale]);
 
   // Fetch park hours from API (non-blocking — park cards render without it)
   const fetchParkHours = useCallback(async () => {
@@ -168,14 +170,15 @@ export default function ParksPage() {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    const generation = ++waitDataGenerationRef.current;
     setWaitMetricsLoading(true);
     setWaitDataFailures(0);
+    setWaitTimesSourceStale(false);
 
-    let maxTimestamp = 0;
     let failureCount = 0;
 
     for (let i = 0; i < parkList.length; i += BATCH_SIZE) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || generation !== waitDataGenerationRef.current) return;
 
       const batch = parkList.slice(i, i + BATCH_SIZE);
       const batchResults = await Promise.allSettled(
@@ -195,43 +198,113 @@ export default function ParksPage() {
               ? Math.round(reportingWaits.reduce((sum, v) => sum + v, 0) / reportingWaits.length)
               : null;
 
-          for (const w of waitData) {
-            if (w.fetchedAt) {
-              const t = new Date(w.fetchedAt).getTime();
-              if (!isNaN(t) && t > maxTimestamp) maxTimestamp = t;
-            }
-          }
+          const timestamps = waitData
+            .map((entry) => entry.fetchedAt ? new Date(entry.fetchedAt).getTime() : NaN)
+            .filter(Number.isFinite);
 
-          return { parkId: park.id, average, activeRideCount: reportingWaits.length };
+          return {
+            parkId: park.id,
+            average,
+            activeRideCount: reportingWaits.length,
+            fetchedAt: timestamps.length > 0 ? Math.min(...timestamps) : null,
+          };
         })
       );
 
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || generation !== waitDataGenerationRef.current) return;
 
       // Update state progressively after each batch
       const batchMetrics: Record<string, { average: number | null; activeRideCount: number }> = {};
       for (const result of batchResults) {
         if (result.status === 'fulfilled') {
+          const currentFetchedAt = parkFetchedAtRef.current[result.value.parkId];
+          if (
+            currentFetchedAt !== undefined
+            && (result.value.fetchedAt === null || result.value.fetchedAt < currentFetchedAt)
+          ) {
+            continue;
+          }
           batchMetrics[result.value.parkId] = {
             average: result.value.average,
             activeRideCount: result.value.activeRideCount,
           };
+          if (result.value.fetchedAt !== null) {
+            parkFetchedAtRef.current[result.value.parkId] = result.value.fetchedAt;
+          }
         } else {
-          // Failed fetch — mark as no data
-          const idx = batchResults.indexOf(result);
-          batchMetrics[batch[idx].id] = { average: null, activeRideCount: 0 };
+          // Preserve any last-known metric for a park whose read failed.
           failureCount += 1;
         }
       }
 
       setWaitMetrics((prev) => ({ ...prev, ...batchMetrics }));
       setWaitDataFailures(failureCount);
-      if (maxTimestamp > 0) setLatestFetchedAt(maxTimestamp);
+      const knownTimestamps = Object.values(parkFetchedAtRef.current);
+      if (knownTimestamps.length > 0) {
+        const oldestTimestamp = Math.min(...knownTimestamps);
+        latestFetchedAtRef.current = oldestTimestamp;
+        setLatestFetchedAt(oldestTimestamp);
+      }
     }
 
+    if (generation !== waitDataGenerationRef.current) return;
     setNow(Date.now());
     setWaitMetricsLoading(false);
   }, []);
+
+  const applyProviderSnapshot = useCallback((snapshot: AllParksWaitTimesResponse) => {
+    const metrics: Record<string, { average: number | null; activeRideCount: number }> = {};
+    for (const [parkId, waitData] of Object.entries(snapshot.parks)) {
+      const snapshotFetchedAt = snapshot.parkMeta[parkId]
+        ? new Date(snapshot.parkMeta[parkId].fetchedAt).getTime()
+        : null;
+      const currentFetchedAt = parkFetchedAtRef.current[parkId];
+
+      // A delayed CDN/shared response may contain a mix of old and new parks.
+      // Merge only entries that cannot overwrite a newer per-park snapshot.
+      if (
+        currentFetchedAt !== undefined
+        && (snapshotFetchedAt === null || snapshotFetchedAt < currentFetchedAt)
+      ) {
+        continue;
+      }
+
+      const reportingWaits = waitData
+        .filter((entry) =>
+          entry.status === 'OPERATING'
+          && entry.waitMinutes !== null
+          && entry.waitMinutes > 0
+        )
+        .map((entry) => entry.waitMinutes as number);
+      metrics[parkId] = {
+        average: reportingWaits.length > 0
+          ? Math.round(reportingWaits.reduce((sum, value) => sum + value, 0) / reportingWaits.length)
+          : null,
+        activeRideCount: reportingWaits.length,
+      };
+      if (snapshotFetchedAt !== null) {
+        parkFetchedAtRef.current[parkId] = snapshotFetchedAt;
+      }
+    }
+
+    abortRef.current?.abort();
+    waitDataGenerationRef.current += 1;
+
+    const renderedParkIds = new Set(parks.map((park) => park.id));
+    setWaitMetrics((previous) => ({ ...previous, ...metrics }));
+    setWaitDataFailures(
+      Object.keys(snapshot.errors ?? {}).filter((parkId) => renderedParkIds.has(parkId)).length
+    );
+    setWaitTimesSourceStale(snapshot.stale);
+    const knownTimestamps = Object.values(parkFetchedAtRef.current);
+    if (knownTimestamps.length > 0) {
+      const oldestTimestamp = Math.min(...knownTimestamps);
+      latestFetchedAtRef.current = oldestTimestamp;
+      setLatestFetchedAt(oldestTimestamp);
+    }
+    setNow(Date.now());
+    setWaitMetricsLoading(false);
+  }, [parks]);
 
   const fetchParks = useCallback(async () => {
     setParksError(null);
@@ -254,19 +327,22 @@ export default function ParksPage() {
     fetchParkHours();
   }, [fetchParks, fetchParkHours]);
 
+  const {
+    isBackgroundRefreshing,
+    lastRefreshError: parksRefreshError,
+    forceRefresh: forceParksRefresh,
+  } = useAllParksAutoRefresh({
+    enabled: !loading,
+    initialDataAge: latestFetchedAt ? Date.now() - latestFetchedAt : null,
+    onSnapshot: applyProviderSnapshot,
+  });
+
   const handleRefresh = async () => {
     setRefreshing(true);
     setRefreshError(null);
     try {
-      const res = await fetch('/api/wait-times', {
-        cache: 'no-store',
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}`);
-      }
-      setWaitMetrics({});
-      await Promise.all([fetchParks(), fetchParkHours()]);
+      await forceParksRefresh();
+      void fetchParkHours();
     } catch (error) {
       console.error('Refresh failed:', error);
       const message =
@@ -278,18 +354,6 @@ export default function ParksPage() {
       setRefreshing(false);
     }
   };
-
-  // Auto-refresh park list + hours on arrival (if stale) and when user
-  // returns to tab after 10+ minutes
-  const { isBackgroundRefreshing, lastRefreshError: parksRefreshError } = useAutoRefresh({
-    key: 'park-list-index',
-    staleness: 10 * 60 * 1000, // 10 minutes
-    onRefresh: async () => {
-      await Promise.all([fetchParks(), fetchParkHours()]);
-    },
-    enabled: !loading && !refreshing,
-    initialDataAge: latestFetchedAt ? Date.now() - latestFetchedAt : null,
-  });
 
   // All unique destination family names sorted alphabetically
   const allFamilies = useMemo(() => {
@@ -384,7 +448,7 @@ export default function ParksPage() {
         </div>
         <button
           onClick={handleRefresh}
-          disabled={refreshing}
+          disabled={loading || refreshing}
           className="relative inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50 sm:w-auto"
           aria-describedby="parks-data-status"
         >
