@@ -2,7 +2,10 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { RefreshCw, Search, X, Star } from 'lucide-react';
-import { useAllParksAutoRefresh } from '@/hooks/useAllParksAutoRefresh';
+import {
+  ALL_PARKS_REFRESH_INTERVAL_MS,
+  useAllParksAutoRefresh,
+} from '@/hooks/useAllParksAutoRefresh';
 import { getCollection } from '@/lib/firebase/firestore';
 import { DESTINATION_FAMILIES } from '@/lib/parks/park-registry';
 import { getLocationByDestinationId, formatLocation } from '@/lib/parks/park-locations';
@@ -78,6 +81,7 @@ export default function ParksPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [waitMetricsLoading, setWaitMetricsLoading] = useState(true);
+  const [initialProviderSettled, setInitialProviderSettled] = useState(false);
   const [waitDataFailures, setWaitDataFailures] = useState(0);
   const [waitMetrics, setWaitMetrics] = useState<Record<string, { average: number | null; activeRideCount: number }>>({});
   const [parkHours, setParkHours] = useState<Record<string, ParkHoursEntry>>({});
@@ -253,6 +257,8 @@ export default function ParksPage() {
   }, []);
 
   const applyProviderSnapshot = useCallback((snapshot: AllParksWaitTimesResponse) => {
+    setInitialProviderSettled(true);
+
     const metrics: Record<string, { average: number | null; activeRideCount: number }> = {};
     for (const [parkId, waitData] of Object.entries(snapshot.parks)) {
       const snapshotFetchedAt = snapshot.parkMeta[parkId]
@@ -308,6 +314,7 @@ export default function ParksPage() {
 
   const fetchParks = useCallback(async () => {
     setParksError(null);
+    setInitialProviderSettled(false);
     try {
       const data = await getCollection<Park>('parks');
       setParks(data);
@@ -347,6 +354,7 @@ export default function ParksPage() {
   const {
     isBackgroundRefreshing,
     isInitialHydrating,
+    isAutoRefreshRunnable,
     lastRefreshError: parksRefreshError,
     forceRefresh: forceParksRefresh,
   } = useAllParksAutoRefresh({
@@ -354,6 +362,24 @@ export default function ParksPage() {
     initialDataAge: providerInitialDataAge,
     onSnapshot: applyProviderSnapshot,
   });
+
+  const needsInitialProviderHydration =
+    providerInitialDataAge !== null
+    && providerInitialDataAge >= ALL_PARKS_REFRESH_INTERVAL_MS;
+  const isInitialWaitTimesHydrating =
+    !loading
+    && parksError === null
+    && parks.length > 0
+    && (
+      waitMetricsLoading
+      || isInitialHydrating
+      || (
+        !initialProviderSettled
+        && parksRefreshError == null
+        && needsInitialProviderHydration
+        && (isBackgroundRefreshing || isAutoRefreshRunnable)
+      )
+    );
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -483,12 +509,18 @@ export default function ParksPage() {
       {refreshError && (
         <p className="mb-4 text-right text-sm text-red-600" role="alert">{refreshError}</p>
       )}
-      {isInitialHydrating ? (
-        <p className="-mt-6 mb-1 text-right text-xs text-indigo-600">
+      {isInitialWaitTimesHydrating ? (
+        <p
+          aria-hidden="true"
+          className="-mt-6 mb-1 text-right text-xs text-indigo-600"
+        >
           Updating wait times...
         </p>
       ) : dataFreshness && (
-        <p className={`-mt-6 mb-1 text-right text-xs ${dataFreshness.isStale ? 'text-amber-600' : 'text-primary-400'}`}>
+        <p
+          aria-hidden="true"
+          className={`-mt-6 mb-1 text-right text-xs ${dataFreshness.isStale ? 'text-amber-600' : 'text-primary-400'}`}
+        >
           {dataFreshness.label}
         </p>
       )}
@@ -502,13 +534,17 @@ export default function ParksPage() {
           ? 'Refreshing park data'
           : parksError
             ? 'Park directory unavailable'
-            : loading || waitMetricsLoading
-              ? 'Loading park data'
-              : isInitialHydrating
+            : loading
+              ? 'Loading park directory'
+              : isInitialWaitTimesHydrating
                 ? 'Updating wait times'
                 : waitDataFailures > 0
                   ? `Live wait times unavailable for ${waitDataFailures} parks`
-                  : dataFreshness?.label || 'Park directory loaded'}
+                  : parksRefreshError != null
+                    ? dataFreshness
+                      ? `Wait-time update failed. ${dataFreshness.label}`
+                      : 'Wait-time update failed. Showing the last known park data'
+                    : dataFreshness?.label || 'Park directory loaded'}
       </div>
 
       {parksError && (
@@ -529,18 +565,22 @@ export default function ParksPage() {
         </div>
       )}
 
-      {!waitMetricsLoading && parks.length > 0 && waitDataFailures > 0 && (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3" role="status">
-          <p className="text-sm font-semibold text-amber-800">
-            {waitDataFailures === parks.length
-              ? 'Live wait times are temporarily unavailable'
-              : `Live wait times are unavailable for ${waitDataFailures} parks`}
-          </p>
-          <p className="mt-1 text-sm text-amber-700">
-            Park hours and directory links still work. Open a park or retry when the feed recovers.
-          </p>
-        </div>
-      )}
+      {!isInitialWaitTimesHydrating
+        && !waitMetricsLoading
+        && parks.length > 0
+        && waitDataFailures > 0
+        && (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3" role="status">
+            <p className="text-sm font-semibold text-amber-800">
+              {waitDataFailures === parks.length
+                ? 'Live wait times are temporarily unavailable'
+                : `Live wait times are unavailable for ${waitDataFailures} parks`}
+            </p>
+            <p className="mt-1 text-sm text-amber-700">
+              Park hours and directory links still work. Open a park or retry when the feed recovers.
+            </p>
+          </div>
+        )}
 
       {/* Unified Search & Filter */}
       {!loading && !parksError && (

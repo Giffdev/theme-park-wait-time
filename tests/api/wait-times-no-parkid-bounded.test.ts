@@ -1,6 +1,6 @@
 /**
  * Contract: the no-parkId (all-parks) path of GET /api/wait-times must not
- * sequentially live-refresh every configured park one at a time, and must
+ * sequentially live-refresh every supported registry park one at a time, and must
  * remain bounded (an explicit worker/concurrency cap), the same way the
  * `/api/cron/refresh-wait-times` route already uses `refreshParksBounded`.
  *
@@ -21,6 +21,16 @@ const mockBatchSet = vi.fn();
 const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
 const mockBatch = { set: mockBatchSet, commit: mockBatchCommit };
 const mockGet = vi.hoisted(() => vi.fn());
+const mockRegistryParkIds = vi.hoisted(() => ({ current: [] as string[] }));
+
+vi.mock('@/lib/parks/park-registry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/parks/park-registry')>();
+  return {
+    ...actual,
+    getAllParks: () =>
+      mockRegistryParkIds.current.map((id) => actual.getParkById(id)!),
+  };
+});
 
 vi.mock('@/lib/firebase/admin', () => ({
   adminApp: { name: 'mock-app' },
@@ -47,8 +57,8 @@ vi.stubGlobal('fetch', mockFetch);
 
 import { GET } from '@/app/api/wait-times/route';
 
-// Four real, distinct configured park ids so the "all configured parks" path
-// has more than one entry to fan out over.
+// Four real, distinct supported park ids so the all-parks path has more than
+// one entry to fan out over.
 const PARK_IDS = [
   '75ea578a-adc8-4116-a54d-dccb60765ef9', // Magic Kingdom
   '47f90d2c-e191-4239-a466-5892ef59a88b', // EPCOT
@@ -68,10 +78,9 @@ describe('GET /api/wait-times — no-parkId path concurrency', () => {
     vi.clearAllMocks();
     concurrentFetchesInFlight = 0;
     maxObservedConcurrency = 0;
+    mockRegistryParkIds.current = [...PARK_IDS];
 
-    mockGet.mockResolvedValue({
-      docs: PARK_IDS.map((id) => ({ id, data: () => ({ id, name: id }) })),
-    });
+    mockGet.mockResolvedValue({ docs: [] });
 
     mockFetch.mockImplementation(async (url: string) => {
       concurrentFetchesInFlight += 1;
@@ -97,7 +106,7 @@ describe('GET /api/wait-times — no-parkId path concurrency', () => {
     });
   });
 
-  it('refreshes multiple configured parks concurrently, not one at a time', async () => {
+  it('refreshes multiple supported registry parks concurrently, not one at a time', async () => {
     await GET(request());
 
     // A strictly sequential loop can never have more than one upstream fetch
@@ -118,7 +127,7 @@ describe('GET /api/wait-times — no-parkId path concurrency', () => {
     expect(elapsedMs).toBeLessThan(sequentialFloorMs);
   });
 
-  it('still returns correct per-park data and metadata for every configured park', async () => {
+  it('still returns correct per-park data and metadata for every supported registry park', async () => {
     const response = await GET(request());
     const data = await response.json();
 

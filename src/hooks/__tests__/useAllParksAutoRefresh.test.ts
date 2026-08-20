@@ -16,6 +16,7 @@ import {
 const autoRefreshResult = {
   isBackgroundRefreshing: false,
   isInitialRefreshing: false,
+  isAutoRefreshRunnable: true,
   lastRefreshedAt: null,
   lastRefreshError: null,
   forceRefresh: vi.fn(),
@@ -111,6 +112,7 @@ describe('useAllParksAutoRefresh', () => {
 
     expect(result.current.isBackgroundRefreshing).toBe(true);
     expect(result.current.isInitialHydrating).toBe(true);
+    expect(result.current.isAutoRefreshRunnable).toBe(true);
   });
 
   it('calls the shared server provider path and publishes its truthful metadata', async () => {

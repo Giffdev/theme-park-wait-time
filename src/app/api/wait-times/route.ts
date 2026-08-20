@@ -1,5 +1,5 @@
-import { NextResponse, type NextRequest } from 'next/server';
-import { getParkById, getParkBySlug } from '@/lib/parks/park-registry';
+import { after, NextResponse, type NextRequest } from 'next/server';
+import { getAllParks, getParkById, getParkBySlug } from '@/lib/parks/park-registry';
 import {
   getConfiguredParkIds,
   refreshPark,
@@ -7,6 +7,7 @@ import {
   RefreshDeadlineError,
   UpstreamFetchError,
   withDeadline,
+  type ConfiguredParkIds,
   type ParkRefreshTiming,
   type ParkResponseMeta,
 } from '@/lib/wait-times/refresh';
@@ -17,7 +18,7 @@ export const dynamic = 'force-dynamic';
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Bounded fan-out for the no-parkId ("all configured parks") branch. The
+// Bounded fan-out for the no-parkId ("all supported parks") branch. The
 // worker cap keeps peak concurrent upstream/Firestore load flat as the park
 // catalog grows, and the deadline keeps the whole branch comfortably inside
 // `maxDuration` (30s) no matter how many parks are configured. 20s matches
@@ -25,13 +26,13 @@ const UUID_PATTERN =
 const ALL_PARKS_CONCURRENCY = 6;
 const ALL_PARKS_DEADLINE_MS = 20_000;
 
-// The `parks` collection read that enumerates configured parks sits on the
-// critical path *before* the fan-out, so it needs its own bound for the same
-// reason every other Firestore read on this route has one: an unbounded await
-// here is a hang, and a hang is a 504. Its budget plus ALL_PARKS_DEADLINE_MS
-// stays inside `maxDuration`. Exceeding it is surfaced explicitly rather than
-// degraded to an empty-but-successful park list.
+// The canonical static registry is the normal all-parks source, so the
+// Firestore catalog is not read on this hot path. This bound applies only to
+// the defensive Firestore fallback used if the static registry is ever empty.
+// The fallback must still fail explicitly rather than returning a
+// success-shaped empty response.
 const CONFIGURED_PARKS_DEADLINE_MS = 3_000;
+const CONFIGURED_PARKS_OBSERVATION_INTERVAL_MS = 5 * 60 * 1000;
 
 // CDN cache-control for the *public read* path only. In-process
 // `refreshPark` in-flight coalescing collapses same-park bursts that land on
@@ -50,17 +51,11 @@ const FRESH_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=60';
 const DEGRADED_CACHE_CONTROL = 'public, s-maxage=5, stale-while-revalidate=30';
 const NO_STORE = 'no-store, max-age=0';
 
-// Message used for the "this `parks` document is not in park-registry.ts"
-// case. It is a *static catalog* condition, not a runtime failure: the same
-// request will produce the same result until either the registry or the
-// Firestore catalog changes. Production currently has 57 such documents
-// (parks seeded before the registry existed / retired upstream entities),
-// which meant the all-parks response permanently carried per-park errors and
-// therefore was permanently `no-store` — the CDN coalescing this route was
-// given cache headers for could never engage, and the listing paid the full
-// 11-12.7s fan-out on every request. Catalog mismatch is still reported
-// honestly in the JSON body; it just no longer masquerades as a transient
-// error for cache-control purposes.
+// Message used when the defensive Firestore fallback contains a document
+// outside park-registry.ts. Firestore-only custom, inactive, retired, or
+// historical documents never become provider refresh targets: the static
+// registry is the product-support boundary, matching public park-document
+// filtering in `filterCurrentParkDocuments`.
 const CATALOG_MISMATCH_ERROR = 'Park is not present in the supported park registry.';
 
 interface StageTimings {
@@ -126,10 +121,90 @@ function logRouteTelemetry(fields: Record<string, unknown>) {
   console.log(JSON.stringify({ scope: 'wait-times-route', ...fields }));
 }
 
+interface AllParksSelection extends ConfiguredParkIds {
+  source: 'static-registry' | 'firestore-fallback';
+}
+
+class ParkListUnavailableError extends Error {}
+
+let nextConfiguredParksObservationAt = 0;
+
+function parkListFailureReason(error: unknown): string {
+  if (error instanceof RefreshDeadlineError) return 'deadline';
+  if (error instanceof ParkListUnavailableError) return 'no-supported-parks';
+  return 'firestore-read';
+}
+
+function logParkListFailure(stage: string, error: unknown) {
+  console.error('Wait-time configured park catalog read failed:', error);
+  logRouteTelemetry({
+    mode: 'all-parks',
+    stage,
+    status: 'failed',
+    reason: parkListFailureReason(error),
+  });
+}
+
+function observeConfiguredParkCatalog() {
+  const now = Date.now();
+  if (now < nextConfiguredParksObservationAt) return;
+  nextConfiguredParksObservationAt = now + CONFIGURED_PARKS_OBSERVATION_INTERVAL_MS;
+
+  const observe = async () => {
+    try {
+      const configured = await withDeadline(
+        getConfiguredParkIds(),
+        CONFIGURED_PARKS_DEADLINE_MS
+      );
+      logRouteTelemetry({
+        mode: 'all-parks',
+        stage: 'park-list-observation',
+        status: 'ok',
+        supportedCount: configured.supported.length,
+        unsupportedCount: configured.unsupported.length,
+      });
+    } catch (error) {
+      logParkListFailure('park-list-observation', error);
+    }
+  };
+
+  try {
+    after(observe);
+  } catch {
+    void observe();
+  }
+}
+
+async function resolveAllParksSelection(): Promise<AllParksSelection> {
+  const supported = [...new Set(getAllParks().map((park) => park.id))];
+  if (supported.length > 0) {
+    return { supported, unsupported: [], source: 'static-registry' };
+  }
+
+  try {
+    const configured = await withDeadline(
+      getConfiguredParkIds(),
+      CONFIGURED_PARKS_DEADLINE_MS
+    );
+    if (configured.supported.length === 0) {
+      throw new ParkListUnavailableError(
+        'Neither the static registry nor Firestore supplied a supported park id.'
+      );
+    }
+    return { ...configured, source: 'firestore-fallback' };
+  } catch (error) {
+    logParkListFailure('park-list-fallback', error);
+    throw error instanceof ParkListUnavailableError
+      ? error
+      : new ParkListUnavailableError('Configured park fallback is unavailable.');
+  }
+}
+
 export async function GET(request: NextRequest) {
   const routeStart = Date.now();
   const stages: StageTimings = {};
   let parkCount = 0;
+  let parkListSource: AllParksSelection['source'] | undefined;
 
   const elapsed = () => Date.now() - routeStart;
   const timingHeader = () => serverTiming(stages, elapsed(), parkCount);
@@ -173,16 +248,22 @@ export async function GET(request: NextRequest) {
       parkMeta[requestedParkId] = refresh.meta;
       isStale = refresh.meta.stale;
     } else {
-      let configured;
+      let configured: AllParksSelection;
       try {
-        configured = await withDeadline(getConfiguredParkIds(), CONFIGURED_PARKS_DEADLINE_MS);
+        configured = await resolveAllParksSelection();
       } catch (error) {
-        if (!(error instanceof RefreshDeadlineError)) throw error;
+        if (!(error instanceof ParkListUnavailableError)) throw error;
         logRouteTelemetry({ mode: 'all-parks', status: 503, parkCount: 0, routeMs: elapsed() });
         return NextResponse.json(
           { error: 'Configured park list is temporarily unavailable.' },
           { status: 503, headers: responseHeaders(NO_STORE, timingHeader()) }
         );
+      }
+      parkListSource = configured.source;
+      if (configured.source === 'static-registry') {
+        // Preserve catalog-drift observability without putting the Firestore
+        // collection scan back on the provider response's critical path.
+        observeConfiguredParkCatalog();
       }
 
       for (const parkId of configured.unsupported) {
@@ -193,7 +274,7 @@ export async function GET(request: NextRequest) {
 
       // Bounded, deadline-capped fan-out instead of a sequential per-park
       // loop. Each park still goes through refreshPark's read-first cache,
-      // so a warm catalog resolves without touching upstream at all.
+      // so warm park data resolves without touching upstream at all.
       const outcomes = await refreshParksBoundedWithData(configured.supported, {
         concurrency: ALL_PARKS_CONCURRENCY,
         deadlineMs: ALL_PARKS_DEADLINE_MS,
@@ -254,6 +335,7 @@ export async function GET(request: NextRequest) {
       catalogMismatchCount,
       transientErrorCount,
       stale: isStale,
+      ...(parkListSource ? { parkListSource } : {}),
       ...stages,
       routeMs,
     });

@@ -13,7 +13,7 @@ import { useAutoRefresh } from '../useAutoRefresh';
 
 // Mock useVisibility — we test it separately, here we just simulate its callback
 vi.mock('../useVisibility', () => ({
-  useVisibility: (onVisible: () => void, _options?: unknown) => {
+  useVisibility: (onVisible: () => void) => {
     // Store the callback so tests can invoke it
     (globalThis as Record<string, unknown>).__visibilityCallback = onVisible;
   },
@@ -43,6 +43,14 @@ function setOnline(online: boolean) {
 
 function fireOnlineEvent() {
   window.dispatchEvent(new Event('online'));
+}
+
+function fireOfflineEvent() {
+  window.dispatchEvent(new Event('offline'));
+}
+
+function fireVisibilityChange() {
+  document.dispatchEvent(new Event('visibilitychange'));
 }
 
 describe('useAutoRefresh', () => {
@@ -573,6 +581,8 @@ describe('useAutoRefresh', () => {
     it('cleans up timer and connectivity listeners when the key changes or unmounts', () => {
       const addListenerSpy = vi.spyOn(window, 'addEventListener');
       const removeListenerSpy = vi.spyOn(window, 'removeEventListener');
+      const addDocumentListenerSpy = vi.spyOn(document, 'addEventListener');
+      const removeDocumentListenerSpy = vi.spyOn(document, 'removeEventListener');
       const setTimeoutSpy = vi.spyOn(window, 'setTimeout');
       const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
       const onRefresh = vi.fn().mockResolvedValue(undefined);
@@ -593,12 +603,20 @@ describe('useAutoRefresh', () => {
       expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
       expect(addListenerSpy).toHaveBeenCalledWith('online', expect.any(Function));
       expect(addListenerSpy).toHaveBeenCalledWith('offline', expect.any(Function));
+      expect(addDocumentListenerSpy).toHaveBeenCalledWith(
+        'visibilitychange',
+        expect.any(Function)
+      );
 
       rerender({ dataKey: 'poll-b' });
 
       expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
       expect(removeListenerSpy).toHaveBeenCalledWith('online', expect.any(Function));
       expect(removeListenerSpy).toHaveBeenCalledWith('offline', expect.any(Function));
+      expect(removeDocumentListenerSpy).toHaveBeenCalledWith(
+        'visibilitychange',
+        expect.any(Function)
+      );
       expect(setTimeoutSpy).toHaveBeenCalledTimes(2);
       expect(addListenerSpy.mock.calls.filter(([event]) => (
         event === 'online' || event === 'offline'
@@ -610,12 +628,60 @@ describe('useAutoRefresh', () => {
       expect(removeListenerSpy.mock.calls.filter(([event]) => (
         event === 'online' || event === 'offline'
       ))).toHaveLength(4);
+      expect(
+        removeDocumentListenerSpy.mock.calls.filter(([event]) => event === 'visibilitychange')
+      ).toHaveLength(2);
 
       addListenerSpy.mockRestore();
       removeListenerSpy.mockRestore();
+      addDocumentListenerSpy.mockRestore();
+      removeDocumentListenerSpy.mockRestore();
       setTimeoutSpy.mockRestore();
       clearTimeoutSpy.mockRestore();
     });
+  });
+
+  it('reacts to online and visibility events when reporting auto-refresh availability', async () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    setOnline(false);
+
+    const { result } = renderHook(() =>
+      useAutoRefresh({
+        key: 'refresh-availability',
+        staleness: 10_000,
+        pollIntervalMs: 10_000,
+        onRefresh,
+        enabled: true,
+        initialDataAge: 0,
+      })
+    );
+
+    expect(result.current.isAutoRefreshRunnable).toBe(false);
+
+    await act(async () => {
+      setOnline(true);
+      fireOnlineEvent();
+    });
+    expect(result.current.isAutoRefreshRunnable).toBe(true);
+
+    await act(async () => {
+      setVisibility('hidden');
+      fireVisibilityChange();
+    });
+    expect(result.current.isAutoRefreshRunnable).toBe(false);
+
+    await act(async () => {
+      setVisibility('visible');
+      fireVisibilityChange();
+    });
+    expect(result.current.isAutoRefreshRunnable).toBe(true);
+
+    await act(async () => {
+      setOnline(false);
+      fireOfflineEvent();
+    });
+    expect(result.current.isAutoRefreshRunnable).toBe(false);
+    expect(onRefresh).not.toHaveBeenCalled();
   });
 
   it('preserves visibility refreshes for non-poll callers while initial data age is unresolved', async () => {
