@@ -346,6 +346,7 @@ export default function ParksPage() {
 
   const {
     isBackgroundRefreshing,
+    isInitialHydrating,
     lastRefreshError: parksRefreshError,
     forceRefresh: forceParksRefresh,
   } = useAllParksAutoRefresh({
@@ -482,7 +483,11 @@ export default function ParksPage() {
       {refreshError && (
         <p className="mb-4 text-right text-sm text-red-600" role="alert">{refreshError}</p>
       )}
-      {dataFreshness && (
+      {isInitialHydrating ? (
+        <p className="-mt-6 mb-1 text-right text-xs text-indigo-600">
+          Updating wait times...
+        </p>
+      ) : dataFreshness && (
         <p className={`-mt-6 mb-1 text-right text-xs ${dataFreshness.isStale ? 'text-amber-600' : 'text-primary-400'}`}>
           {dataFreshness.label}
         </p>
@@ -499,9 +504,11 @@ export default function ParksPage() {
             ? 'Park directory unavailable'
             : loading || waitMetricsLoading
               ? 'Loading park data'
-              : waitDataFailures > 0
-                ? `Live wait times unavailable for ${waitDataFailures} parks`
-                : dataFreshness?.label || 'Park directory loaded'}
+              : isInitialHydrating
+                ? 'Updating wait times'
+                : waitDataFailures > 0
+                  ? `Live wait times unavailable for ${waitDataFailures} parks`
+                  : dataFreshness?.label || 'Park directory loaded'}
       </div>
 
       {parksError && (

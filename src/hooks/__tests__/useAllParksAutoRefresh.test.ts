@@ -15,6 +15,7 @@ import {
 
 const autoRefreshResult = {
   isBackgroundRefreshing: false,
+  isInitialRefreshing: false,
   lastRefreshedAt: null,
   lastRefreshError: null,
   forceRefresh: vi.fn(),
@@ -93,6 +94,23 @@ describe('useAllParksAutoRefresh', () => {
       })
     );
     expect(ALL_PARKS_REFRESH_INTERVAL_MS).toBe(10 * 60 * 1000);
+  });
+
+  it('exposes the scheduler arrival phase as initial provider hydration', () => {
+    useAutoRefreshMock.mockReturnValue({
+      ...autoRefreshResult,
+      isBackgroundRefreshing: true,
+      isInitialRefreshing: true,
+    });
+
+    const { result } = renderHook(() =>
+      useAllParksAutoRefresh({
+        initialDataAge: Number.POSITIVE_INFINITY,
+      })
+    );
+
+    expect(result.current.isBackgroundRefreshing).toBe(true);
+    expect(result.current.isInitialHydrating).toBe(true);
   });
 
   it('calls the shared server provider path and publishes its truthful metadata', async () => {

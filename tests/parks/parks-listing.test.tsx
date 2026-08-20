@@ -392,14 +392,13 @@ describe('Parks Listing Page', () => {
   });
 
   describe('initial-arrival refresh', () => {
-    it('automatically refreshes the wait-time feed on arrival when the cached snapshot is stale', async () => {
+    it('shows Updating for a stale arrival, then applies provider capture time as just now', async () => {
       const staleFetchedAt = new Date(Date.now() - 15 * 60 * 1000).toISOString(); // 15 min old — past the 10 min threshold
+      let resolveRefresh!: (response: unknown) => void;
       mockFetch.mockImplementation((url: string) => {
         if (url === '/api/wait-times') {
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            json: async () => waitTimesResponse(new Date().toISOString(), 35),
+          return new Promise((resolve) => {
+            resolveRefresh = resolve;
           });
         }
         return Promise.resolve({ ok: true, json: async () => [] });
@@ -423,6 +422,17 @@ describe('Parks Listing Page', () => {
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith('/api/wait-times', {
           signal: expect.any(AbortSignal),
+        });
+      });
+      expect(screen.getByText('Updating wait times...')).toBeInTheDocument();
+      expect(screen.queryByText('Oldest wait data updated 15 min ago')).not.toBeInTheDocument();
+
+      const providerFetchedAt = new Date().toISOString();
+      await act(async () => {
+        resolveRefresh({
+          ok: true,
+          status: 200,
+          json: async () => waitTimesResponse(providerFetchedAt, 35),
         });
       });
 
@@ -457,6 +467,7 @@ describe('Parks Listing Page', () => {
       };
       const cachedAt = new Date(Date.now() - 30 * 1000).toISOString();
       const providerFetchedAt = new Date().toISOString();
+      let resolveRefresh!: (response: unknown) => void;
 
       mockGetCollection.mockImplementation((collectionPath: string) => {
         if (collectionPath === 'parks') {
@@ -478,11 +489,31 @@ describe('Parks Listing Page', () => {
         }
         return Promise.resolve([]);
       });
-      mockFetch.mockImplementation((url: string) => Promise.resolve({
-        ok: true,
-        status: 200,
-        json: async () => url === '/api/wait-times'
-          ? {
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/wait-times') {
+          return new Promise((resolve) => {
+            resolveRefresh = resolve;
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+      });
+
+      render(<ParksPage />);
+
+      expect(await screen.findByText('Disney California Adventure')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith('/api/wait-times', {
+          signal: expect.any(AbortSignal),
+        });
+      });
+      expect(screen.getByText('Updating wait times...')).toBeInTheDocument();
+      expect(screen.queryByText('Oldest wait data updated just now')).not.toBeInTheDocument();
+
+      await act(async () => {
+        resolveRefresh({
+          ok: true,
+          status: 200,
+          json: async () => ({
               fetchedAt: providerFetchedAt,
               stale: false,
               parkMeta: {
@@ -519,16 +550,7 @@ describe('Parks Listing Page', () => {
                   },
                 ],
               },
-            }
-          : [],
-      }));
-
-      render(<ParksPage />);
-
-      expect(await screen.findByText('Disney California Adventure')).toBeInTheDocument();
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith('/api/wait-times', {
-          signal: expect.any(AbortSignal),
+            }),
         });
       });
       await waitFor(() => {
@@ -588,8 +610,8 @@ describe('Parks Listing Page', () => {
       );
     });
 
-    it('does not auto-refresh on arrival when the cached snapshot is already fresh', async () => {
-      const freshFetchedAt = new Date(Date.now() - 30 * 1000).toISOString(); // 30s old
+    it('shows the real cached age when no provider hydration is active', async () => {
+      const freshFetchedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       mockGetCollection.mockImplementation((collectionPath: string) => {
         if (collectionPath === 'parks') return Promise.resolve(mockParks);
         if (typeof collectionPath === 'string' && collectionPath.startsWith('waitTimes/')) {
@@ -615,6 +637,11 @@ describe('Parks Listing Page', () => {
         await new Promise((resolve) => setTimeout(resolve, 50));
       });
 
+      expect(screen.getAllByText('Oldest wait data updated 5 min ago')).toHaveLength(2);
+      expect(screen.queryByText('Updating wait times...')).not.toBeInTheDocument();
+      expect(
+        mockFetch.mock.calls.filter(([url]) => url === '/api/wait-times')
+      ).toHaveLength(0);
       const waitTimesCallsAfterWait = mockGetCollection.mock.calls.filter(
         (call) => typeof call[0] === 'string' && call[0].startsWith('waitTimes/')
       ).length;
@@ -653,6 +680,7 @@ describe('Parks Listing Page', () => {
     it('keeps the last-known cards visible after a failed provider refresh and recovers on the next success', async () => {
       const staleFetchedAt = new Date(Date.now() - 15 * 60 * 1000).toISOString();
       let waitTimesRefreshCount = 0;
+      let resolveInitialRefresh!: (response: unknown) => void;
 
       mockFetch.mockImplementation((url: string) => {
         if (url === '/api/park-hours') {
@@ -664,10 +692,8 @@ describe('Parks Listing Page', () => {
 
         waitTimesRefreshCount += 1;
         if (waitTimesRefreshCount === 1) {
-          return Promise.resolve({
-            ok: false,
-            status: 503,
-            json: async () => ({ message: 'temporarily unavailable' }),
+          return new Promise((resolve) => {
+            resolveInitialRefresh = resolve;
           });
         }
 
@@ -693,8 +719,28 @@ describe('Parks Listing Page', () => {
         expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
       });
 
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith('/api/wait-times', {
+          signal: expect.any(AbortSignal),
+        });
+      });
+
+      expect(screen.getByText('Updating wait times...')).toBeInTheDocument();
+      expect(screen.queryByText('Oldest wait data updated 15 min ago')).not.toBeInTheDocument();
+      expect(screen.getAllByText('Average: 20; active rides: 1')).toHaveLength(mockParks.length);
+
+      await act(async () => {
+        resolveInitialRefresh({
+          ok: false,
+          status: 503,
+          json: async () => ({ message: 'temporarily unavailable' }),
+        });
+      });
+
+      expect(screen.queryByText('Updating wait times...')).not.toBeInTheDocument();
       expect(screen.getAllByText('Oldest wait data updated 15 min ago')).toHaveLength(2);
       expect(await screen.findByText('Background refresh failed — showing the last known data.')).toBeInTheDocument();
+      expect(screen.getAllByText('Average: 20; active rides: 1')).toHaveLength(mockParks.length);
 
       await user.click(screen.getByText('Refresh Data'));
 

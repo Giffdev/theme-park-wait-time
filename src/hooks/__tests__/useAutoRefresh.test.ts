@@ -806,6 +806,7 @@ describe('useAutoRefresh', () => {
 
     // During refresh, flag should be true
     expect(result.current.isBackgroundRefreshing).toBe(true);
+    expect(result.current.isInitialRefreshing).toBe(false);
 
     // Complete the refresh
     await act(async () => {
@@ -903,6 +904,36 @@ describe('useAutoRefresh', () => {
   });
 
   describe('initial-arrival refresh (mount-time staleness)', () => {
+    it('tracks the initial refresh phase until the arrival request settles', async () => {
+      let resolveRefresh!: () => void;
+      const onRefresh = vi.fn().mockImplementation(
+        () => new Promise<void>((resolve) => {
+          resolveRefresh = resolve;
+        })
+      );
+
+      const { result } = renderHook(() =>
+        useAutoRefresh({
+          key: 'arrival-pending',
+          staleness: 2 * 60 * 1000,
+          onRefresh,
+          enabled: true,
+          initialDataAge: 5 * 60 * 1000,
+        })
+      );
+
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+      expect(result.current.isBackgroundRefreshing).toBe(true);
+      expect(result.current.isInitialRefreshing).toBe(true);
+
+      await act(async () => {
+        resolveRefresh();
+      });
+
+      expect(result.current.isBackgroundRefreshing).toBe(false);
+      expect(result.current.isInitialRefreshing).toBe(false);
+    });
+
     it('refreshes immediately on mount when cached data is already stale', async () => {
       const onRefresh = vi.fn().mockResolvedValue(undefined);
 

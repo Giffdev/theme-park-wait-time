@@ -64,5 +64,9 @@ export function useAllParksAutoRefresh({
     initialDataAge,
   });
 
-  return { ...autoRefresh, snapshot };
+  return {
+    ...autoRefresh,
+    isInitialHydrating: autoRefresh.isInitialRefreshing,
+    snapshot,
+  };
 }
