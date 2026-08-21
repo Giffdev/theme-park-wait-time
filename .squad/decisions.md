@@ -780,8 +780,8 @@ claims that do not prove persistence across reload.
 
 ### 2026-08-21T09:32:28.452-07:00: Park schedules as date-specific calendars (durable user decision)
 
-**By:** Devin Sinha (via Copilot)  
-**Date:** 2026-08-21  
+**By:** Devin Sinha (via Copilot)
+**Date:** 2026-08-21
 **Status:** Durable Requirement
 
 #### Decision
@@ -804,4 +804,3 @@ Frontend, Backend, and Tester all validated this model in 2026-08-21 orchestrati
 - Park schedules now render correctly for all date-specific variations
 - Timezone discrepancies are validated against actual park calendar data, not assumed to be rendering artifacts
 - Architectural foundation set for seasonal/closure handling
-
