@@ -1099,7 +1099,7 @@ describe('Parks Listing Page', () => {
           parkId: p.id,
           slug: p.slug,
           timezone: 'America/New_York',
-          isOpen: true,
+          phase: 'OPEN',
           todayHours: { openTime: '09:00', closeTime: '22:00' },
           localTime: '10:00 AM',
         })),

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { filterCurrentParkDocuments } from '@/lib/parks/park-document-read';
+import type { ParkAvailabilityPhase } from '@/types/park-availability';
 
 const API_BASE = 'https://api.themeparks.wiki/v1';
 
@@ -18,12 +19,18 @@ interface WikiScheduleResponse {
   schedule: WikiScheduleEntry[];
 }
 
-/** Shape consumed by parks/page.tsx ParkHoursEntry and passed to ParkCard */
+/**
+ * Shape consumed by parks/page.tsx ParkHoursEntry and passed to ParkCard.
+ *
+ * `phase` replaces the old `isOpen: boolean` field, which collapsed upstream
+ * errors, confirmed closed days, and after-close states into identical output.
+ * `todayHours` is now preserved for CLOSED so the card can show closing time.
+ */
 interface ParkHoursResult {
   parkId: string;
   slug: string;
   timezone: string;
-  isOpen: boolean;
+  phase: ParkAvailabilityPhase;
   /** HH:MM local strings in the park's own IANA timezone, or null when unavailable */
   todayHours: { openTime: string; closeTime: string } | null;
   /** Current clock time in the park's timezone, e.g. "9:30 AM" */
@@ -61,8 +68,15 @@ function parkLocalTime(tz: string): string {
 
 /**
  * GET /api/park-hours
- * Returns current open/closed status and operating hours for ALL parks.
+ * Returns current availability phase and operating hours for ALL parks.
  * Designed for the parks listing page to show status at a glance.
+ *
+ * Phase contract:
+ *   OPEN     - Inside OPERATING window right now.
+ *   UPCOMING - Today has an OPERATING entry; park has not yet opened.
+ *   CLOSED   - Today had an OPERATING entry that has now passed.
+ *   NO_DATA  - Schedule fetched but no OPERATING entry for today.
+ *   ERROR    - Upstream fetch failed; status unknown, never assert Closed.
  */
 export async function GET() {
   try {
@@ -79,7 +93,7 @@ export async function GET() {
     // Fetch schedules in parallel for all parks
     const results: ParkHoursResult[] = await Promise.all(
       parks.map(async (park): Promise<ParkHoursResult> => {
-        const base: Omit<ParkHoursResult, 'isOpen' | 'todayHours'> = {
+        const base: Omit<ParkHoursResult, 'phase' | 'todayHours'> = {
           parkId: park.id,
           slug: park.slug,
           timezone: park.timezone,
@@ -92,7 +106,9 @@ export async function GET() {
           });
 
           if (!res.ok) {
-            return { ...base, isOpen: false, todayHours: null };
+            // Upstream error - never assert Closed; report ERROR so the card
+            // can show "schedule unavailable" rather than "Closed".
+            return { ...base, phase: 'ERROR', todayHours: null };
           }
 
           const data = (await res.json()) as WikiScheduleResponse;
@@ -107,11 +123,14 @@ export async function GET() {
           );
 
           if (!operatingEntry) {
-            return { ...base, isOpen: false, todayHours: null };
+            // Schedule fetched successfully but no OPERATING entry for today.
+            // Could be a confirmed-closed day, a holiday, or beyond the
+            // schedule horizon - report NO_DATA, not CLOSED.
+            return { ...base, phase: 'NO_DATA', todayHours: null };
           }
 
-          // Epoch-safe open/closed: compare milliseconds so the viewer's
-          // local clock never influences the result.
+          // Epoch-safe phase derivation: compare milliseconds so the viewer's
+          // local clock and timezone never influence the result.
           const nowMs = Date.now();
           const openMs = new Date(operatingEntry.openingTime).getTime();
           const closeMs = new Date(operatingEntry.closingTime).getTime();
@@ -123,16 +142,21 @@ export async function GET() {
           const openTime = isoToLocalHHMM(operatingEntry.openingTime, park.timezone);
           const closeTime = isoToLocalHHMM(operatingEntry.closingTime, park.timezone);
 
-          // Expose todayHours when the park is open OR not yet open (so ParkCard
-          // can show "Opens 9 AM ET"). Once closed for the day, return null.
-          return {
-            ...base,
-            isOpen: isCurrentlyOpen,
-            todayHours: (isCurrentlyOpen || isUpcoming) ? { openTime, closeTime } : null,
-          };
+          // Always preserve todayHours when the OPERATING entry is confirmed -
+          // CLOSED cards can show "Closed at X PM" rather than losing that info.
+          const todayHours = { openTime, closeTime };
+
+          if (isCurrentlyOpen) {
+            return { ...base, phase: 'OPEN', todayHours };
+          }
+          if (isUpcoming) {
+            return { ...base, phase: 'UPCOMING', todayHours };
+          }
+          // Park operated today but the window has passed.
+          return { ...base, phase: 'CLOSED', todayHours };
         } catch (err) {
           console.error(`Failed to fetch schedule for ${park.name} (${park.id}):`, err);
-          return { ...base, isOpen: false, todayHours: null };
+          return { ...base, phase: 'ERROR', todayHours: null };
         }
       })
     );

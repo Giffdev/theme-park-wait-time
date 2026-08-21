@@ -23,6 +23,7 @@ for (const family of DESTINATION_FAMILIES) {
   FAMILY_ID_TO_NAME[family.familyId] = family.familyName;
 }
 import ParkCard from '@/components/ParkCard';
+import type { ParkAvailabilityPhase } from '@/types/park-availability';
 
 interface Park {
   id: string;
@@ -38,7 +39,7 @@ interface ParkHoursEntry {
   parkId: string;
   slug: string;
   timezone: string;
-  isOpen: boolean;
+  phase: ParkAvailabilityPhase;
   todayHours: { openTime: string; closeTime: string } | null;
   localTime: string;
 }
@@ -782,7 +783,7 @@ export default function ParksPage() {
                         destinationName={park.destinationName}
                         averageWait={waitMetrics[park.id]?.average ?? null}
                         activeRideCount={waitMetrics[park.id]?.activeRideCount}
-                        isOpen={hours?.isOpen}
+                        phase={hours?.phase}
                         todayHours={hours?.todayHours}
                         timezone={hours?.timezone}
                         localTime={hours?.localTime}

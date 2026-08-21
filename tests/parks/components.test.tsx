@@ -196,12 +196,85 @@ describe('ParkCard', () => {
       <ParkCard
         {...defaultProps}
         averageWait={null}
-        isOpen={false}
+        phase="UPCOMING"
         todayHours={{ openTime: '24:00', closeTime: '09:00' }}
       />,
     );
     expect(screen.getByText(/12 AM/)).toBeInTheDocument();
     expect(screen.queryByText(/12 PM/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ParkCard availability phases', () => {
+  const base = {
+    slug: 'magic-kingdom',
+    name: 'Magic Kingdom',
+    destinationName: 'Walt Disney World',
+    averageWait: null,
+    timezone: 'America/New_York',
+  };
+
+  it('shows green Open badge for OPEN phase', () => {
+    render(<ParkCard {...base} phase="OPEN" />);
+    expect(screen.getByText('Open')).toBeInTheDocument();
+  });
+
+  it('shows Today badge (not Closed) for UPCOMING phase', () => {
+    render(<ParkCard {...base} phase="UPCOMING" todayHours={{ openTime: '09:00', closeTime: '22:00' }} />);
+    expect(screen.getByText('Today')).toBeInTheDocument();
+    expect(screen.queryByText('Closed')).not.toBeInTheDocument();
+  });
+
+  it('shows opening time for UPCOMING phase', () => {
+    render(<ParkCard {...base} phase="UPCOMING" todayHours={{ openTime: '09:00', closeTime: '22:00' }} />);
+    expect(screen.getByText(/Opens 9 AM/)).toBeInTheDocument();
+  });
+
+  it('shows Closed badge and closing time for CLOSED phase', () => {
+    render(<ParkCard {...base} phase="CLOSED" todayHours={{ openTime: '09:00', closeTime: '22:00' }} />);
+    expect(screen.getByText('Closed')).toBeInTheDocument();
+    expect(screen.getByText(/Closed at 10 PM/)).toBeInTheDocument();
+  });
+
+  it('preserves todayHours for CLOSED phase (closing time visible)', () => {
+    render(<ParkCard {...base} phase="CLOSED" todayHours={{ openTime: '09:00', closeTime: '21:00' }} />);
+    expect(screen.getByText(/Closed at 9 PM/)).toBeInTheDocument();
+  });
+
+  it('shows no status badge and schedule unavailable for ERROR phase', () => {
+    render(<ParkCard {...base} phase="ERROR" />);
+    expect(screen.queryByText('Closed')).not.toBeInTheDocument();
+    expect(screen.queryByText('Open')).not.toBeInTheDocument();
+    expect(screen.getByText('Schedule unavailable')).toBeInTheDocument();
+  });
+
+  it('shows no status badge and schedule unavailable for NO_DATA phase', () => {
+    render(<ParkCard {...base} phase="NO_DATA" />);
+    expect(screen.queryByText('Closed')).not.toBeInTheDocument();
+    expect(screen.queryByText('Open')).not.toBeInTheDocument();
+    expect(screen.getByText('Schedule unavailable')).toBeInTheDocument();
+  });
+
+  it('does not dim the card for ERROR phase', () => {
+    const { container } = render(<ParkCard {...base} phase="ERROR" />);
+    const link = container.querySelector('a');
+    expect(link?.className).not.toContain('bg-primary-50/60');
+  });
+
+  it('dims the card for CLOSED phase', () => {
+    const { container } = render(<ParkCard {...base} phase="CLOSED" />);
+    const link = container.querySelector('a');
+    expect(link?.className).toContain('bg-primary-50/60');
+  });
+
+  it('does not show crowd level badge for CLOSED phase', () => {
+    render(<ParkCard {...base} averageWait={30} phase="CLOSED" />);
+    expect(screen.queryByText('Moderate')).not.toBeInTheDocument();
+  });
+
+  it('shows crowd level badge for OPEN phase', () => {
+    render(<ParkCard {...base} averageWait={30} phase="OPEN" />);
+    expect(screen.getByText('Moderate')).toBeInTheDocument();
   });
 });
 

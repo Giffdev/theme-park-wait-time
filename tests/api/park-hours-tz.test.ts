@@ -96,7 +96,7 @@ describe("GET /api/park-hours", () => {
         { date: "2026-08-02", openingISO: "2026-08-02T10:00:00-04:00", closingISO: "2026-08-02T21:00:00-04:00" },
       ]));
       const { parks } = await (await GET()).json();
-      expect(parks[0].isOpen).toBe(true);
+      expect(parks[0].phase).toBe("OPEN");
       expect(parks[0].todayHours?.openTime).toBe("09:00");
       expect(parks[0].todayHours?.closeTime).toBe("23:00");
     });
@@ -108,7 +108,7 @@ describe("GET /api/park-hours", () => {
         { date: "2026-08-02", openingISO: "2026-08-02T10:00:00-04:00", closingISO: "2026-08-02T21:00:00-04:00" },
       ]));
       const { parks } = await (await GET()).json();
-      expect(parks[0].isOpen).toBe(false);
+      expect(parks[0].phase).toBe("UPCOMING");
       expect(parks[0].todayHours?.openTime).toBe("10:00");
       expect(parks[0].todayHours?.closeTime).toBe("21:00");
     });
@@ -119,7 +119,7 @@ describe("GET /api/park-hours", () => {
       vi.setSystemTime(new Date("2026-08-01T17:00:00.000Z"));
       mockFetch.mockResolvedValueOnce(upstreamSchedule(ET_PARK, [{ date: "2026-08-02", openingISO: "2026-08-02T09:00:00-04:00", closingISO: "2026-08-02T22:00:00-04:00" }]));
       const { parks } = await (await GET()).json();
-      expect(parks[0].isOpen).toBe(false);
+      expect(parks[0].phase).toBe("NO_DATA");
       expect(parks[0].todayHours).toBeNull();
     });
 
@@ -127,7 +127,7 @@ describe("GET /api/park-hours", () => {
       vi.setSystemTime(new Date("2026-08-01T17:00:00.000Z"));
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: ET_PARK.id, name: ET_PARK.name, timezone: ET_PARK.timezone, schedule: [{ date: "2026-08-01", type: "TICKETED_EVENT", openingTime: "2026-08-01T18:00:00-04:00", closingTime: "2026-08-01T23:00:00-04:00" }] }) });
       const { parks } = await (await GET()).json();
-      expect(parks[0].isOpen).toBe(false);
+      expect(parks[0].phase).toBe("NO_DATA");
       expect(parks[0].todayHours).toBeNull();
     });
 
@@ -135,7 +135,7 @@ describe("GET /api/park-hours", () => {
       vi.setSystemTime(new Date("2026-08-02T14:00:00.000Z"));
       mockFetch.mockResolvedValueOnce(upstreamSchedule(ET_PARK, [{ date: "2026-08-01", openingISO: "2026-08-01T09:00:00-04:00", closingISO: "2026-08-01T22:00:00-04:00" }]));
       const { parks } = await (await GET()).json();
-      expect(parks[0].isOpen).toBe(false);
+      expect(parks[0].phase).toBe("NO_DATA");
       expect(parks[0].todayHours).toBeNull();
     });
   });
@@ -153,7 +153,7 @@ describe("GET /api/park-hours", () => {
       expect(typeof body.fetchedAt).toBe("string");
     });
 
-    it("each park entry has parkId, slug, timezone, isOpen, todayHours, localTime", async () => {
+    it("each park entry has parkId, slug, timezone, phase, todayHours, localTime", async () => {
       vi.setSystemTime(new Date("2026-08-01T17:00:00.000Z"));
       mockFetch.mockResolvedValueOnce(upstreamSchedule(ET_PARK, [{ date: "2026-08-01", openingISO: "2026-08-01T09:00:00-04:00", closingISO: "2026-08-01T22:00:00-04:00" }]));
       const { parks } = await (await GET()).json();
@@ -161,50 +161,63 @@ describe("GET /api/park-hours", () => {
       expect(park).toHaveProperty("parkId", ET_PARK.id);
       expect(park).toHaveProperty("slug", ET_PARK.slug);
       expect(park).toHaveProperty("timezone", ET_PARK.timezone);
-      expect(park).toHaveProperty("isOpen");
+      expect(park).toHaveProperty("phase");
       expect(park).toHaveProperty("todayHours");
       expect(park).toHaveProperty("localTime");
+      // isOpen must not be present in the new contract
+      expect(park).not.toHaveProperty("isOpen");
     });
   });
 
-  describe("isOpen and todayHours semantics", () => {
-    it("isOpen=true with todayHours when inside OPERATING window", async () => {
+  describe("phase and todayHours semantics", () => {
+    it("phase=OPEN with todayHours when inside OPERATING window", async () => {
       vi.setSystemTime(new Date("2026-08-01T17:00:00.000Z"));
       mockFetch.mockResolvedValueOnce(upstreamSchedule(ET_PARK, [{ date: "2026-08-01", openingISO: "2026-08-01T09:00:00-04:00", closingISO: "2026-08-01T22:00:00-04:00" }]));
       const { parks } = await (await GET()).json();
-      expect(parks[0].isOpen).toBe(true);
+      expect(parks[0].phase).toBe("OPEN");
       expect(parks[0].todayHours).toMatchObject({ openTime: "09:00", closeTime: "22:00" });
     });
 
-    it("isOpen=false with todayHours when before opening (upcoming)", async () => {
+    it("phase=UPCOMING with todayHours when before opening", async () => {
       vi.setSystemTime(new Date("2026-08-01T11:00:00.000Z"));
       mockFetch.mockResolvedValueOnce(upstreamSchedule(ET_PARK, [{ date: "2026-08-01", openingISO: "2026-08-01T09:00:00-04:00", closingISO: "2026-08-01T22:00:00-04:00" }]));
       const { parks } = await (await GET()).json();
-      expect(parks[0].isOpen).toBe(false);
+      expect(parks[0].phase).toBe("UPCOMING");
       expect(parks[0].todayHours).toMatchObject({ openTime: "09:00", closeTime: "22:00" });
     });
 
-    it("isOpen=false with todayHours=null when after closing (closed for day)", async () => {
+    it("phase=CLOSED with todayHours preserved after closing (hours not discarded)", async () => {
+      // 2026-08-02T03:30 UTC = 11:30 PM ET on Aug 1 — after the 10 PM close
       vi.setSystemTime(new Date("2026-08-02T03:30:00.000Z"));
       mockFetch.mockResolvedValueOnce(upstreamSchedule(ET_PARK, [{ date: "2026-08-01", openingISO: "2026-08-01T09:00:00-04:00", closingISO: "2026-08-01T22:00:00-04:00" }]));
       const { parks } = await (await GET()).json();
-      expect(parks[0].isOpen).toBe(false);
-      expect(parks[0].todayHours).toBeNull();
+      expect(parks[0].phase).toBe("CLOSED");
+      // todayHours must be preserved so the card can show "Closed at 10 PM"
+      expect(parks[0].todayHours).toMatchObject({ openTime: "09:00", closeTime: "22:00" });
     });
 
-    it("isOpen=false with todayHours=null when upstream returns empty schedule", async () => {
+    it("phase=NO_DATA with todayHours=null when upstream returns empty schedule", async () => {
       vi.setSystemTime(new Date("2026-08-01T17:00:00.000Z"));
       mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: ET_PARK.id, name: ET_PARK.name, timezone: ET_PARK.timezone, schedule: [] }) });
       const { parks } = await (await GET()).json();
-      expect(parks[0].isOpen).toBe(false);
+      expect(parks[0].phase).toBe("NO_DATA");
       expect(parks[0].todayHours).toBeNull();
     });
 
-    it("isOpen=false when upstream API request fails", async () => {
+    it("phase=ERROR (not CLOSED) when upstream API request fails", async () => {
       vi.setSystemTime(new Date("2026-08-01T17:00:00.000Z"));
       mockFetch.mockResolvedValueOnce({ ok: false, status: 503 });
       const { parks } = await (await GET()).json();
-      expect(parks[0].isOpen).toBe(false);
+      // Must never assert Closed on an upstream error
+      expect(parks[0].phase).toBe("ERROR");
+      expect(parks[0].todayHours).toBeNull();
+    });
+
+    it("phase=ERROR (not CLOSED) when upstream fetch throws", async () => {
+      vi.setSystemTime(new Date("2026-08-01T17:00:00.000Z"));
+      mockFetch.mockRejectedValueOnce(new Error("network timeout"));
+      const { parks } = await (await GET()).json();
+      expect(parks[0].phase).toBe("ERROR");
       expect(parks[0].todayHours).toBeNull();
     });
   });

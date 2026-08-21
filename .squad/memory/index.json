@@ -2,12 +2,13 @@
   {
     "id": "1c366262-6e78-422c-af89-745431a8f694",
     "class": "DECISION",
-    "loadGuidance": "ALWAYS",
+    "loadGuidance": "ARCHIVE",
     "title": "Treat park hours as date-specific calendars",
     "path": ".squad\\decisions\\inbox\\devin-sinha-via-copilot-treat-park-hours-as-date-specific-calendars-1c366262.md",
-    "status": "active",
+    "status": "deleted",
     "createdAt": "2026-08-21T16:32:37.842Z",
-    "updatedAt": "2026-08-21T16:32:37.842Z"
+    "updatedAt": "2026-08-21T18:19:19.445Z",
+    "deletedAt": "2026-08-21T18:19:19.445Z"
   },
   {
     "id": "37f16ae1-995d-492f-af50-508265cfdc59",
