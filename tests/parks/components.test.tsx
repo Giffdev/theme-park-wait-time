@@ -190,6 +190,19 @@ describe('ParkCard', () => {
     render(<ParkCard {...defaultProps} activeRideCount={18} />);
     expect(screen.getByText(/18 rides/)).toBeInTheDocument();
   });
+
+  it('renders local midnight openTime "24:00" as "12 AM", not "12 PM"', () => {
+    render(
+      <ParkCard
+        {...defaultProps}
+        averageWait={null}
+        isOpen={false}
+        todayHours={{ openTime: '24:00', closeTime: '09:00' }}
+      />,
+    );
+    expect(screen.getByText(/12 AM/)).toBeInTheDocument();
+    expect(screen.queryByText(/12 PM/)).not.toBeInTheDocument();
+  });
 });
 
 describe('AttractionRow', () => {

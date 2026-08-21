@@ -44,7 +44,9 @@ function isoToLocalHHMM(iso: string, tz: string): string {
   }).formatToParts(date);
   const h = parts.find((p) => p.type === 'hour')?.value ?? '00';
   const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
-  return `${h}:${m}`;
+  // Some environments return '24' for midnight with hour12:false; normalize to '00'.
+  const hNorm = h === '24' ? '00' : h;
+  return `${hNorm}:${m}`;
 }
 
 /** Current wall-clock time in the park's IANA timezone, formatted "H:MM AM/PM" */

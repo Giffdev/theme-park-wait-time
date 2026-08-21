@@ -231,7 +231,11 @@ describe('Parks Listing Page', () => {
     mockFetch.mockImplementation((url: string) => Promise.resolve({
       ok: true,
       status: 200,
-      json: async () => url === '/api/wait-times' ? waitTimesResponse() : [],
+      json: async () => {
+        if (url === '/api/wait-times') return waitTimesResponse();
+        if (url === '/api/park-hours') return { fetchedAt: new Date().toISOString(), parks: [] };
+        return [];
+      },
     }));
     const mod = await import('@/app/parks/page');
     ParksPage = mod.default;
@@ -410,7 +414,7 @@ describe('Parks Listing Page', () => {
       });
       mockFetch.mockImplementation((url: string) => {
         if (url !== '/api/wait-times') {
-          return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+          return Promise.resolve({ ok: true, status: 200, json: async () => url === '/api/park-hours' ? { fetchedAt: new Date().toISOString(), parks: [] } : [] });
         }
         return new Promise((resolve) => {
           resolveRefresh = resolve;
@@ -453,7 +457,7 @@ describe('Parks Listing Page', () => {
       mockFetch.mockImplementation((url: string) => Promise.resolve({
         ok: true,
         status: 200,
-        json: async () => url === '/api/wait-times' ? responseWithErrors : [],
+        json: async () => url === '/api/wait-times' ? responseWithErrors : url === '/api/park-hours' ? { fetchedAt: new Date().toISOString(), parks: [] } : [],
       }));
 
       render(<ParksPage />);
@@ -496,7 +500,7 @@ describe('Parks Listing Page', () => {
       });
       mockFetch.mockImplementation((url: string) => {
         if (url === '/api/wait-times') return providerResponse.promise;
-        return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+        return Promise.resolve({ ok: true, status: 200, json: async () => url === '/api/park-hours' ? { fetchedAt: new Date().toISOString(), parks: [] } : [] });
       });
 
       render(<ParksPage />);
@@ -566,7 +570,7 @@ describe('Parks Listing Page', () => {
       });
       mockFetch.mockImplementation((url: string) => {
         if (url === '/api/wait-times') return providerResponse.promise;
-        return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+        return Promise.resolve({ ok: true, status: 200, json: async () => url === '/api/park-hours' ? { fetchedAt: new Date().toISOString(), parks: [] } : [] });
       });
 
       render(<ParksPage />);
@@ -651,7 +655,7 @@ describe('Parks Listing Page', () => {
       });
       mockFetch.mockImplementation((url: string) => {
         if (url === '/api/wait-times') return providerResponse.promise;
-        return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+        return Promise.resolve({ ok: true, status: 200, json: async () => url === '/api/park-hours' ? { fetchedAt: new Date().toISOString(), parks: [] } : [] });
       });
 
       render(<ParksPage />);
@@ -708,7 +712,7 @@ describe('Parks Listing Page', () => {
             resolveRefresh = resolve;
           });
         }
-        return Promise.resolve({ ok: true, json: async () => [] });
+        return Promise.resolve({ ok: true, json: async () => url === '/api/park-hours' ? { fetchedAt: new Date().toISOString(), parks: [] } : [] });
       });
       mockGetCollection.mockImplementation((collectionPath: string) => {
         if (collectionPath === 'parks') return Promise.resolve(mockParks);
@@ -802,7 +806,7 @@ describe('Parks Listing Page', () => {
             resolveRefresh = resolve;
           });
         }
-        return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+        return Promise.resolve({ ok: true, status: 200, json: async () => url === '/api/park-hours' ? { fetchedAt: new Date().toISOString(), parks: [] } : [] });
       });
 
       render(<ParksPage />);
@@ -902,7 +906,7 @@ describe('Parks Listing Page', () => {
               },
               parks: { [californiaAdventureId]: [] },
             }
-          : [],
+          : url === '/api/park-hours' ? { fetchedAt: new Date().toISOString(), parks: [] } : [],
       }));
 
       render(<ParksPage />);
@@ -979,7 +983,7 @@ describe('Parks Listing Page', () => {
       mockFetch.mockImplementation((url: string) => (
         url === '/api/wait-times'
           ? providerResponse.promise
-          : Promise.resolve({ ok: true, status: 200, json: async () => [] })
+          : Promise.resolve({ ok: true, status: 200, json: async () => url === '/api/park-hours' ? { fetchedAt: new Date().toISOString(), parks: [] } : [] })
       ));
 
       render(<ParksPage />);
@@ -1014,7 +1018,7 @@ describe('Parks Listing Page', () => {
 
       mockFetch.mockImplementation((url: string) => {
         if (url === '/api/park-hours') {
-          return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ fetchedAt: new Date().toISOString(), parks: [] }) });
         }
         if (url !== '/api/wait-times') {
           return Promise.resolve({ ok: true, status: 200, json: async () => [] });
@@ -1084,6 +1088,69 @@ describe('Parks Listing Page', () => {
       expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
       expect(screen.getByText('EPCOT')).toBeInTheDocument();
       expect(screen.getByText('Universal Studios')).toBeInTheDocument();
+    });
+  });
+
+  describe('park hours contract', () => {
+    it('populates hours when the API returns the { fetchedAt, parks } envelope', async () => {
+      const parkHoursPayload = {
+        fetchedAt: new Date().toISOString(),
+        parks: mockParks.map((p) => ({
+          parkId: p.id,
+          slug: p.slug,
+          timezone: 'America/New_York',
+          isOpen: true,
+          todayHours: { openTime: '09:00', closeTime: '22:00' },
+          localTime: '10:00 AM',
+        })),
+      };
+
+      mockGetCollection
+        .mockResolvedValueOnce(mockParks)
+        .mockResolvedValue([]);
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/park-hours')
+          return Promise.resolve({ ok: true, status: 200, json: async () => parkHoursPayload });
+        return Promise.resolve({ ok: true, status: 200, json: async () => waitTimesResponse() });
+      });
+
+      const consoleSpy = vi.spyOn(console, 'error');
+
+      render(<ParksPage />);
+
+      await waitFor(() => expect(screen.getByText('Magic Kingdom')).toBeInTheDocument());
+      // ParkCard receives the hours data — no contract error should have been logged.
+      expect(consoleSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('Park hours response missing parks array'),
+        expect.anything(),
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('logs an error and keeps the page usable when park-hours returns a bare array (contract drift)', async () => {
+      mockGetCollection
+        .mockResolvedValueOnce(mockParks)
+        .mockResolvedValue([]);
+      mockFetch.mockImplementation((url: string) => {
+        if (url === '/api/park-hours')
+          return Promise.resolve({ ok: true, status: 200, json: async () => [] });
+        return Promise.resolve({ ok: true, status: 200, json: async () => waitTimesResponse() });
+      });
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      render(<ParksPage />);
+
+      await waitFor(() => expect(screen.getByText('Magic Kingdom')).toBeInTheDocument());
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Park hours response missing parks array:',
+        [],
+      );
+      // Page stays functional despite malformed hours payload.
+      expect(screen.getByText('Magic Kingdom')).toBeInTheDocument();
+
+      consoleSpy.mockRestore();
     });
   });
 });

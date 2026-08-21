@@ -33,8 +33,10 @@ function crowdLevel(avg: number): { label: string; className: string } {
 /** Format "09:00" → "9 AM", "21:00" → "9 PM" */
 function formatTime(time: string): string {
   const [h, m] = time.split(':').map(Number);
-  const suffix = h >= 12 ? 'PM' : 'AM';
-  const hour12 = h % 12 || 12;
+  // Normalize hour 24 (midnight boundary from some API implementations) to 0.
+  const hNorm = h === 24 ? 0 : h;
+  const suffix = hNorm >= 12 ? 'PM' : 'AM';
+  const hour12 = hNorm % 12 || 12;
   return m === 0 ? `${hour12} ${suffix}` : `${hour12}:${m.toString().padStart(2, '0')} ${suffix}`;
 }
 

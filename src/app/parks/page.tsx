@@ -157,15 +157,25 @@ export default function ParksPage() {
     try {
       const res = await fetch('/api/park-hours');
       if (res.ok) {
-        const data: { fetchedAt: string; parks: ParkHoursEntry[] } = await res.json();
+        const raw: unknown = await res.json();
+        if (
+          typeof raw !== 'object' ||
+          raw === null ||
+          !Array.isArray((raw as { parks?: unknown }).parks)
+        ) {
+          console.error('Park hours response missing parks array:', raw);
+          return;
+        }
+        const data = raw as { fetchedAt: string; parks: ParkHoursEntry[] };
         const map: Record<string, ParkHoursEntry> = {};
         for (const entry of data.parks) {
           map[entry.parkId] = entry;
         }
         setParkHours(map);
       }
-    } catch {
+    } catch (err) {
       // Park hours are supplemental — don't break the page
+      console.error('Failed to fetch park hours:', err);
     }
   }, []);
 
