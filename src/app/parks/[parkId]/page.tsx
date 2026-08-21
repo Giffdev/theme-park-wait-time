@@ -28,6 +28,10 @@ interface Park {
   slug: string;
   destinationName: string;
   destinationId: string;
+  /** IANA timezone from Firestore — used to compute the park-local calendar date
+   *  for schedule fetches so viewers outside the park's timezone always see the
+   *  correct day's operating hours. */
+  timezone: string;
 }
 
 interface Attraction {
@@ -444,12 +448,20 @@ export default function ParkDetailPage() {
     parkUuid: string,
     requestedRoute = parkId,
     initializationGeneration = initializationRef.current.generation,
+    timezone?: string,
   ) => {
     if (!isCurrentInitialization(requestedRoute, initializationGeneration)) return null;
     setScheduleLoading(true);
     setScheduleIssue(null);
     try {
-      const res = await fetch(`/api/park-schedule?parkId=${parkUuid}`, {
+      // Compute the park-local calendar date so viewers outside the park's
+      // timezone always fetch the correct day's schedule (not the UTC date,
+      // which diverges from the park's local calendar at midnight UTC).
+      const parkLocalDate = timezone
+        ? new Date().toLocaleDateString('en-CA', { timeZone: timezone })
+        : null;
+      const dateParam = parkLocalDate ? `&date=${encodeURIComponent(parkLocalDate)}` : '';
+      const res = await fetch(`/api/park-schedule?parkId=${parkUuid}${dateParam}`, {
         cache: 'no-store',
         signal: AbortSignal.timeout(10_000),
       });
@@ -599,7 +611,7 @@ export default function ParkDetailPage() {
       // Schedule is fired independently (not awaited alongside attractions/wait
       // times) — a hung or slow `/api/park-schedule` response must never delay
       // or block wait-time rendering.
-      void fetchSchedule(parkDoc.id, requestedRoute, initializationGeneration);
+      void fetchSchedule(parkDoc.id, requestedRoute, initializationGeneration, parkDoc.timezone);
 
       // Phase 1b + Phase 2: attractions and wait times load independently so a
       // failure in one never masks or blocks the other.
@@ -709,7 +721,7 @@ export default function ParkDetailPage() {
     staleness: 30 * 60 * 1000,
     onRefresh: async () => {
       if (!park || !isCurrentPark) return;
-      await fetchSchedule(park.id, parkId);
+      await fetchSchedule(park.id, parkId, initializationRef.current.generation, park.timezone);
     },
     enabled: Boolean(park && isCurrentPark && !refreshing),
   });
@@ -1046,7 +1058,7 @@ export default function ParkDetailPage() {
           <span>{scheduleIssue.title} — wait times below are unaffected.</span>
           <button
             type="button"
-            onClick={() => park && fetchSchedule(park.id)}
+            onClick={() => park && fetchSchedule(park.id, parkId, initializationRef.current.generation, park.timezone)}
             className="shrink-0 rounded-md border border-amber-300 px-2 py-1 text-xs font-medium hover:bg-amber-100"
           >
             Retry

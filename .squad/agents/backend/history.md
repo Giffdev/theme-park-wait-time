@@ -10,3 +10,6 @@
 ### 2026-08-19T09:55:20.065-07:00 — Recovery mandate
 
 Firestore models, writes, reads, and migrations must support the complete trip flow. Core trip logging remained broken too long; verify that a saved trip and its ride visits survive reload instead of relying on speculative data-layer patches.
+
+
+📌 Team update (2026-08-21T09:32:28.452-07:00): Park-hours API contract now returns date-specific schedules with epoch-based open state; Backend implemented local HH:MM conversion for park-local times — decided by Devin Sinha and validated by Lead/Frontend/Tester

@@ -157,9 +157,9 @@ export default function ParksPage() {
     try {
       const res = await fetch('/api/park-hours');
       if (res.ok) {
-        const data: ParkHoursEntry[] = await res.json();
+        const data: { fetchedAt: string; parks: ParkHoursEntry[] } = await res.json();
         const map: Record<string, ParkHoursEntry> = {};
-        for (const entry of data) {
+        for (const entry of data.parks) {
           map[entry.parkId] = entry;
         }
         setParkHours(map);

@@ -67,6 +67,10 @@ interface ParkDaySchedule extends CachedParkSchedule<ParkDaySegment> {
   hasData: boolean;
 }
 
+// Last-resort UTC fallback. Callers should always supply an explicit date
+// computed in the park's IANA timezone (via toLocaleDateString('en-CA',
+// { timeZone: park.timezone })) — this UTC default diverges from the park's
+// local calendar at midnight UTC, which for eastern parks is ~8pm ET.
 function getTodayDate(): string {
   return new Date().toISOString().split('T')[0];
 }

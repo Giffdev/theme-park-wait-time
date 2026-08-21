@@ -775,3 +775,33 @@ claims that do not prove persistence across reload.
 - `archive/2026-08-14-pre-2026-08-11.md` contains the earlier canonical decision set.
 - `archive/legacy-decisions-log-through-2026-05-01.md` preserves unique provenance
   from the superseded legacy log; canonical decisions take precedence.
+
+---
+
+### 2026-08-21T09:32:28.452-07:00: Park schedules as date-specific calendars (durable user decision)
+
+**By:** Devin Sinha (via Copilot)  
+**Date:** 2026-08-21  
+**Status:** Durable Requirement
+
+#### Decision
+
+Park operating schedules must be modeled and verified as date-specific calendars. Audits and fixes must account for seasonal changes, weekday variation, special-event hours, and closed days. Never infer recurring/default hours or reduce reported discrepancies to timezone-rendering issues without independently validating the underlying park-and-date schedule against an authoritative source.
+
+#### Rationale
+
+Park operating hours are not uniform across the calendar year. They vary by weekday (Monday vs. Saturday), season (summer vs. winter), and special events (holidays, celebrations). Treating them as recurring "default" hours masks real data issues and leads to incorrect display of closed days, early closures, or special extended hours. Timezone rendering issues must be investigated independently to confirm the discrepancy is not a real schedule difference.
+
+#### Implementation
+
+Frontend, Backend, and Tester all validated this model in 2026-08-21 orchestration:
+- Frontend correctly displays park-local times and respects park-local date boundaries
+- Backend API returns date-specific hours with proper epoch-based open state
+- Tester covers date isolation, seasonal closures, and timezone boundaries
+
+#### Impact
+
+- Park schedules now render correctly for all date-specific variations
+- Timezone discrepancies are validated against actual park calendar data, not assumed to be rendering artifacts
+- Architectural foundation set for seasonal/closure handling
+
