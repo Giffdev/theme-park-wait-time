@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { filterCurrentParkDocuments } from '@/lib/parks/park-document-read';
+import type { ParkAvailabilityPhase } from '@/types/park-availability';
 
 const API_BASE = 'https://api.themeparks.wiki/v1';
 
@@ -18,20 +19,64 @@ interface WikiScheduleResponse {
   schedule: WikiScheduleEntry[];
 }
 
+/**
+ * Shape consumed by parks/page.tsx ParkHoursEntry and passed to ParkCard.
+ *
+ * `phase` replaces the old `isOpen: boolean` field, which collapsed upstream
+ * errors, confirmed closed days, and after-close states into identical output.
+ * `todayHours` is now preserved for CLOSED so the card can show closing time.
+ */
 interface ParkHoursResult {
   parkId: string;
   slug: string;
-  name: string;
   timezone: string;
-  status: 'OPEN' | 'CLOSED' | 'NO_DATA' | 'ERROR';
-  openingTime: string | null;
-  closingTime: string | null;
+  phase: ParkAvailabilityPhase;
+  /** HH:MM local strings in the park's own IANA timezone, or null when unavailable */
+  todayHours: { openTime: string; closeTime: string } | null;
+  /** Current clock time in the park's timezone, e.g. "9:30 AM" */
+  localTime: string;
+}
+
+/**
+ * Convert an ISO 8601 instant to a zero-padded 24-h "HH:MM" string in the
+ * given IANA timezone so callers can format it without timezone awareness.
+ */
+function isoToLocalHHMM(iso: string, tz: string): string {
+  const date = new Date(iso);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const h = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  // Some environments return '24' for midnight with hour12:false; normalize to '00'.
+  const hNorm = h === '24' ? '00' : h;
+  return `${hNorm}:${m}`;
+}
+
+/** Current wall-clock time in the park's IANA timezone, formatted "H:MM AM/PM" */
+function parkLocalTime(tz: string): string {
+  return new Date().toLocaleTimeString('en-US', {
+    timeZone: tz,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 /**
  * GET /api/park-hours
- * Returns current open/closed status and operating hours for ALL parks.
+ * Returns current availability phase and operating hours for ALL parks.
  * Designed for the parks listing page to show status at a glance.
+ *
+ * Phase contract:
+ *   OPEN     - Inside OPERATING window right now.
+ *   UPCOMING - Today has an OPERATING entry; park has not yet opened.
+ *   CLOSED   - Today had an OPERATING entry that has now passed.
+ *   NO_DATA  - Schedule fetched but no OPERATING entry for today.
+ *   ERROR    - Upstream fetch failed; status unknown, never assert Closed.
  */
 export async function GET() {
   try {
@@ -48,11 +93,11 @@ export async function GET() {
     // Fetch schedules in parallel for all parks
     const results: ParkHoursResult[] = await Promise.all(
       parks.map(async (park): Promise<ParkHoursResult> => {
-        const base: Omit<ParkHoursResult, 'status' | 'openingTime' | 'closingTime'> = {
+        const base: Omit<ParkHoursResult, 'phase' | 'todayHours'> = {
           parkId: park.id,
           slug: park.slug,
-          name: park.name,
           timezone: park.timezone,
+          localTime: parkLocalTime(park.timezone),
         };
 
         try {
@@ -61,7 +106,9 @@ export async function GET() {
           });
 
           if (!res.ok) {
-            return { ...base, status: res.status === 404 ? 'NO_DATA' : 'ERROR', openingTime: null, closingTime: null };
+            // Upstream error - never assert Closed; report ERROR so the card
+            // can show "schedule unavailable" rather than "Closed".
+            return { ...base, phase: 'ERROR', todayHours: null };
           }
 
           const data = (await res.json()) as WikiScheduleResponse;
@@ -76,18 +123,40 @@ export async function GET() {
           );
 
           if (!operatingEntry) {
-            return { ...base, status: 'CLOSED', openingTime: null, closingTime: null };
+            // Schedule fetched successfully but no OPERATING entry for today.
+            // Could be a confirmed-closed day, a holiday, or beyond the
+            // schedule horizon - report NO_DATA, not CLOSED.
+            return { ...base, phase: 'NO_DATA', todayHours: null };
           }
 
-          return {
-            ...base,
-            status: 'OPEN',
-            openingTime: operatingEntry.openingTime,
-            closingTime: operatingEntry.closingTime,
-          };
+          // Epoch-safe phase derivation: compare milliseconds so the viewer's
+          // local clock and timezone never influence the result.
+          const nowMs = Date.now();
+          const openMs = new Date(operatingEntry.openingTime).getTime();
+          const closeMs = new Date(operatingEntry.closingTime).getTime();
+          const isCurrentlyOpen = nowMs >= openMs && nowMs < closeMs;
+          const isUpcoming = nowMs < openMs;
+
+          // Convert ISO instants to HH:MM in the park's own timezone so
+          // ParkCard.formatTime receives the park-local hour, not the viewer's.
+          const openTime = isoToLocalHHMM(operatingEntry.openingTime, park.timezone);
+          const closeTime = isoToLocalHHMM(operatingEntry.closingTime, park.timezone);
+
+          // Always preserve todayHours when the OPERATING entry is confirmed -
+          // CLOSED cards can show "Closed at X PM" rather than losing that info.
+          const todayHours = { openTime, closeTime };
+
+          if (isCurrentlyOpen) {
+            return { ...base, phase: 'OPEN', todayHours };
+          }
+          if (isUpcoming) {
+            return { ...base, phase: 'UPCOMING', todayHours };
+          }
+          // Park operated today but the window has passed.
+          return { ...base, phase: 'CLOSED', todayHours };
         } catch (err) {
           console.error(`Failed to fetch schedule for ${park.name} (${park.id}):`, err);
-          return { ...base, status: 'ERROR', openingTime: null, closingTime: null };
+          return { ...base, phase: 'ERROR', todayHours: null };
         }
       })
     );

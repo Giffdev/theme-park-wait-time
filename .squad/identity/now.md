@@ -1,20 +1,33 @@
 ---
-updated_at: 2026-08-17T10:12:36.521-07:00
-focus_area: Catalog code and production upsert reconciliation are complete; deletion and retirement remain disabled
+updated_at: 2026-08-21T09:32:28.452-07:00
+focus_area: Park schedule correctness—date-specific calendars with timezone-aware rendering; pending official-source reconciliation
 active_issues:
-  - Deletion and retirement remain review-only and disabled
+  - Official source verification (dollywood.com) blocked by JS/WAF
+  - Fact Checker locked out for revision per protocol
+  - Next phase: official source reconciliation when accessible
 ---
 
 # What We're Focused On
 
-The static Squad v0.11.0 migration shipped as commit
-`3ddc9e88f45b550f5564b6d3628b8caf0fb3b99f`.
+Park schedule correctness and date-specific calendar implementation. Completed 2026-08-21 orchestration validates timezone-aware rendering and date-boundary handling across Frontend, Backend, and Tester.
 
-## Catalog Implementation
+## Park Schedule Implementation (2026-08-21)
 
-- Catalog code shipped at `f6bf8f2`
+- Frontend: Park-local time rendering + date-boundary handling
+- Backend: Park-hours API contract with date-specific calendar data + epoch-based open state
+- Tester: Comprehensive coverage for date isolation, seasonal closures, timezone boundaries, midnight rollover
+- Fact Checker: Verification report rejected per first-party source protocol; locked out for revision
+- Lead reviewer: Independent verification of Dollywood 2026-08-21 (ThemeParks.wiki 09:00-20:00 ET); approved combined diff
+- Durable requirement: Park schedules are date-specific calendars, never treat as recurring defaults
+
+## Pending
+
+- Official source reconciliation (dollywood.com verification unavailable due to JS/WAF)
+- Edge cases: closed days, special-event hours, weekday variation
+
+## Catalog Implementation (2026-08-17)
+
+- Catalog code shipped
 - Production upsert-only reconciliation completed successfully
-- Exact manifest: `0039074c56d64862f4b426317f8cd99815b6500b11d8b9fd8711abed339577b7`
-- Pending upserts: **0**
 - Deletion and retirement remain review-only and disabled
-- No production delete path was enabled or executed
+- Pending upserts: 0

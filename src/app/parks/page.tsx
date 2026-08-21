@@ -23,6 +23,7 @@ for (const family of DESTINATION_FAMILIES) {
   FAMILY_ID_TO_NAME[family.familyId] = family.familyName;
 }
 import ParkCard from '@/components/ParkCard';
+import type { ParkAvailabilityPhase } from '@/types/park-availability';
 
 interface Park {
   id: string;
@@ -38,7 +39,7 @@ interface ParkHoursEntry {
   parkId: string;
   slug: string;
   timezone: string;
-  isOpen: boolean;
+  phase: ParkAvailabilityPhase;
   todayHours: { openTime: string; closeTime: string } | null;
   localTime: string;
 }
@@ -157,15 +158,25 @@ export default function ParksPage() {
     try {
       const res = await fetch('/api/park-hours');
       if (res.ok) {
-        const data: ParkHoursEntry[] = await res.json();
+        const raw: unknown = await res.json();
+        if (
+          typeof raw !== 'object' ||
+          raw === null ||
+          !Array.isArray((raw as { parks?: unknown }).parks)
+        ) {
+          console.error('Park hours response missing parks array:', raw);
+          return;
+        }
+        const data = raw as { fetchedAt: string; parks: ParkHoursEntry[] };
         const map: Record<string, ParkHoursEntry> = {};
-        for (const entry of data) {
+        for (const entry of data.parks) {
           map[entry.parkId] = entry;
         }
         setParkHours(map);
       }
-    } catch {
+    } catch (err) {
       // Park hours are supplemental — don't break the page
+      console.error('Failed to fetch park hours:', err);
     }
   }, []);
 
@@ -772,7 +783,7 @@ export default function ParksPage() {
                         destinationName={park.destinationName}
                         averageWait={waitMetrics[park.id]?.average ?? null}
                         activeRideCount={waitMetrics[park.id]?.activeRideCount}
-                        isOpen={hours?.isOpen}
+                        phase={hours?.phase}
                         todayHours={hours?.todayHours}
                         timezone={hours?.timezone}
                         localTime={hours?.localTime}

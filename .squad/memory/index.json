@@ -1,1 +1,33 @@
-[]
+[
+  {
+    "id": "1c366262-6e78-422c-af89-745431a8f694",
+    "class": "DECISION",
+    "loadGuidance": "ARCHIVE",
+    "title": "Treat park hours as date-specific calendars",
+    "path": ".squad\\decisions\\inbox\\devin-sinha-via-copilot-treat-park-hours-as-date-specific-calendars-1c366262.md",
+    "status": "deleted",
+    "createdAt": "2026-08-21T16:32:37.842Z",
+    "updatedAt": "2026-08-21T18:19:19.445Z",
+    "deletedAt": "2026-08-21T18:19:19.445Z"
+  },
+  {
+    "id": "37f16ae1-995d-492f-af50-508265cfdc59",
+    "class": "POLICY",
+    "loadGuidance": "ALWAYS",
+    "title": "Publish completed fixes by default",
+    "path": ".squad\\memory\\policy-inbox\\devin-sinha-via-copilot-publish-completed-fixes-by-default-37f16ae1.md",
+    "status": "active",
+    "createdAt": "2026-08-21T17:46:11.814Z",
+    "updatedAt": "2026-08-21T17:46:11.814Z"
+  },
+  {
+    "id": "1b9e6b3a-4916-4ae3-9d2b-cfcce7762037",
+    "class": "POLICY",
+    "loadGuidance": "ALWAYS",
+    "title": "Include live URL in publication handoff",
+    "path": ".squad\\memory\\policy-inbox\\devin-sinha-via-copilot-include-live-url-in-publication-handoff-1b9e6b3a.md",
+    "status": "active",
+    "createdAt": "2026-08-21T17:47:40.682Z",
+    "updatedAt": "2026-08-21T17:47:40.682Z"
+  }
+]

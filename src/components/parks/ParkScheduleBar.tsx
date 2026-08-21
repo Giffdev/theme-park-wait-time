@@ -13,13 +13,18 @@ const SEGMENT_STYLES: Record<string, { bg: string; border: string; text: string 
   EXTRA_HOURS: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700' },
 };
 
-function formatScheduleTime(iso: string): string {
-  const date = new Date(iso);
-  const h = date.getHours();
-  const m = date.getMinutes();
-  const period = h >= 12 ? 'PM' : 'AM';
-  const hour = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return m === 0 ? `${hour}${period}` : `${hour}:${String(m).padStart(2, '0')}${period}`;
+/** Format an ISO instant as a short 12-hour time in the park's local timezone. */
+function formatScheduleTime(iso: string, timezone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(new Date(iso));
+  const hour = parts.find(p => p.type === 'hour')?.value ?? '';
+  const minute = parts.find(p => p.type === 'minute')?.value ?? '00';
+  const period = (parts.find(p => p.type === 'dayPeriod')?.value ?? '').toUpperCase();
+  return minute === '00' ? `${hour}${period}` : `${hour}:${minute}${period}`;
 }
 
 function getSegmentIcon(type: string, description: string | null): string {
@@ -30,9 +35,9 @@ function getSegmentIcon(type: string, description: string | null): string {
   return '';
 }
 
-function getSegmentLabel(segment: ScheduleSegment): string {
-  const open = formatScheduleTime(segment.openingTime);
-  const close = formatScheduleTime(segment.closingTime);
+function getSegmentLabel(segment: ScheduleSegment, timezone: string): string {
+  const open = formatScheduleTime(segment.openingTime, timezone);
+  const close = formatScheduleTime(segment.closingTime, timezone);
 
   if (segment.type === 'OPERATING') {
     return `Open ${open} – ${close}`;
@@ -43,7 +48,7 @@ function getSegmentLabel(segment: ScheduleSegment): string {
   return `${icon} ${desc} ${open} – ${close}`;
 }
 
-export default function ParkScheduleBar({ segments, timezone: _timezone }: ParkScheduleBarProps) {
+export default function ParkScheduleBar({ segments, timezone }: ParkScheduleBarProps) {
   if (!segments || segments.length === 0) return null;
 
   // Find LL Multi Pass price from operating segment purchases
@@ -73,7 +78,7 @@ export default function ParkScheduleBar({ segments, timezone: _timezone }: ParkS
               key={i}
               className={`absolute top-0 h-full ${segment.type === 'OPERATING' ? 'bg-blue-300' : segment.type === 'TICKETED_EVENT' ? 'bg-purple-300' : 'bg-amber-300'} rounded-full`}
               style={{ left: `${left}%`, width: `${width}%` }}
-              title={getSegmentLabel(segment)}
+              title={getSegmentLabel(segment, timezone)}
             />
           );
         })}
@@ -88,7 +93,7 @@ export default function ParkScheduleBar({ segments, timezone: _timezone }: ParkS
               key={i}
               className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium ${style.bg} ${style.border} ${style.text}`}
             >
-              {getSegmentLabel(segment)}
+              {getSegmentLabel(segment, timezone)}
             </span>
           );
         })}

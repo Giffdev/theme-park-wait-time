@@ -23,11 +23,12 @@ function tzAbbr(tz: string): string {
   return map[tz] || tz.split('/').pop()?.replace(/_/g, ' ') || '';
 }
 
-function formatShortTime(isoOrTime: string): string {
+/** Format an ISO instant as a short 12-hour time in the park's local timezone. */
+function formatShortTime(isoOrTime: string, timezone: string): string {
   try {
     const date = new Date(isoOrTime);
     if (!isNaN(date.getTime())) {
-      return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: timezone });
     }
   } catch { /* fall through */ }
   // If it's just "HH:MM"
@@ -56,7 +57,7 @@ export default function ParkOperatingStatus({ segments, timezone }: ParkOperatin
     if (operatingSegment) {
       return {
         isOpen: true,
-        closingTime: formatShortTime(operatingSegment.closingTime),
+        closingTime: formatShortTime(operatingSegment.closingTime, timezone),
       };
     }
 
@@ -67,9 +68,9 @@ export default function ParkOperatingStatus({ segments, timezone }: ParkOperatin
 
     return {
       isOpen: false,
-      nextOpen: futureSegments.length > 0 ? formatShortTime(futureSegments[0].openingTime) : null,
+      nextOpen: futureSegments.length > 0 ? formatShortTime(futureSegments[0].openingTime, timezone) : null,
     };
-  }, [segments]);
+  }, [segments, timezone]);
 
   if (!status) return null;
 
