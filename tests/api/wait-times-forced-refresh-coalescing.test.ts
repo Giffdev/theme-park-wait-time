@@ -27,20 +27,66 @@ const mockBatchSet = vi.fn();
 const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
 const mockBatch = { set: mockBatchSet, commit: mockBatchCommit };
 const mockGet = vi.hoisted(() => vi.fn());
+const mockDocuments = vi.hoisted(() => new Map<string, Record<string, unknown>>());
 
 vi.mock('@/lib/firebase/admin', () => ({
   adminApp: { name: 'mock-app' },
   adminDb: {
     batch: () => mockBatch,
-    collection: () => {
-      const mock: Record<string, unknown> = {};
-      mock.doc = vi.fn().mockReturnValue(mock);
-      mock.collection = vi.fn().mockReturnValue(mock);
-      mock.get = mockGet;
-      mock.id = 'mock-doc';
-      return mock;
+    collection: (name: string) => {
+      const collectionRef = (path: string): Record<string, unknown> => ({
+        path,
+        id: path.split('/').at(-1),
+        doc: (id: string) => {
+          const docPath = `${path}/${id}`;
+          return {
+            path: docPath,
+            id,
+            collection: (child: string) => collectionRef(`${docPath}/${child}`),
+          };
+        },
+        get: mockGet,
+      });
+      return collectionRef(name);
     },
-    getAll: (...refs: unknown[]) => Promise.resolve(refs.map(() => ({ exists: false }))),
+    getAll: (...refs: Array<{ path: string }>) => Promise.resolve(refs.map((ref) => {
+      const data = mockDocuments.get(ref.path);
+      return { exists: data !== undefined, data: () => data };
+    })),
+    runTransaction: async <T>(
+      callback: (transaction: {
+        get: (ref: { path: string }) => Promise<{
+          exists: boolean;
+          data: () => Record<string, unknown> | undefined;
+        }>;
+        set: (
+          ref: { path: string },
+          data: Record<string, unknown>,
+          options?: { merge?: boolean },
+        ) => void;
+      }) => Promise<T>,
+    ) => {
+      const writes: Array<{
+        ref: { path: string };
+        data: Record<string, unknown>;
+        options?: { merge?: boolean };
+      }> = [];
+      const result = await callback({
+        get: async (ref) => {
+          const data = mockDocuments.get(ref.path);
+          return { exists: data !== undefined, data: () => data };
+        },
+        set: (ref, data, options) => writes.push({ ref, data, options }),
+      });
+      for (const write of writes) {
+        const existing = mockDocuments.get(write.ref.path) ?? {};
+        mockDocuments.set(
+          write.ref.path,
+          write.options?.merge ? { ...existing, ...write.data } : write.data,
+        );
+      }
+      return result;
+    },
   },
 }));
 
@@ -79,6 +125,7 @@ describe('refreshPark — forced vs public coalescing identity', () => {
     vi.clearAllMocks();
     mockGet.mockReset();
     mockFetch.mockReset();
+    mockDocuments.clear();
     mockGet.mockResolvedValue({ docs: [] });
     mockUpdateForecastAggregates.mockResolvedValue(undefined);
   });

@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { after } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
@@ -18,6 +19,9 @@ const CHILD_MEMBERSHIP_TTL_MS = 6 * 60 * 60 * 1000;
 // serverless instances, where in-memory coalescing can't help), not to be
 // the primary staleness signal users see.
 const CACHE_READ_TTL_MS = 45_000;
+const HISTORY_ARCHIVE_CADENCE_MS = 5 * 60 * 1000;
+const MAX_TRANSACTION_CURRENT_WRITES = 499;
+const SNAPSHOT_TRANSACTION_MAX_ATTEMPTS = 5;
 
 // Per-stage deadlines. Kept well under `maxDuration` (30s) and, for the
 // cache-read/blend stages specifically, kept quite tight: these reads are
@@ -52,9 +56,8 @@ const MAINTENANCE_DEADLINE_MS = 8_000;
 
 // Firestore documents are capped at 1 MiB. Stay well under that for the
 // single-doc per-park cache so a large park's payload never risks a failed
-// write; if a payload would exceed this guard, the single-doc cache is
-// skipped for that write (logged) while the existing per-attraction
-// documents are still written normally (no regression).
+// write. A payload above this guard rejects the entire publication before
+// the transaction starts, so parent and current/* never diverge.
 const MAX_CACHE_DOC_BYTES = 900_000;
 
 interface QueuePrice {
@@ -148,6 +151,8 @@ export interface ParkRefreshResult {
   // response header; it is not serialized into the JSON body).
   timing?: ParkRefreshTiming;
 }
+
+export type WaitTimePublicationStatus = 'published' | 'rejected-stale';
 
 export interface ConfiguredParkIds {
   supported: string[];
@@ -260,12 +265,13 @@ function parkCacheDocRef(parkId: string) {
 interface ParkCacheDocData {
   entries: FormattedWaitTimeEntry[];
   fetchedAt: string;
+  historyArchiveClaimedAtMs?: number;
 }
 
 // Builds the payload for the single bounded cache document per park. Returns
 // null (and logs) if the payload would exceed the 1 MiB Firestore document
-// limit guard — callers must still write the existing per-attraction docs in
-// that case so there's no regression, just a skipped fast-path.
+// limit guard. Publication must then fail as one unit rather than advancing
+// current/* without the authoritative parent snapshot.
 function buildCacheDocPayload(
   entries: FormattedWaitTimeEntry[],
   fetchedAt: string
@@ -274,7 +280,7 @@ function buildCacheDocPayload(
   const approxBytes = Buffer.byteLength(JSON.stringify(payload), 'utf-8');
   if (approxBytes > MAX_CACHE_DOC_BYTES) {
     console.warn(
-      `Skipping single-doc wait-time cache for oversized payload (${approxBytes} bytes > ${MAX_CACHE_DOC_BYTES}); per-attraction docs are still written.`
+      `Skipping oversized wait-time snapshot (${approxBytes} bytes > ${MAX_CACHE_DOC_BYTES}).`
     );
     return null;
   }
@@ -284,11 +290,22 @@ function buildCacheDocPayload(
 async function readParkCacheDoc(parkId: string): Promise<ParkCacheDocData | null> {
   const [snapshot] = await adminDb.getAll(parkCacheDocRef(parkId));
   if (!snapshot || !snapshot.exists) return null;
-  const data = snapshot.data() as { entries?: unknown; fetchedAt?: unknown } | undefined;
+  const data = snapshot.data() as {
+    entries?: unknown;
+    fetchedAt?: unknown;
+    historyArchiveClaimedAtMs?: unknown;
+  } | undefined;
   if (!data || !Array.isArray(data.entries) || typeof data.fetchedAt !== 'string') return null;
   const entries = data.entries.filter(isFormattedWaitTimeEntry);
   if (entries.length === 0) return null;
-  return { entries, fetchedAt: data.fetchedAt };
+  return {
+    entries,
+    fetchedAt: data.fetchedAt,
+    historyArchiveClaimedAtMs:
+      typeof data.historyArchiveClaimedAtMs === 'number'
+        ? data.historyArchiveClaimedAtMs
+        : undefined,
+  };
 }
 
 // Bounded, best-effort read-first check. Never throws — any failure or
@@ -551,40 +568,104 @@ async function blendForecasts(
   });
 }
 
-async function writeCurrentWaitTimes(
+export async function writeCurrentWaitTimes(
   parkId: string,
   entries: FormattedWaitTimeEntry[],
   fetchedAt: string
-) {
-  // Single bounded cache document per park, written alongside the existing
-  // per-attraction docs (same batch, no extra round trip) so the read-first
-  // fast path (readParkCacheDoc) has one cheap point-read instead of a
-  // collection query. Existing per-attraction docs are always written
-  // regardless — this is purely an additive fast-path, not a replacement.
+): Promise<WaitTimePublicationStatus> {
   const cachePayload = buildCacheDocPayload(entries, fetchedAt);
-  let cacheDocWritten = false;
-
-  for (let index = 0; index < entries.length; index += BATCH_SIZE) {
-    const batch = adminDb.batch();
-    for (const entry of entries.slice(index, index + BATCH_SIZE)) {
-      const ref = adminDb
-        .collection('waitTimes')
-        .doc(parkId)
-        .collection('current')
-        .doc(entry.attractionId);
-      batch.set(ref, entry, { merge: true });
-    }
-    if (index === 0 && cachePayload) {
-      batch.set(parkCacheDocRef(parkId), cachePayload);
-      cacheDocWritten = true;
-    }
-    await batch.commit();
+  if (!cachePayload) {
+    throw new Error(`Wait-time snapshot for park ${parkId} exceeds the safe document size`);
   }
 
-  if (entries.length === 0 && cachePayload && !cacheDocWritten) {
-    const batch = adminDb.batch();
-    batch.set(parkCacheDocRef(parkId), cachePayload);
-    await batch.commit();
+  return adminDb.runTransaction(
+    async (transaction) => {
+      const cacheRef = parkCacheDocRef(parkId);
+      const snapshot = await transaction.get(cacheRef);
+      const previousData = snapshot.data() as {
+        entries?: unknown;
+        fetchedAt?: unknown;
+      } | undefined;
+      const authoritativeFetchedAtMs =
+        typeof previousData?.fetchedAt === 'string'
+          ? Date.parse(previousData.fetchedAt)
+          : Number.NaN;
+      const incomingFetchedAtMs = Date.parse(fetchedAt);
+      if (
+        Number.isFinite(authoritativeFetchedAtMs)
+        && incomingFetchedAtMs < authoritativeFetchedAtMs
+      ) {
+        return 'rejected-stale';
+      }
+
+      const previousEntries = Array.isArray(previousData?.entries)
+        ? previousData.entries.filter(isFormattedWaitTimeEntry)
+        : [];
+      const previousByAttractionId = new Map(
+        previousEntries.map((entry) => [entry.attractionId, entry])
+      );
+      const changedEntries = entries.filter((entry) => {
+        const previous = previousByAttractionId.get(entry.attractionId);
+        if (!previous) return true;
+        const { fetchedAt: _currentFetchedAt, ...currentMeaningful } = entry;
+        const { fetchedAt: _previousFetchedAt, ...previousMeaningful } = previous;
+        return !isDeepStrictEqual(currentMeaningful, previousMeaningful);
+      });
+
+      if (changedEntries.length > MAX_TRANSACTION_CURRENT_WRITES) {
+        throw new Error(
+          `Wait-time snapshot for park ${parkId} changes ${changedEntries.length} attractions; `
+          + `the atomic limit is ${MAX_TRANSACTION_CURRENT_WRITES}`
+        );
+      }
+
+      for (const entry of changedEntries) {
+        const ref = adminDb
+          .collection('waitTimes')
+          .doc(parkId)
+          .collection('current')
+          .doc(entry.attractionId);
+        transaction.set(ref, entry, { merge: true });
+      }
+      transaction.set(cacheRef, cachePayload, { merge: true });
+      return 'published';
+    },
+    { maxAttempts: SNAPSHOT_TRANSACTION_MAX_ATTEMPTS }
+  );
+}
+
+function historyArchiveIsDue(claimedAtMs: unknown, nowMs: number): boolean {
+  return (
+    typeof claimedAtMs !== 'number'
+    || !Number.isFinite(claimedAtMs)
+    || nowMs - claimedAtMs >= HISTORY_ARCHIVE_CADENCE_MS
+  );
+}
+
+export async function claimHistoryArchiveWindow(
+  parkId: string,
+  nowMs: number,
+  knownClaimedAtMs?: number
+): Promise<boolean> {
+  if (!historyArchiveIsDue(knownClaimedAtMs, nowMs)) return false;
+
+  try {
+    return await adminDb.runTransaction(async (transaction) => {
+      const ref = parkCacheDocRef(parkId);
+      const snapshot = await transaction.get(ref);
+      const claimedAtMs = snapshot.data()?.historyArchiveClaimedAtMs;
+      if (!historyArchiveIsDue(claimedAtMs, nowMs)) return false;
+
+      transaction.set(ref, { historyArchiveClaimedAtMs: nowMs }, { merge: true });
+      return true;
+    });
+  } catch (error) {
+    logRequestTelemetry(parkId, {
+      stage: 'history-archive-gate',
+      ok: false,
+      error: (error as Error).message,
+    });
+    throw error;
   }
 }
 
@@ -625,10 +706,21 @@ async function runMaintenance(
   parkId: string,
   liveData: LiveEntry[],
   fetchedAt: Timestamp,
-  options: { includeForecastAggregation: boolean }
+  options: {
+    includeForecastAggregation: boolean;
+    knownHistoryArchiveClaimedAtMs?: number;
+  }
 ) {
   const date = fetchedAt.toDate().toISOString().slice(0, 10);
-  const tasks: Promise<void>[] = [archiveHistoricalSnapshot(parkId, liveData, fetchedAt)];
+  const archive = (async () => {
+    const claimed = await claimHistoryArchiveWindow(
+      parkId,
+      fetchedAt.toMillis(),
+      options.knownHistoryArchiveClaimedAtMs
+    );
+    if (claimed) await archiveHistoricalSnapshot(parkId, liveData, fetchedAt);
+  })();
+  const tasks: Promise<void>[] = [archive];
   // Read-amplifying: only run on the cron path (`awaitMaintenance: true`),
   // which has a generous 300s maxDuration and already guarantees a daily
   // pass over every configured park. See MAINTENANCE_DEADLINE_MS above for
@@ -659,7 +751,20 @@ function isFormattedWaitTimeEntry(data: unknown): data is FormattedWaitTimeEntry
   );
 }
 
-async function readFirestoreCache(parkId: string): Promise<ParkRefreshResult | null> {
+async function readFirestoreCache(
+  parkId: string,
+  parkCache?: ParkCacheDocData | null
+): Promise<ParkRefreshResult | null> {
+  const parent = parkCache ?? await readParkCacheDoc(parkId);
+  if (parent) {
+    return {
+      entries: parent.entries,
+      meta: responseMeta('firestore-cache', parent.fetchedAt, true),
+    };
+  }
+
+  // Legacy fallback for deployments whose park-level cache has not yet been
+  // populated. Once the parent exists, it is the freshness authority.
   const snapshot = await adminDb
     .collection('waitTimes')
     .doc(parkId)
@@ -723,7 +828,8 @@ async function doRefreshPark(
   // wants a forced refresh (cron's `awaitMaintenance: true`), since cron's
   // entire purpose is to guarantee a genuine upstream refresh on schedule.
   const cacheReadStart = Date.now();
-  const freshCache = options.awaitMaintenance ? null : await readFreshParkCache(parkId);
+  const cachedPark = await readFreshParkCache(parkId);
+  const freshCache = options.awaitMaintenance ? null : cachedPark;
   timing.cacheReadMs = Date.now() - cacheReadStart;
 
   if (freshCache) {
@@ -746,7 +852,10 @@ async function doRefreshPark(
   } catch (upstreamError) {
     timing.upstreamMs = Date.now() - upstreamStart;
     try {
-      const firestoreResult = await withTimeout(readFirestoreCache(parkId), FALLBACK_CACHE_TIMEOUT_MS);
+      const firestoreResult = await withTimeout(
+        readFirestoreCache(parkId, cachedPark),
+        FALLBACK_CACHE_TIMEOUT_MS
+      );
       if (firestoreResult) {
         console.warn(`Serving Firestore wait-time cache for park ${parkId}`);
         timing.totalMs = Date.now() - totalStart;
@@ -785,12 +894,18 @@ async function doRefreshPark(
     const persistAndMaintain = (async () => {
       const writeStart = Date.now();
       try {
-        await writeCurrentWaitTimes(parkId, entries, liveResult.fetchedAt);
+        const publicationStatus = await writeCurrentWaitTimes(
+          parkId,
+          entries,
+          liveResult.fetchedAt
+        );
         logRequestTelemetry(parkId, {
           stage: 'persist-write',
           ok: true,
+          publicationStatus,
           durationMs: Date.now() - writeStart,
         });
+        if (publicationStatus === 'rejected-stale') return;
       } catch (writeError) {
         // Explicit, structured, secret-free failure signal. Previously a
         // write failure here was only visible as an uncaught rejection on
@@ -817,6 +932,7 @@ async function doRefreshPark(
         const maintenance = withTimeout(
           runMaintenance(parkId, liveResult.liveData, fetchedAt, {
             includeForecastAggregation: !!options.awaitMaintenance,
+            knownHistoryArchiveClaimedAtMs: cachedPark?.historyArchiveClaimedAtMs,
           }),
           MAINTENANCE_DEADLINE_MS
         )

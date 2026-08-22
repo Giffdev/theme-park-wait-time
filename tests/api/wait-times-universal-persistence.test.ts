@@ -27,6 +27,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const mockUpdateForecastAggregates = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockBatchSet = vi.hoisted(() => vi.fn());
 const mockBatchCommit = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockTransactionCommit = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('@/lib/firebase/admin', () => ({
   adminApp: { name: 'mock-app' },
@@ -41,6 +42,20 @@ vi.mock('@/lib/firebase/admin', () => ({
       return mock;
     },
     getAll: (...refs: unknown[]) => Promise.resolve(refs.map(() => ({ exists: false }))),
+    runTransaction: async (callback: (transaction: {
+      get: () => Promise<{ data: () => undefined }>;
+      set: (_ref: unknown, data: Record<string, unknown>) => void;
+    }) => Promise<unknown>) => {
+      const writes: Record<string, unknown>[] = [];
+      const result = await callback({
+        get: async () => ({ data: () => undefined }),
+        set: (_ref, data) => writes.push(data),
+      });
+      if (writes.some((data) => Array.isArray(data.entries))) {
+        await mockTransactionCommit();
+      }
+      return result;
+    },
   },
 }));
 
@@ -78,6 +93,8 @@ describe('Universal-family wait-time persistence (silent-failure regression)', (
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockTransactionCommit.mockResolvedValue(undefined);
+    mockBatchCommit.mockResolvedValue(undefined);
     mockFetch.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(universalShapedPayload()),
@@ -96,7 +113,7 @@ describe('Universal-family wait-time persistence (silent-failure regression)', (
     // writeCurrentWaitTimes must have actually run to completion (not been
     // starved out) even though every single entry needed the historical
     // aggregate-lookup branch in blendForecasts.
-    expect(mockBatchCommit).toHaveBeenCalled();
+    expect(mockTransactionCommit).toHaveBeenCalled();
   });
 
   it('never runs the read-amplifying forecast aggregation step on the interactive (non-cron) request path', async () => {
@@ -119,7 +136,7 @@ describe('Universal-family wait-time persistence (silent-failure regression)', (
   });
 
   it('emits explicit persist-write failure telemetry instead of silently dropping the error', async () => {
-    mockBatchCommit.mockRejectedValue(new Error('simulated Firestore write failure'));
+    mockTransactionCommit.mockRejectedValue(new Error('simulated Firestore write failure'));
 
     await expect(
       refreshPark(ISLANDS_OF_ADVENTURE_ID, { awaitMaintenance: true })
@@ -146,7 +163,7 @@ describe('Universal-family wait-time persistence (silent-failure regression)', (
   });
 
   it('does not let a persist-write failure on the interactive path surface to the caller', async () => {
-    mockBatchCommit.mockRejectedValue(new Error('simulated Firestore write failure'));
+    mockTransactionCommit.mockRejectedValue(new Error('simulated Firestore write failure'));
 
     // Interactive path (no awaitMaintenance): the caller still gets a
     // successful response with the freshly-fetched entries even though
@@ -176,6 +193,8 @@ describe('Universal-family wait-time persistence — timeboxed maintenance telem
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    mockTransactionCommit.mockResolvedValue(undefined);
+    mockBatchCommit.mockResolvedValue(undefined);
     mockFetch.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(universalShapedPayload()),
@@ -191,15 +210,7 @@ describe('Universal-family wait-time persistence — timeboxed maintenance telem
   it('reports a timed-out maintenance stage via telemetry rather than hanging the cron await indefinitely', async () => {
     // Historical-archive commit hangs forever — simulates the exact
     // resource-contention failure mode that starved writes in production.
-    let writeCommitCount = 0;
-    mockBatchCommit.mockImplementation(() => {
-      writeCommitCount += 1;
-      // First commit is the primary writeCurrentWaitTimes commit (must
-      // still succeed); subsequent commits are maintenance's own archive
-      // write, which hangs forever.
-      if (writeCommitCount === 1) return Promise.resolve(undefined);
-      return new Promise(() => {});
-    });
+    mockBatchCommit.mockImplementation(() => new Promise(() => {}));
 
     const resultPromise = refreshPark(ISLANDS_OF_ADVENTURE_ID, { awaitMaintenance: true });
 

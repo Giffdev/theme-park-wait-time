@@ -35,14 +35,10 @@ const RESPONSE_BUDGET_MS = 300;
 const mockUpdateForecastAggregates = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockBatchSet = vi.fn();
 let maintenanceResolvedRef = { current: false };
-// First commit() call is the primary writeCurrentWaitTimes write (must
-// resolve fast, matching production); any subsequent commit() call is
-// archiveHistoricalSnapshot's own write, which is made deliberately slow to
-// prove the response doesn't await it.
+// Current publication now commits through a transaction. The batch commit is
+// archiveHistoricalSnapshot's write and is deliberately slow to prove the
+// response does not await it.
 const mockBatchCommit = vi.fn().mockImplementation(() => {
-  if (mockBatchCommit.mock.calls.length <= 1) {
-    return Promise.resolve(undefined);
-  }
   return new Promise<void>((resolve) => {
     setTimeout(() => {
       maintenanceResolvedRef.current = true;
@@ -66,6 +62,13 @@ vi.mock('@/lib/firebase/admin', () => ({
       return mock;
     },
     getAll: (...refs: unknown[]) => Promise.resolve(refs.map(() => ({ exists: false }))),
+    runTransaction: async (callback: (transaction: {
+      get: () => Promise<{ data: () => undefined }>;
+      set: () => void;
+    }) => Promise<unknown>) => callback({
+      get: async () => ({ data: () => undefined }),
+      set: vi.fn(),
+    }),
   },
 }));
 
@@ -109,10 +112,11 @@ describe('GET /api/wait-times — response does not await slow maintenance', () 
     // The whole point: the response came back while the slow op is *still*
     // pending. If this were false, the route would have awaited maintenance.
     expect(maintenanceResolvedRef.current).toBe(false);
+    await vi.waitFor(() => expect(mockBatchCommit).toHaveBeenCalledTimes(1));
 
     // Let the slow maintenance actually finish so it doesn't leak into the
     // next test as an unhandled/late-resolving timer.
-    await new Promise((resolve) => setTimeout(resolve, SLOW_MAINTENANCE_MS));
+    await new Promise((resolve) => setTimeout(resolve, SLOW_MAINTENANCE_MS + 50));
     expect(maintenanceResolvedRef.current).toBe(true);
   });
 

@@ -19,9 +19,46 @@ import { NextRequest } from 'next/server';
 const mockUpdateForecastAggregates = vi.hoisted(
   () => vi.fn().mockResolvedValue(undefined),
 );
-const mockBatchSet = vi.fn();
-const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
-const mockBatch = { set: mockBatchSet, commit: mockBatchCommit };
+const {
+  mockTransactionDocuments,
+  mockTransactionSet,
+  mockRunTransaction,
+} = vi.hoisted(() => {
+  const documents = new Map<string, Record<string, unknown>>();
+  const set = vi.fn(
+    (
+      ref: { path: string },
+      data: Record<string, unknown>,
+      options?: { merge?: boolean },
+    ) => {
+      const previous = documents.get(ref.path);
+      documents.set(
+        ref.path,
+        options?.merge && previous ? { ...previous, ...data } : data,
+      );
+    },
+  );
+  const runTransaction = vi.fn(
+    async (
+      update: (transaction: {
+        get: (ref: { path: string }) => Promise<{
+          data: () => Record<string, unknown> | undefined;
+        }>;
+        set: typeof set;
+      }) => Promise<unknown>,
+    ) => update({
+      get: async (ref) => ({
+        data: () => documents.get(ref.path),
+      }),
+      set,
+    }),
+  );
+  return {
+    mockTransactionDocuments: documents,
+    mockTransactionSet: set,
+    mockRunTransaction: runTransaction,
+  };
+});
 
 const mockGet = vi.fn();
 const MAGIC_KINGDOM_ID = '75ea578a-adc8-4116-a54d-dccb60765ef9';
@@ -30,22 +67,32 @@ const ARLINGTON_ID = 'a96eb7c6-1fd3-4363-84d9-c84e23f886f1';
 const ARLINGTON_ALIAS_ID = '08e5d95c-7c73-4c65-b17a-06fede1801fb';
 const OKC_ID = '3964ae15-a1a8-41a1-aea9-23b456e2911f';
 
-// Recursive mock that handles arbitrary .collection().doc() chains
-function createChainableMock() {
-  const mock: Record<string, unknown> = {};
-  mock.doc = vi.fn().mockReturnValue(mock);
-  mock.collection = vi.fn().mockReturnValue(mock);
-  mock.get = mockGet;
-  mock.id = 'mock-doc';
-  return mock;
+function createDocumentMock(path: string) {
+  return {
+    path,
+    id: path.split('/').at(-1),
+    collection: (name: string) => createCollectionMock(`${path}/${name}`),
+  };
+}
+
+function createCollectionMock(path: string) {
+  return {
+    path,
+    doc: (id: string) => createDocumentMock(`${path}/${id}`),
+    get: mockGet,
+  };
 }
 
 vi.mock('@/lib/firebase/admin', () => ({
   adminApp: { name: 'mock-app' },
   adminDb: {
-    batch: () => mockBatch,
-    collection: () => createChainableMock(),
+    batch: () => ({
+      set: vi.fn(),
+      commit: vi.fn().mockResolvedValue(undefined),
+    }),
+    collection: (name: string) => createCollectionMock(name),
     getAll: (...refs: unknown[]) => Promise.resolve(refs.map(() => ({ exists: false }))),
+    runTransaction: mockRunTransaction,
   },
 }));
 
@@ -150,6 +197,7 @@ function createRequest(parkId?: string): NextRequest {
 describe('GET /api/wait-times — expanded data', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockTransactionDocuments.clear();
     mockGet.mockResolvedValue({ docs: [] });
     mockFetch.mockResolvedValue({
       ok: true,
@@ -559,8 +607,7 @@ describe('GET /api/wait-times — expanded data', () => {
             fetchedAt: cachedFetchedAt,
           }),
         ]));
-        expect(mockBatchSet).not.toHaveBeenCalled();
-        expect(mockBatchCommit).not.toHaveBeenCalled();
+        expect(mockTransactionSet).not.toHaveBeenCalled();
         expect(mockUpdateForecastAggregates).not.toHaveBeenCalled();
       },
     );
@@ -627,7 +674,7 @@ describe('GET /api/wait-times — expanded data', () => {
     it('preserves the original freshness timestamp and does not rewrite stale data', async () => {
       const freshResponse = await GET(createRequest('magic-kingdom'));
       const freshData = await freshResponse.json();
-      const writesAfterFreshFetch = mockBatchSet.mock.calls.length;
+      const writesAfterFreshFetch = mockTransactionSet.mock.calls.length;
 
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -642,7 +689,7 @@ describe('GET /api/wait-times — expanded data', () => {
         .toBe(freshData.parkMeta['magic-kingdom'].fetchedAt);
       expect(staleData.parks['magic-kingdom'][0].fetchedAt)
         .toBe(freshData.parks['magic-kingdom'][0].fetchedAt);
-      expect(mockBatchSet).toHaveBeenCalledTimes(writesAfterFreshFetch);
+      expect(mockTransactionSet).toHaveBeenCalledTimes(writesAfterFreshFetch);
     });
 
     it('returns 502 for malformed upstream payloads when no cache exists', async () => {
@@ -688,8 +735,22 @@ describe('GET /api/wait-times — expanded data', () => {
 
       expect(response.status).toBe(200);
       expect(data.parks[MAGIC_KINGDOM_ID]).toHaveLength(2);
-      expect(mockBatchSet).toHaveBeenCalled();
-      expect(mockBatchCommit).toHaveBeenCalled();
+      expect(mockTransactionDocuments.get(`waitTimes/${MAGIC_KINGDOM_ID}`)).toEqual(
+        expect.objectContaining({
+          entries: data.parks[MAGIC_KINGDOM_ID],
+          fetchedAt: data.parkMeta[MAGIC_KINGDOM_ID].fetchedAt,
+        }),
+      );
+      expect(
+        mockTransactionDocuments.get(
+          `waitTimes/${MAGIC_KINGDOM_ID}/current/tron-lightcycle-run`,
+        ),
+      ).toEqual(data.parks[MAGIC_KINGDOM_ID][0]);
+      expect(
+        mockTransactionDocuments.get(
+          `waitTimes/${MAGIC_KINGDOM_ID}/current/its-a-small-world`,
+        ),
+      ).toEqual(data.parks[MAGIC_KINGDOM_ID][1]);
     });
   });
 
