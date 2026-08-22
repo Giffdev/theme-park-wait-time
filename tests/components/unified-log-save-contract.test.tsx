@@ -100,6 +100,21 @@ describe('UnifiedLogSheet save contract', () => {
     );
   });
 
+  it('bounds and centers the sheet without horizontal overflow', async () => {
+    render(<UnifiedLogSheet open expandedByDefault onClose={vi.fn()} />);
+
+    const heading = await screen.findByRole('heading', { name: 'Report & Log Ride' });
+    const sheet = heading.closest('.fixed');
+
+    expect(sheet).toHaveClass(
+      'inset-x-0',
+      'mx-auto',
+      'w-full',
+      'max-w-md',
+      'overflow-x-hidden',
+    );
+  });
+
   it('keeps a successful ride when the optional report fails and uses accurate copy', async () => {
     render(<UnifiedLogSheet open expandedByDefault onClose={vi.fn()} />);
 

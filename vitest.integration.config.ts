@@ -14,6 +14,7 @@ export default defineConfig({
       'src/**/*.integration.{test,spec}.{ts,tsx}',
       'tests/security-rules/**/*.{test,spec}.ts',
     ],
+    fileParallelism: false,
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },

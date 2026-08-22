@@ -96,6 +96,18 @@ function refreshResponse(status = 200, body: unknown = {
   });
 }
 
+function queueReportSuccess(requestId: string) {
+  return {
+    ok: true,
+    status: 200,
+    json: vi.fn().mockResolvedValue({
+      success: true,
+      requestId,
+      outcome: 'accepted',
+    }),
+  };
+}
+
 describe('ride-log-service', () => {
   const userId = 'user-123';
   const collectionPath = `users/${userId}/rideLogs`;
@@ -1132,10 +1144,12 @@ describe('ride-log-service', () => {
 
   describe('submitCrowdReport', () => {
     it('authenticates the queue-report API request and checks success', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      const fetchMock = vi.fn().mockResolvedValue(queueReportSuccess('report-request-1234'));
       vi.stubGlobal('fetch', fetchMock);
 
       await submitCrowdReport({
+        requestId: 'report-request-1234',
+        reportedAtMs: 1_787_002_400_000,
         parkId: 'magic-kingdom',
         attractionId: 'space-mountain',
         waitTimeMinutes: 35,
@@ -1152,11 +1166,21 @@ describe('ride-log-service', () => {
           signal: expect.any(AbortSignal),
         }),
       );
+      const request = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(request).toEqual({
+        requestId: 'report-request-1234',
+        reportedAtMs: 1_787_002_400_000,
+        parkId: 'magic-kingdom',
+        attractionId: 'space-mountain',
+        waitTimeMinutes: 35,
+      });
     });
 
     it.each([-1, 0, 2, 180])('accepts report wait boundary %s', async (waitTimeMinutes) => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(queueReportSuccess('boundary-report-1234')));
       await expect(submitCrowdReport({
+        requestId: 'boundary-report-1234',
+        reportedAtMs: 1_787_002_400_000,
         parkId: 'magic-kingdom',
         attractionId: 'space-mountain',
         waitTimeMinutes,
@@ -1169,6 +1193,8 @@ describe('ride-log-service', () => {
         const fetchMock = vi.fn();
         vi.stubGlobal('fetch', fetchMock);
         await expect(submitCrowdReport({
+          requestId: 'invalid-wait-report',
+          reportedAtMs: 1_787_002_400_000,
           parkId: 'magic-kingdom',
           attractionId: 'space-mountain',
           waitTimeMinutes,
@@ -1181,10 +1207,104 @@ describe('ride-log-service', () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
 
       await expect(submitCrowdReport({
+        requestId: 'rejected-report-1234',
+        reportedAtMs: 1_787_002_400_000,
         parkId: 'magic-kingdom',
         attractionId: 'space-mountain',
         waitTimeMinutes: 35,
       })).rejects.toThrow(/status 401/);
+    });
+
+    it('allows a cold report request to finish after the former five-second deadline', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation(() => (
+          new Promise((resolve) => {
+            setTimeout(
+              () => resolve(queueReportSuccess('cold-report-request')),
+              6_000,
+            );
+          })
+        )));
+
+        const operation = submitCrowdReport({
+          requestId: 'cold-report-request',
+          reportedAtMs: 1_787_002_400_000,
+          parkId: 'magic-kingdom',
+          attractionId: 'space-mountain',
+          waitTimeMinutes: 35,
+        });
+        await vi.advanceTimersByTimeAsync(6_000);
+
+        await expect(operation).resolves.toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('preserves an ambiguous server response for stable retry', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: async () => ({
+          error: 'Wait-time report status could not be confirmed',
+          outcome: 'ambiguous',
+          retryable: true,
+        }),
+      }));
+
+      await expect(submitCrowdReport({
+        requestId: 'ambiguous-report-request',
+        reportedAtMs: 1_787_002_400_000,
+        parkId: 'magic-kingdom',
+        attractionId: 'space-mountain',
+        waitTimeMinutes: 35,
+      })).rejects.toMatchObject({
+        code: 'write-failed',
+        outcome: 'ambiguous',
+        message: 'Wait-time report status could not be confirmed',
+      });
+    });
+
+    it('keeps a malformed 200 response ambiguous so durable state is not cleared', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+      }));
+
+      await expect(submitCrowdReport({
+        requestId: 'malformed-success-report',
+        reportedAtMs: 1_787_002_400_000,
+        parkId: 'magic-kingdom',
+        attractionId: 'space-mountain',
+        waitTimeMinutes: 35,
+      })).rejects.toMatchObject({
+        code: 'write-failed',
+        outcome: 'ambiguous',
+      });
+    });
+
+    it('reuses the caller-provided identity and timestamp across a delayed retry', async () => {
+      const fetchMock = vi.fn()
+        .mockRejectedValueOnce(new Error('response lost after commit'))
+        .mockResolvedValueOnce(queueReportSuccess('stable-report-request'));
+      vi.stubGlobal('fetch', fetchMock);
+      const report = {
+        requestId: 'stable-report-request',
+        reportedAtMs: 1_787_002_400_000,
+        parkId: 'magic-kingdom',
+        attractionId: 'space-mountain',
+        waitTimeMinutes: 35,
+      };
+
+      await expect(submitCrowdReport(report)).rejects.toThrow(/response lost/);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await expect(submitCrowdReport(report)).resolves.toBeUndefined();
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
+      expect(bodies).toEqual([report, report]);
     });
   });
 });

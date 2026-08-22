@@ -90,6 +90,7 @@ const hoisted = vi.hoisted(() => {
     }),
     runTransaction: vi.fn(<T,>(update: (transaction: {
       get: (reference: DocRef | QueryRef) => Promise<unknown>;
+      getAll: (...references: DocRef[]) => Promise<unknown[]>;
       set: (reference: DocRef, data: StoredDocument) => void;
       create: (reference: DocRef, data: StoredDocument) => void;
       delete: (reference: DocRef) => void;
@@ -100,6 +101,7 @@ const hoisted = vi.hoisted(() => {
           get: async (reference) => (
             reference.kind === 'query' ? querySnapshot(reference) : snapshot(reference)
           ),
+          getAll: async (...references) => references.map(snapshot),
           set: (reference, data) => writes.push(() => store.set(reference.path, data)),
           create: (reference, data) => {
             if (store.has(reference.path)) throw new Error('already exists');
@@ -150,6 +152,7 @@ import {
   getCrowdAggregate,
   getCrowdAggregatesForPark,
   submitCrowdReport,
+  submitVerifiedQueueReport,
 } from '@/lib/services/crowd-service';
 
 const baseTime = new Date('2026-08-17T18:00:00Z').getTime();
@@ -250,6 +253,104 @@ describe('crowd-service', () => {
       .resolves.toBe('replay');
     expect([...store.keys()].filter((path) => path.startsWith('waitTimeReports/')))
       .toEqual(['waitTimeReports/report-request-1234']);
+  });
+
+  it('accepts delayed first delivery only when the immutable timer ride proves the payload', async () => {
+    store.set('attractions/space-mountain', {
+      parkId: 'magic-kingdom',
+      name: 'Space Mountain',
+      entityType: 'ATTRACTION',
+    });
+    store.set('users/user-1/rideLogs/report-request-1234', {
+      clientRequestId: 'report-request-1234',
+      parkId: 'magic-kingdom',
+      attractionId: 'space-mountain',
+      waitTimeMinutes: 35,
+      rodeAt: { toDate: () => new Date(baseTime) },
+      source: 'timer',
+    });
+
+    await expect(submitVerifiedQueueReport('magic-kingdom', {
+      requestId: 'report-request-1234',
+      uid: 'user-1',
+      attractionId: 'space-mountain',
+      expectedAttractionName: 'Space Mountain',
+      waitTimeMinutes: 35,
+      reportedAt: new Date(baseTime),
+      allowStaleReplay: true,
+      delayedRidePath: 'users/user-1/rideLogs/report-request-1234',
+      acceptedAtMs: baseTime + 10 * 60 * 1000,
+    })).resolves.toBe('accepted');
+
+    await expect(submitVerifiedQueueReport('magic-kingdom', {
+      requestId: 'unproven-delayed-report',
+      uid: 'user-1',
+      attractionId: 'space-mountain',
+      expectedAttractionName: 'Space Mountain',
+      waitTimeMinutes: 35,
+      reportedAt: new Date(baseTime),
+      allowStaleReplay: true,
+      delayedRidePath: 'users/user-1/rideLogs/unproven-delayed-report',
+      acceptedAtMs: baseTime + 10 * 60 * 1000,
+    })).rejects.toMatchObject({ name: 'CrowdReportStaleError' });
+  });
+
+  it('rejects a delayed anonymous report without the authenticated user ride proof', async () => {
+    store.set('attractions/space-mountain', {
+      parkId: 'magic-kingdom',
+      name: 'Space Mountain',
+      entityType: 'ATTRACTION',
+    });
+    store.set('waitTimeReports/report-request-1234', {
+      schemaVersion: 1,
+      attractionId: 'space-mountain',
+      attractionName: 'Space Mountain',
+      parkId: 'magic-kingdom',
+      waitTime: 35,
+      reportedAt: { toDate: () => new Date(baseTime) },
+      status: 'pending',
+    });
+
+    await expect(submitVerifiedQueueReport('magic-kingdom', {
+      requestId: 'report-request-1234',
+      uid: 'user-1',
+      attractionId: 'space-mountain',
+      expectedAttractionName: 'Space Mountain',
+      waitTimeMinutes: 35,
+      reportedAt: new Date(baseTime),
+      allowStaleReplay: true,
+      delayedRidePath: 'users/user-1/rideLogs/report-request-1234',
+      acceptedAtMs: baseTime + 10 * 60 * 1000,
+    })).rejects.toMatchObject({ name: 'CrowdReportStaleError' });
+    expect(store.has('queueReportRequests/report-request-1234')).toBe(false);
+  });
+
+  it('rejects a partial canonical replay record instead of treating it as success', async () => {
+    store.set('attractions/space-mountain', {
+      parkId: 'magic-kingdom',
+      name: 'Space Mountain',
+      entityType: 'ATTRACTION',
+    });
+    const verified = {
+      requestId: 'report-request-1234',
+      uid: 'user-1',
+      attractionId: 'space-mountain',
+      expectedAttractionName: 'Space Mountain',
+      waitTimeMinutes: 35,
+      reportedAt: new Date(baseTime),
+      allowStaleReplay: false,
+      acceptedAtMs: baseTime,
+    };
+    await submitVerifiedQueueReport('magic-kingdom', verified);
+    const requestPath = 'queueReportRequests/report-request-1234';
+    const canonical = store.get(requestPath);
+    store.set(requestPath, {
+      ...canonical,
+      outcome: undefined,
+    });
+
+    await expect(submitVerifiedQueueReport('magic-kingdom', verified))
+      .rejects.toMatchObject({ name: 'CrowdReportConflictError' });
   });
 
   it('adopts a matching pre-deployment anonymous report without recreating it', async () => {

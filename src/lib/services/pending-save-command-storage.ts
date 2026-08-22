@@ -62,6 +62,7 @@ let databaseNameOverride: string | null = null;
 let testMemoryEntries: Map<string, StoredEntry> | null = null;
 let testMemoryTombstones: Map<string, CompletionTombstone> | null = null;
 let afterMigrationForTests: (() => void) | null = null;
+let loadDelayForTests: (() => Promise<void>) | null = null;
 let removalFailureForTests: (() => void) | null = null;
 let removalDelayForTests: (() => Promise<void>) | null = null;
 let removalMidTransactionDelayForTests: (() => Promise<void>) | null = null;
@@ -442,6 +443,7 @@ export async function loadPendingSaveCommand<T>(
   context: string,
   isValid: (value: unknown) => value is T,
 ): Promise<T | null> {
+  await loadDelayForTests?.();
   if (testMemoryEntries) {
     const key = memoryKey(uid, context);
     const entry = testMemoryEntries.get(key);
@@ -469,6 +471,67 @@ export async function loadPendingSaveCommand<T>(
     return value;
   } catch {
     return null;
+  }
+}
+
+export async function replacePendingSaveCommand<T extends { requestId: string }>(
+  uid: string,
+  context: string,
+  requestId: string,
+  command: T,
+): Promise<PendingSaveStorageResult> {
+  if (requestId !== command.requestId) {
+    return { ok: false, reason: 'conflict', existingRequestId: command.requestId };
+  }
+  if (testMemoryEntries) {
+    const key = memoryKey(uid, context);
+    const existing = testMemoryEntries.get(key);
+    const existingRequestId = requestIdOf(existing?.command);
+    if (!existing || existingRequestId !== requestId) {
+      return {
+        ok: false,
+        reason: 'conflict',
+        existingRequestId: existingRequestId ?? undefined,
+      };
+    }
+    const replacement = { ...existing, command };
+    if (entryBytes(replacement) > MAX_SERIALIZED_BYTES) {
+      return { ok: false, reason: 'oversized' };
+    }
+    if (canonicalSerialize(existing.command) === canonicalSerialize(command)) {
+      return { ok: true, idempotent: true };
+    }
+    testMemoryEntries.set(key, replacement);
+    return { ok: true, idempotent: false };
+  }
+  if (!getIndexedDb()) return { ok: false, reason: 'unavailable' };
+  const legacy = readLegacyEntries(uid);
+  if (!legacy.readable) return { ok: false, reason: 'read-failed' };
+
+  try {
+    return await runUidTransaction(uid, async (store, entries, _tombstoneStore, tombstones) => {
+      await migrateLegacyEntries(uid, store, entries, tombstones, legacy);
+      const existing = entries.find((entry) => entry.context === context);
+      const existingRequestId = requestIdOf(existing?.command);
+      if (!existing || existingRequestId !== requestId) {
+        return {
+          ok: false,
+          reason: 'conflict',
+          existingRequestId: existingRequestId ?? undefined,
+        } as PendingSaveStorageResult;
+      }
+      const replacement = { ...existing, command };
+      if (entryBytes(replacement) > MAX_SERIALIZED_BYTES) {
+        return { ok: false, reason: 'oversized' } as PendingSaveStorageResult;
+      }
+      if (canonicalSerialize(existing.command) === canonicalSerialize(command)) {
+        return { ok: true, idempotent: true } as PendingSaveStorageResult;
+      }
+      await requestPromise(store.put(replacement));
+      return { ok: true, idempotent: false } as PendingSaveStorageResult;
+    });
+  } catch (error) {
+    return classifyStorageError(error, 'write-failed');
   }
 }
 
@@ -705,6 +768,12 @@ export function configurePendingSaveCommandAfterMigrationForTests(
   callback: (() => void) | null,
 ): void {
   afterMigrationForTests = callback;
+}
+
+export function configurePendingSaveCommandLoadDelayForTests(
+  callback: (() => Promise<void>) | null,
+): void {
+  loadDelayForTests = callback;
 }
 
 export function configurePendingSaveCommandRemovalFailureForTests(

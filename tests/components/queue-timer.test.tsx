@@ -110,8 +110,14 @@ import {
   RideLogSaveError,
   submitCrowdReport,
 } from '@/lib/services/ride-log-service';
-import { restorePendingRideSaveCommand, rideSaveContext } from '@/lib/services/pending-ride-save-command';
 import {
+  createPendingRideSaveCommand,
+  persistPendingRideSaveCommand,
+  restorePendingRideSaveCommand,
+  rideSaveContext,
+} from '@/lib/services/pending-ride-save-command';
+import {
+  configurePendingSaveCommandLoadDelayForTests,
   configurePendingSaveCommandMemoryStorageForTests,
   configurePendingSaveCommandRemovalFailureForTests,
   resetPendingSaveCommandStorageForTests,
@@ -122,10 +128,18 @@ configurePendingSaveCommandMemoryStorageForTests();
 const mockCreateRideLog = vi.mocked(createRideLog);
 const mockSubmitCrowdReport = vi.mocked(submitCrowdReport);
 
+async function clickTimerSave(): Promise<void> {
+  const button = screen.getByRole('button', { name: 'Save 🎉' });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+}
+
 describe('QueueTimerButton', () => {
   beforeEach(async () => {
     await resetPendingSaveCommandStorageForTests();
     configurePendingSaveCommandRemovalFailureForTests(null);
+    configurePendingSaveCommandLoadDelayForTests(null);
+    configurePendingSaveCommandLoadDelayForTests(null);
     vi.clearAllMocks();
     localStorage.clear();
   });
@@ -287,8 +301,11 @@ describe('TimerCompleteSheet', () => {
 
     expect(screen.getByText(/Space Mountain/)).toBeInTheDocument();
     expect(screen.getByText(/35 minute/)).toBeInTheDocument();
-    expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
-    expect(screen.getByRole('dialog')).toHaveAttribute('aria-labelledby', 'timer-complete-title');
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog).toHaveAttribute('aria-labelledby', 'timer-complete-title');
+    expect(dialog).toHaveClass('w-full', 'max-w-md', 'overflow-x-hidden');
+    expect(dialog.parentElement).toHaveClass('px-4', 'sm:px-6', 'sm:items-center');
   });
 
   it.each([181, 12.5, Number.NaN])(
@@ -304,7 +321,7 @@ describe('TimerCompleteSheet', () => {
           onClose={vi.fn()}
         />,
       );
-      fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+      await clickTimerSave();
       expect(await screen.findByText(/Ride wait time must be/i)).toBeInTheDocument();
       expect(mockCreateRideLog).not.toHaveBeenCalled();
     },
@@ -321,11 +338,13 @@ describe('TimerCompleteSheet', () => {
         onClose={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+    await clickTimerSave();
     await waitFor(() => expect(mockCreateRideLog).toHaveBeenCalled());
     expect(mockCreateRideLog.mock.calls[0][1].waitTimeMinutes).toBe(2);
     await waitFor(() => {
       expect(mockSubmitCrowdReport).toHaveBeenCalledWith({
+        requestId: expect.any(String),
+        reportedAtMs: expect.any(Number),
         parkId: 'magic-kingdom',
         attractionId: 'space-mountain',
         waitTimeMinutes: 2,
@@ -333,7 +352,7 @@ describe('TimerCompleteSheet', () => {
     });
   });
 
-  it('moves focus into the dialog and traps Tab navigation', () => {
+  it('moves focus into the dialog and traps Tab navigation', async () => {
     render(
       <TimerCompleteSheet
         elapsedMinutes={35}
@@ -351,7 +370,7 @@ describe('TimerCompleteSheet', () => {
     });
     const saveButton = screen.getByRole('button', { name: 'Save 🎉' });
 
-    expect(closeButton).toHaveFocus();
+    await waitFor(() => expect(closeButton).toHaveFocus());
     saveButton.focus();
     fireEvent.keyDown(dialog, { key: 'Tab' });
     expect(closeButton).toHaveFocus();
@@ -387,9 +406,9 @@ describe('TimerCompleteSheet', () => {
     fireEvent.click(opener);
 
     const dialog = screen.getByRole('dialog');
-    expect(screen.getByRole('button', {
+    await waitFor(() => expect(screen.getByRole('button', {
       name: /Save ride without rating or notes and close/i,
-    })).toHaveFocus();
+    })).toHaveFocus());
 
     fireEvent.keyDown(dialog, { key: 'Escape' });
 
@@ -455,7 +474,7 @@ describe('TimerCompleteSheet', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+    await clickTimerSave();
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(mockCreateRideLog).toHaveBeenCalledWith(
@@ -471,10 +490,52 @@ describe('TimerCompleteSheet', () => {
       }),
     );
     expect(mockSubmitCrowdReport).toHaveBeenCalledWith({
+      requestId: expect.any(String),
+      reportedAtMs: expect.any(Number),
       parkId: 'magic-kingdom',
       attractionId: 'space-mountain',
       waitTimeMinutes: 35,
     });
+  });
+
+  it('labels a failed report as retry and keeps its identity stable while retrying', async () => {
+    let resolveRetry!: () => void;
+    mockSubmitCrowdReport
+      .mockRejectedValueOnce(new Error('response lost after commit'))
+      .mockImplementationOnce(() => new Promise<void>((resolve) => {
+        resolveRetry = resolve;
+      }));
+    const onClose = vi.fn();
+
+    render(
+      <TimerCompleteSheet
+        elapsedMinutes={35}
+        attractionName="Space Mountain"
+        parkId="magic-kingdom"
+        attractionId="space-mountain"
+        parkName="Magic Kingdom"
+        onClose={onClose}
+      />,
+    );
+
+    await clickTimerSave();
+
+    const retry = await screen.findByRole('button', { name: 'Retry wait-time report' });
+    expect(screen.getByRole('button', { name: 'Retry wait-time report and close' })).toBeEnabled();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Ride saved. Wait-time report needs retry.',
+    );
+    expect(onClose).not.toHaveBeenCalled();
+
+    const firstReport = mockSubmitCrowdReport.mock.calls[0][0];
+    fireEvent.click(retry);
+    expect(await screen.findByRole('button', { name: 'Sending report...' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Sending wait-time report.');
+    expect(mockSubmitCrowdReport.mock.calls[1][0]).toEqual(firstReport);
+    expect(mockCreateRideLog).toHaveBeenCalledTimes(1);
+
+    resolveRetry();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it('keeps the committed command visible and retries cleanup without resaving', async () => {
@@ -493,12 +554,12 @@ describe('TimerCompleteSheet', () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+      await clickTimerSave();
       expect(await screen.findByRole('button', { name: /Finish Cleanup/i })).toBeEnabled();
-      expect(screen.getByText(/ride is saved/i)).toBeInTheDocument();
+      expect(screen.getByText(/ride and wait-time report are saved/i)).toBeInTheDocument();
       expect(mockCreateRideLog).toHaveBeenCalledTimes(1);
       expect(onClose).not.toHaveBeenCalled();
-      expect(mockSubmitCrowdReport).not.toHaveBeenCalled();
+      expect(mockSubmitCrowdReport).toHaveBeenCalledTimes(1);
 
       configurePendingSaveCommandRemovalFailureForTests(null);
       fireEvent.click(screen.getByRole('button', { name: /Finish Cleanup/i }));
@@ -523,7 +584,7 @@ describe('TimerCompleteSheet', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText(/Save/));
+    await clickTimerSave();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/took too long/i);
     expect(screen.getByText(/Retry Save/)).toBeEnabled();
@@ -549,11 +610,13 @@ describe('TimerCompleteSheet', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Rate 4 out of 5 stars' }));
+    const ratingButton = screen.getByRole('button', { name: 'Rate 4 out of 5 stars' });
+    await waitFor(() => expect(ratingButton).toBeEnabled());
+    fireEvent.click(ratingButton);
     fireEvent.change(screen.getByLabelText('Notes (optional)'), {
       target: { value: 'First command notes' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+    await clickTimerSave();
     expect(await screen.findByRole('alert')).toHaveTextContent(/retrying is safe/i);
 
     const firstData = mockCreateRideLog.mock.calls[0][1];
@@ -589,11 +652,13 @@ describe('TimerCompleteSheet', () => {
         onClose={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Rate 4 out of 5 stars' }));
+    const ratingButton = screen.getByRole('button', { name: 'Rate 4 out of 5 stars' });
+    await waitFor(() => expect(ratingButton).toBeEnabled());
+    fireEvent.click(ratingButton);
     fireEvent.change(screen.getByLabelText('Notes (optional)'), {
       target: { value: 'Frozen timer notes' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+    await clickTimerSave();
     await screen.findByRole('alert');
     const firstRequestId = mockCreateRideLog.mock.calls[0][3]?.requestId;
     const firstRodeAt = mockCreateRideLog.mock.calls[0][1].rodeAt.toISOString();
@@ -622,6 +687,62 @@ describe('TimerCompleteSheet', () => {
     expect(localStorage.length).toBe(0);
   });
 
+  it('blocks immediate actions until deferred restore gives the original command priority', async () => {
+    let releaseRestore!: () => void;
+    const restoreGate = new Promise<void>((resolve) => {
+      releaseRestore = resolve;
+    });
+    const original = createPendingRideSaveCommand({
+      parkId: 'magic-kingdom',
+      attractionId: 'space-mountain',
+      parkName: 'Magic Kingdom',
+      attractionName: 'Space Mountain',
+      rodeAt: new Date('2026-08-21T20:00:00.000Z'),
+      waitTimeMinutes: 35,
+      attractionClosed: false,
+      source: 'timer',
+      rating: 4,
+      notes: 'Original frozen command',
+    });
+    await persistPendingRideSaveCommand(
+      'user-123',
+      rideSaveContext('timer', 'magic-kingdom:space-mountain'),
+      original,
+    );
+    configurePendingSaveCommandLoadDelayForTests(() => restoreGate);
+    const onClose = vi.fn();
+    const { container } = render(
+      <TimerCompleteSheet
+        elapsedMinutes={50}
+        attractionName="Space Mountain"
+        parkId="magic-kingdom"
+        attractionId="space-mountain"
+        parkName="Magic Kingdom"
+        onClose={onClose}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog');
+    const save = screen.getByRole('button', { name: 'Save 🎉' });
+    expect(save).toBeDisabled();
+    fireEvent.click(save);
+    fireEvent.click(container.firstElementChild!.firstElementChild!);
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(mockCreateRideLog).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+
+    releaseRestore();
+    const retry = await screen.findByRole('button', { name: 'Retry Save' });
+    fireEvent.click(retry);
+    await waitFor(() => expect(mockCreateRideLog).toHaveBeenCalledTimes(1));
+    expect(mockCreateRideLog.mock.calls[0][3]?.requestId).toBe(original.requestId);
+    expect(mockCreateRideLog.mock.calls[0][1]).toMatchObject({
+      waitTimeMinutes: 35,
+      rating: 4,
+      notes: 'Original frozen command',
+    });
+  });
+
   it('preserves an ambiguous command across sign-out and retries it for the same UID', async () => {
     mockCreateRideLog
       .mockRejectedValueOnce(
@@ -638,7 +759,7 @@ describe('TimerCompleteSheet', () => {
     };
     const view = render(<TimerCompleteSheet {...props} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+    await clickTimerSave();
     await screen.findByRole('alert');
     const requestId = mockCreateRideLog.mock.calls[0][3]?.requestId;
 
@@ -671,7 +792,7 @@ describe('TimerCompleteSheet', () => {
       onClose: vi.fn(),
     };
     const view = render(<TimerCompleteSheet {...props} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+    await clickTimerSave();
     await screen.findByRole('alert');
 
     mockAuthState.user = { uid: 'other-user', email: 'other@example.com' };
@@ -702,7 +823,7 @@ describe('TimerCompleteSheet', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText(/Save/));
+    await clickTimerSave();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/session expired/i);
     expect(mockCreateRideLog).not.toHaveBeenCalled();
@@ -731,7 +852,7 @@ describe('TimerCompleteSheet', () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: 'Save 🎉' }));
+      await clickTimerSave();
       expect(await screen.findByRole('alert')).toHaveTextContent(/rejected before commit/i);
       expect(screen.queryByRole('button', { name: /Retry Save/i })).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Discard failed save & close/i })).toBeEnabled();
@@ -774,7 +895,7 @@ describe('TimerCompleteSheet', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText(/Save/));
+    await clickTimerSave();
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/Firestore rejected/i);
     expect(onClose).not.toHaveBeenCalled();
@@ -796,7 +917,7 @@ describe('TimerCompleteSheet', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText(/Save/));
+    await clickTimerSave();
 
     expect(await screen.findByText(/Ride saved.*could not close/i)).toBeInTheDocument();
     expect(screen.getByText('Close')).toBeEnabled();
@@ -828,7 +949,7 @@ describe('TimerCompleteSheet', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText(/Save/));
+    await clickTimerSave();
 
     expect(await screen.findByText(/Ride saved.*trip summary could not refresh/i)).toBeInTheDocument();
     expect(screen.getByText('Close')).toBeEnabled();
@@ -857,7 +978,7 @@ describe('TimerCompleteSheet', () => {
       />,
     );
 
-    fireEvent.click(screen.getByText(/Save/));
+    await clickTimerSave();
 
     expect(screen.getByRole('status')).toHaveTextContent('Saving ride.');
     const dialog = screen.getByRole('dialog');
@@ -898,7 +1019,8 @@ describe('TimerCompleteSheet', () => {
       />,
     );
 
-    const saveButton = screen.getByText(/Save/);
+    const saveButton = screen.getByRole('button', { name: 'Save 🎉' });
+    await waitFor(() => expect(saveButton).toBeEnabled());
     fireEvent.click(saveButton);
     fireEvent.click(saveButton);
 

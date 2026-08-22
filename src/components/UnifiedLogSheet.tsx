@@ -565,7 +565,7 @@ export default function UnifiedLogSheet({
           className="fixed inset-0 z-[60] bg-black/40"
           onClick={handleClose}
         />
-        <div className="fixed inset-x-0 bottom-0 z-[70] rounded-t-2xl bg-white shadow-2xl pb-[env(safe-area-inset-bottom)]">
+        <div className="fixed inset-x-0 bottom-0 z-[70] mx-auto w-full max-w-md overflow-x-hidden rounded-t-2xl bg-white shadow-2xl pb-[env(safe-area-inset-bottom)]">
           <div className="px-4 pt-6 pb-8 text-center">
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-primary-200" />
             <div className="text-4xl mb-3">🎢</div>
@@ -590,7 +590,7 @@ export default function UnifiedLogSheet({
       />
 
       {/* Sheet */}
-      <div className="fixed inset-x-0 bottom-0 z-[70] max-h-[90vh] overflow-y-auto rounded-t-2xl bg-white shadow-2xl transition-transform duration-300 pb-[env(safe-area-inset-bottom)]">
+      <div className="fixed inset-x-0 bottom-0 z-[70] mx-auto w-full max-w-md max-h-[90vh] overflow-x-hidden overflow-y-auto rounded-t-2xl bg-white shadow-2xl transition-transform duration-300 pb-[env(safe-area-inset-bottom)]">
         {/* Handle bar */}
         <div className="sticky top-0 z-10 bg-white pt-3 pb-2 px-4 border-b border-primary-100 rounded-t-2xl">
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-primary-200" />

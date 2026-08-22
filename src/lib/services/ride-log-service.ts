@@ -42,7 +42,8 @@ export interface GetRideLogsOptions {
 
 export const RIDE_LOG_SAVE_TIMEOUT_MS = 10_000;
 const ACTIVE_TRIP_LOOKUP_TIMEOUT_MS = 3_000;
-const CROWD_REPORT_TIMEOUT_MS = 5_000;
+const CROWD_REPORT_AUTH_TIMEOUT_MS = 5_000;
+export const CROWD_REPORT_REQUEST_TIMEOUT_MS = 10_000;
 
 export type RideLogSaveErrorCode =
   | 'auth-required'
@@ -758,11 +759,19 @@ export async function deleteRideLog(userId: string, logId: string): Promise<void
 
 /** Submit a crowd report via the API route (server-side write). */
 export async function submitCrowdReport(data: {
+  requestId: string;
+  reportedAtMs: number;
   parkId: string;
   attractionId: string;
   waitTimeMinutes: number;
 }): Promise<void> {
-  if (!data.parkId.trim() || !data.attractionId.trim() || !isValidReportedWaitTime(data.waitTimeMinutes)) {
+  if (
+    !/^[A-Za-z0-9_-]{8,128}$/.test(data.requestId)
+    || !Number.isFinite(data.reportedAtMs)
+    || !data.parkId.trim()
+    || !data.attractionId.trim()
+    || !isValidReportedWaitTime(data.waitTimeMinutes)
+  ) {
     throw new RideLogSaveError('invalid-data', WAIT_TIME_RANGE_MESSAGE);
   }
   const currentUser = auth.currentUser;
@@ -770,31 +779,71 @@ export async function submitCrowdReport(data: {
     throw new RideLogSaveError('auth-required', 'Sign in to submit a crowd report.');
   }
 
-  const controller = new AbortController();
-  const abortTimer = setTimeout(() => controller.abort(), CROWD_REPORT_TIMEOUT_MS);
-
   try {
     const idToken = await withTimeout(
       currentUser.getIdToken(),
-      CROWD_REPORT_TIMEOUT_MS,
+      CROWD_REPORT_AUTH_TIMEOUT_MS,
       'Crowd report authentication timed out.',
     );
-    const response = await fetch('/api/queue-report', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        parkId: data.parkId,
-        attractionId: data.attractionId,
-        waitTimeMinutes: data.waitTimeMinutes,
-      }),
-      signal: controller.signal,
-    });
+    const controller = new AbortController();
+    const abortTimer = setTimeout(
+      () => controller.abort(),
+      CROWD_REPORT_REQUEST_TIMEOUT_MS,
+    );
+    try {
+      const response = await fetch('/api/queue-report', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requestId: data.requestId,
+          reportedAtMs: data.reportedAtMs,
+          parkId: data.parkId,
+          attractionId: data.attractionId,
+          waitTimeMinutes: data.waitTimeMinutes,
+        }),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      throw new Error(`Queue report request failed with status ${response.status}`);
+      const body = (
+        typeof response.json === 'function'
+          ? await response.json().catch(() => ({}))
+          : {}
+      ) as {
+        success?: unknown;
+        requestId?: unknown;
+        outcome?: unknown;
+        error?: string;
+      };
+      if (!response.ok) {
+        const message = body.error
+          ?? `Queue report request failed with status ${response.status}`;
+        const definitive = [400, 401, 409, 413, 429].includes(response.status);
+        throw new RideLogSaveError(
+          response.status === 401 ? 'auth-required' : 'write-failed',
+          message,
+          undefined,
+          undefined,
+          definitive ? 'definitive-non-commit' : 'ambiguous',
+        );
+      }
+      if (
+        body.success !== true
+        || body.requestId !== data.requestId
+        || !['accepted', 'replay', 'ignored-older-correction'].includes(String(body.outcome))
+      ) {
+        throw new RideLogSaveError(
+          'write-failed',
+          'The wait-time report response could not be confirmed. Retrying is safe.',
+          undefined,
+          undefined,
+          'ambiguous',
+        );
+      }
+    } finally {
+      clearTimeout(abortTimer);
     }
   } catch (error) {
     if (error instanceof RideLogSaveError) throw error;
@@ -802,7 +851,5 @@ export async function submitCrowdReport(data: {
       throw new RideLogSaveError('timeout', 'Crowd report submission timed out.', error);
     }
     throw error;
-  } finally {
-    clearTimeout(abortTimer);
   }
 }

@@ -3,13 +3,20 @@ import { isValidRideWaitTime } from '@/lib/wait-time-contract';
 import {
   loadPendingSaveCommand,
   removePendingSaveCommand,
+  replacePendingSaveCommand,
   storePendingSaveCommand,
 } from '@/lib/services/pending-save-command-storage';
 import type { PendingSaveStorageResult } from '@/lib/services/pending-save-command-storage';
 
+export type PendingRideSaveStage =
+  | 'ride-pending'
+  | 'report-pending'
+  | 'cleanup-pending';
+
 export interface PendingRideSaveCommand {
   requestId: string;
   tripId?: string | null;
+  workflowStage?: PendingRideSaveStage;
   data: Omit<RideLogCreateData, 'rodeAt' | 'tripId'> & { rodeAt: string };
 }
 
@@ -37,6 +44,12 @@ export function isPendingRideSaveCommand(value: unknown): value is PendingRideSa
       command.tripId === undefined
       || command.tripId === null
       || typeof command.tripId === 'string'
+    )
+    && (
+      command.workflowStage === undefined
+      || command.workflowStage === 'ride-pending'
+      || command.workflowStage === 'report-pending'
+      || command.workflowStage === 'cleanup-pending'
     )
     && Boolean(data)
     && typeof data?.parkId === 'string'
@@ -71,6 +84,7 @@ export function createPendingRideSaveCommand(
   return {
     requestId: createRequestId(),
     tripId,
+    workflowStage: 'ride-pending',
     data: {
       parkId: data.parkId,
       attractionId: data.attractionId,
@@ -83,6 +97,33 @@ export function createPendingRideSaveCommand(
       rating: data.rating,
       notes: data.notes,
     },
+  };
+}
+
+export function pendingRideSaveStage(
+  command: PendingRideSaveCommand,
+): PendingRideSaveStage {
+  return command.workflowStage ?? 'ride-pending';
+}
+
+export async function persistPendingRideSaveStage(
+  uid: string,
+  context: string,
+  command: PendingRideSaveCommand,
+  workflowStage: PendingRideSaveStage,
+): Promise<{
+  command: PendingRideSaveCommand;
+  result: PendingSaveStorageResult;
+}> {
+  const nextCommand = { ...command, workflowStage };
+  return {
+    command: nextCommand,
+    result: await replacePendingSaveCommand(
+      uid,
+      context,
+      command.requestId,
+      nextCommand,
+    ),
   };
 }
 
