@@ -1,13 +1,16 @@
+export const maxDuration = 20;
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from 'firebase-admin/auth';
 import { adminApp, adminDb } from '@/lib/firebase/admin';
 import {
+  CrowdReportAttractionError,
   CrowdReportConflictError,
   CrowdReportStaleError,
-  submitCrowdReport,
+  submitVerifiedQueueReport,
 } from '@/lib/services/crowd-service';
 import {
-  consumeQueueReportBudget,
   QueueReportRateLimitError,
 } from '@/lib/services/queue-report-rate-limit';
 import {
@@ -23,9 +26,8 @@ import type { QueueReportRequest } from '@/types/ride-log';
 // ---------------------------------------------------------------------------
 
 const MAX_BODY_BYTES = 4_096;
+const QUEUE_REPORT_SERVER_DEADLINE_MS = 8_000;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
-const LOGGABLE_ENTITY_TYPES = new Set(['ATTRACTION', 'RIDE', 'SHOW', 'MEET_AND_GREET']);
-
 type AnonymousQueueReportRequest = QueueReportRequest & {
   requestId?: string;
   attractionName?: string;
@@ -102,7 +104,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function handlePost(request: NextRequest): Promise<NextResponse> {
   // 1. Verify Firebase ID token from Authorization header
   const authHeader = request.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
@@ -194,59 +196,35 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (Number.isNaN(reportDate.getTime())) {
     return NextResponse.json({ error: 'Report timestamp is invalid' }, { status: 400 });
   }
-  const reportTimestampIsStale = Math.abs(Date.now() - reportDate.getTime()) > 5 * 60 * 1000;
+  const nowMs = Date.now();
+  if (reportDate.getTime() > nowMs + 5 * 60 * 1000) {
+    return NextResponse.json({ error: 'Report timestamp is too far in the future' }, { status: 400 });
+  }
+  const reportTimestampIsDelayed = nowMs - reportDate.getTime() > 5 * 60 * 1000;
 
-  // 4. Resolve the canonical attraction server-side.
-  let attractionSnapshot;
+  // 4. Atomically validate the canonical attraction and account budget, then
+  // write the anonymous report, private contributor state, and aggregate.
   try {
-    attractionSnapshot = await adminDb.doc(`attractions/${attractionId}`).get();
-  } catch (error) {
-    console.error('[queue-report] Canonical attraction lookup failed:', error);
-    return NextResponse.json({ error: 'Could not validate attraction' }, { status: 503 });
-  }
-  if (!attractionSnapshot.exists) {
-    return NextResponse.json({ error: 'Attraction not found' }, { status: 400 });
-  }
-  const canonicalAttraction = attractionSnapshot.data() as {
-    name?: string;
-    parkId?: string;
-    entityType?: string;
-  };
-  if (
-    canonicalAttraction.parkId !== parkId
-    || !canonicalAttraction.name
-    || (attractionName != null && canonicalAttraction.name !== attractionName)
-    || !LOGGABLE_ENTITY_TYPES.has(canonicalAttraction.entityType ?? '')
-  ) {
-    return NextResponse.json({ error: 'Attraction does not belong to the selected park' }, { status: 400 });
-  }
-
-  try {
-    await consumeQueueReportBudget(verifiedUid, requestId);
-  } catch (error) {
-    if (error instanceof QueueReportRateLimitError) {
-      return NextResponse.json({ error: error.message }, { status: 429 });
-    }
-    console.error('[queue-report] Account rate-limit check failed:', error);
-    return NextResponse.json(
-      { error: 'Wait-time reporting is temporarily unavailable' },
-      { status: 503 },
-    );
-  }
-
-  // 5. Atomically write the anonymous report, private contributor state, and
-  // canonical aggregate. Stable replays are reconciled inside the transaction.
-  try {
-    await submitCrowdReport(parkId, {
+    const outcome = await submitVerifiedQueueReport(parkId, {
       requestId,
       uid: verifiedUid,
       attractionId,
-      attractionName: canonicalAttraction.name,
+      expectedAttractionName: attractionName,
       waitTimeMinutes,
       reportedAt: reportDate,
-      allowStaleReplay: reportTimestampIsStale,
+      allowStaleReplay: reportTimestampIsDelayed,
+      delayedRidePath: reportTimestampIsDelayed
+        ? `users/${verifiedUid}/rideLogs/${requestId}`
+        : undefined,
     });
+    return NextResponse.json({ success: true, requestId, outcome });
   } catch (error) {
+    if (error instanceof CrowdReportAttractionError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (error instanceof QueueReportRateLimitError) {
+      return NextResponse.json({ error: error.message }, { status: 429 });
+    }
     if (error instanceof CrowdReportConflictError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
@@ -255,10 +233,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     console.error('[queue-report] Failed to submit crowd report:', error);
     return NextResponse.json(
-      { error: 'Failed to submit report' },
-      { status: 500 },
+      {
+        error: 'Wait-time report status could not be confirmed',
+        outcome: 'ambiguous',
+        retryable: true,
+      },
+      { status: 503 },
     );
   }
+}
 
-  return NextResponse.json({ success: true });
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<NextResponse>((resolve) => {
+    deadlineTimer = setTimeout(() => {
+      resolve(NextResponse.json(
+        {
+          error: 'Wait-time report status could not be confirmed before the server deadline',
+          outcome: 'ambiguous',
+          retryable: true,
+        },
+        { status: 503 },
+      ));
+    }, QUEUE_REPORT_SERVER_DEADLINE_MS);
+  });
+  return Promise.race([handlePost(request), deadline]).finally(() => {
+    if (deadlineTimer) clearTimeout(deadlineTimer);
+  });
 }

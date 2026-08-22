@@ -5,7 +5,7 @@
  * Validates: auth, input validation, privacy (no userId in written data),
  * and that aggregation is triggered after a valid report.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 // Mock Firebase Admin
@@ -40,7 +40,8 @@ vi.mock('firebase-admin/auth', () => ({
 }));
 
 vi.mock('@/lib/services/crowd-service', () => ({
-  submitCrowdReport: (...args: unknown[]) => mockSubmitCrowdReport(...args),
+  submitVerifiedQueueReport: (...args: unknown[]) => mockSubmitCrowdReport(...args),
+  CrowdReportAttractionError: class CrowdReportAttractionError extends Error {},
   CrowdReportConflictError: class CrowdReportConflictError extends Error {},
   CrowdReportStaleError: class CrowdReportStaleError extends Error {},
 }));
@@ -104,6 +105,10 @@ describe('POST /api/queue-report', () => {
     mockPublicQueryGet.mockResolvedValue({ docs: [] });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns 200 and writes to Firestore for valid report', async () => {
     const request = createRequest(validPayload, {
       Authorization: 'Bearer valid-token',
@@ -118,16 +123,13 @@ describe('POST /api/queue-report', () => {
         requestId: 'report-request-1234',
         uid: 'user-123',
         attractionId: 'space-mountain',
-        attractionName: 'Space Mountain',
+        expectedAttractionName: 'Space Mountain',
         waitTimeMinutes: 35,
         reportedAt: expect.any(Date),
         allowStaleReplay: false,
       }),
     );
-    expect(mockConsumeQueueReportBudget).toHaveBeenCalledWith(
-      'user-123',
-      'report-request-1234',
-    );
+    expect(mockConsumeQueueReportBudget).not.toHaveBeenCalled();
   });
 
   it('returns 400 for missing required fields', async () => {
@@ -261,33 +263,64 @@ describe('POST /api/queue-report', () => {
 
   it('returns 429 when the verified account budget is exhausted', async () => {
     const { QueueReportRateLimitError } = await import('@/lib/services/queue-report-rate-limit');
-    mockConsumeQueueReportBudget.mockRejectedValueOnce(new QueueReportRateLimitError());
+    mockSubmitCrowdReport.mockRejectedValueOnce(new QueueReportRateLimitError());
     const response = await POST(createRequest(validPayload, authenticatedHeaders));
     expect(response.status).toBe(429);
-    expect(mockSubmitCrowdReport).not.toHaveBeenCalled();
+    expect(mockSubmitCrowdReport).toHaveBeenCalledTimes(1);
   });
 
   it('fails closed when rate-limit storage is unavailable', async () => {
-    mockConsumeQueueReportBudget.mockRejectedValueOnce(new Error('storage unavailable'));
+    mockSubmitCrowdReport.mockRejectedValueOnce(new Error('storage unavailable'));
     const response = await POST(createRequest(validPayload, authenticatedHeaders));
     expect(response.status).toBe(503);
-    expect(mockSubmitCrowdReport).not.toHaveBeenCalled();
+    expect(mockSubmitCrowdReport).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns an ambiguous retryable response before the client deadline when work hangs', async () => {
+    const serverDeadlineMs = 8_000;
+    vi.useFakeTimers();
+    mockSubmitCrowdReport.mockImplementationOnce(() => new Promise(() => {}));
+    const responsePromise = POST(createRequest(validPayload, authenticatedHeaders));
+    let settled = false;
+    void responsePromise.then(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(serverDeadlineMs - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const response = await responsePromise;
+
+    expect(serverDeadlineMs).toBeLessThan(10_000);
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Wait-time report status could not be confirmed before the server deadline',
+      outcome: 'ambiguous',
+      retryable: true,
+    });
   });
 
   it.each([
     ['mismatched park', { parkId: 'epcot' }],
     ['spoofed name', { attractionName: 'Fake Mountain' }],
   ])('rejects canonical attraction spoofing: %s', async (_label, changed) => {
+    const { CrowdReportAttractionError } = await import('@/lib/services/crowd-service');
+    mockSubmitCrowdReport.mockRejectedValueOnce(
+      new CrowdReportAttractionError('Attraction does not belong to the selected park'),
+    );
     const response = await POST(createRequest(
       { ...validPayload, ...changed },
       { Authorization: 'Bearer test-token' },
     ));
     expect(response.status).toBe(400);
-    expect(mockSubmitCrowdReport).not.toHaveBeenCalled();
+    expect(mockSubmitCrowdReport).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a missing canonical attraction', async () => {
-    mockAttractionGet.mockResolvedValueOnce({ exists: false, data: () => undefined });
+    const { CrowdReportAttractionError } = await import('@/lib/services/crowd-service');
+    mockSubmitCrowdReport.mockRejectedValueOnce(
+      new CrowdReportAttractionError('Attraction not found'),
+    );
     const response = await POST(createRequest(validPayload, { Authorization: 'Bearer test-token' }));
     expect(response.status).toBe(400);
   });
@@ -309,6 +342,8 @@ describe('POST /api/queue-report', () => {
   });
 
   it('delegates stale replay reconciliation to the transaction', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-21T12:00:00.000Z'));
     const stalePayload = {
       ...validPayload,
       reportedAtMs: Date.now() - 10 * 60 * 1000,
@@ -317,7 +352,10 @@ describe('POST /api/queue-report', () => {
     expect(response.status).toBe(200);
     expect(mockSubmitCrowdReport).toHaveBeenCalledWith(
       'magic-kingdom',
-      expect.objectContaining({ allowStaleReplay: true }),
+      expect.objectContaining({
+        allowStaleReplay: true,
+        delayedRidePath: 'users/user-123/rideLogs/report-request-1234',
+      }),
     );
 
     const { CrowdReportStaleError } = await import('@/lib/services/crowd-service');

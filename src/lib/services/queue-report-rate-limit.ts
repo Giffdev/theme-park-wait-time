@@ -9,6 +9,11 @@ interface RecentRequest {
   acceptedAtMs: number;
 }
 
+export interface QueueReportBudgetDecision {
+  result: 'accepted' | 'replay';
+  recentRequests: RecentRequest[];
+}
+
 export class QueueReportRateLimitError extends Error {
   constructor() {
     super('Too many wait-time reports. Please try again later.');
@@ -16,7 +21,8 @@ export class QueueReportRateLimitError extends Error {
   }
 }
 
-function accountBudgetKey(uid: string): string {
+export function queueReportBudgetPath(uid: string): string {
+  if (!uid) throw new Error('Verified account identity is unavailable.');
   return createHash('sha256').update(uid).digest('hex');
 }
 
@@ -30,36 +36,49 @@ function validRecentRequests(value: unknown): RecentRequest[] {
   ));
 }
 
+export function evaluateQueueReportBudget(
+  value: unknown,
+  requestId: string,
+  nowMs = Date.now(),
+): QueueReportBudgetDecision {
+  const cutoff = nowMs - QUEUE_REPORT_WINDOW_MS;
+  const recentRequests = validRecentRequests(
+    (value as { recentRequests?: unknown } | undefined)?.recentRequests,
+  ).filter((entry) => entry.acceptedAtMs >= cutoff);
+
+  if (recentRequests.some((entry) => entry.requestId === requestId)) {
+    return { result: 'replay', recentRequests };
+  }
+  if (recentRequests.length >= QUEUE_REPORT_ACCOUNT_LIMIT) {
+    throw new QueueReportRateLimitError();
+  }
+  return {
+    result: 'accepted',
+    recentRequests: [
+      ...recentRequests,
+      { requestId, acceptedAtMs: nowMs },
+    ],
+  };
+}
+
 export async function consumeQueueReportBudget(
   uid: string,
   requestId: string,
   nowMs = Date.now(),
 ): Promise<'accepted' | 'replay'> {
-  if (!uid) throw new Error('Verified account identity is unavailable.');
   if (typeof adminDb.runTransaction !== 'function') {
     throw new Error('Queue-report rate-limit storage is unavailable.');
   }
 
-  const budgetRef = adminDb.doc(`queueReportRateLimits/${accountBudgetKey(uid)}`);
+  const budgetRef = adminDb.doc(`queueReportRateLimits/${queueReportBudgetPath(uid)}`);
   return adminDb.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(budgetRef);
-    const cutoff = nowMs - QUEUE_REPORT_WINDOW_MS;
-    const recentRequests = validRecentRequests(snapshot.data()?.recentRequests)
-      .filter((entry) => entry.acceptedAtMs >= cutoff);
-
-    if (recentRequests.some((entry) => entry.requestId === requestId)) {
-      return 'replay';
-    }
-    if (recentRequests.length >= QUEUE_REPORT_ACCOUNT_LIMIT) {
-      throw new QueueReportRateLimitError();
-    }
+    const decision = evaluateQueueReportBudget(snapshot.data(), requestId, nowMs);
+    if (decision.result === 'replay') return 'replay';
 
     transaction.set(budgetRef, {
       schemaVersion: 1,
-      recentRequests: [
-        ...recentRequests,
-        { requestId, acceptedAtMs: nowMs },
-      ],
+      recentRequests: decision.recentRequests,
       updatedAtMs: nowMs,
     });
     return 'accepted';

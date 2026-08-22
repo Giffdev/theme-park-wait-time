@@ -3,6 +3,10 @@ import { adminDb } from '@/lib/firebase/admin';
 import { FieldPath, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { LATEST_WAIT_TIME_REPORT_LIMIT } from '@/lib/wait-time-contract';
 import type { CrowdAggregate } from '@/types/ride-log';
+import {
+  evaluateQueueReportBudget,
+  queueReportBudgetPath,
+} from '@/lib/services/queue-report-rate-limit';
 
 const AGGREGATION_WINDOW_MS = 2 * 60 * 60 * 1000;
 export const CONSENSUS_CONTRIBUTION_WINDOW_MS = 30 * 60 * 1000;
@@ -33,6 +37,24 @@ interface SubmitCrowdReportData {
   allowStaleReplay: boolean;
 }
 
+interface SubmitVerifiedQueueReportData {
+  requestId: string;
+  uid: string;
+  attractionId: string;
+  expectedAttractionName?: string;
+  waitTimeMinutes: number;
+  reportedAt: Date;
+  allowStaleReplay: boolean;
+  delayedRidePath?: string;
+  acceptedAtMs?: number;
+}
+
+interface QueueIngress {
+  expectedAttractionName?: string;
+  acceptedAtMs: number;
+  delayedRidePath?: string;
+}
+
 interface StoredContribution {
   requestId?: unknown;
   reportId?: unknown;
@@ -51,12 +73,14 @@ interface CanonicalContribution {
 }
 
 interface StoredRequest {
+  schemaVersion?: unknown;
   uidHash?: unknown;
   parkId?: unknown;
   attractionId?: unknown;
   attractionName?: unknown;
   waitTimeMinutes?: unknown;
   reportedAtMs?: unknown;
+  outcome?: unknown;
 }
 
 interface StoredPublicReport {
@@ -67,6 +91,15 @@ interface StoredPublicReport {
   waitTime?: unknown;
   reportedAt?: { toDate?: () => Date };
   status?: unknown;
+}
+
+interface StoredRide {
+  clientRequestId?: unknown;
+  parkId?: unknown;
+  attractionId?: unknown;
+  waitTimeMinutes?: unknown;
+  rodeAt?: { toDate?: () => Date };
+  source?: unknown;
 }
 
 export class CrowdReportConflictError extends Error {
@@ -80,6 +113,13 @@ export class CrowdReportStaleError extends Error {
   constructor() {
     super('Report timestamp is stale');
     this.name = 'CrowdReportStaleError';
+  }
+}
+
+export class CrowdReportAttractionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CrowdReportAttractionError';
   }
 }
 
@@ -130,12 +170,17 @@ function requestMatches(
     reportedAtMs: number;
   },
 ): boolean {
-  return existing?.uidHash === expected.uidHash
+  return existing?.schemaVersion === 1
+    && existing.uidHash === expected.uidHash
     && existing.parkId === expected.parkId
     && existing.attractionId === expected.attractionId
     && existing.attractionName === expected.attractionName
     && existing.waitTimeMinutes === expected.waitTimeMinutes
-    && existing.reportedAtMs === expected.reportedAtMs;
+    && existing.reportedAtMs === expected.reportedAtMs
+    && (
+      existing.outcome === 'accepted'
+      || existing.outcome === 'ignored-older-correction'
+    );
 }
 
 function publicReportMatches(
@@ -202,6 +247,32 @@ export async function submitCrowdReport(
   parkId: string,
   data: SubmitCrowdReportData,
 ): Promise<'accepted' | 'replay' | 'ignored-older-correction'> {
+  return persistCrowdReport(parkId, data);
+}
+
+export async function submitVerifiedQueueReport(
+  parkId: string,
+  data: SubmitVerifiedQueueReportData,
+): Promise<'accepted' | 'replay' | 'ignored-older-correction'> {
+  return persistCrowdReport(
+    parkId,
+    {
+      ...data,
+      attractionName: '',
+    },
+    {
+      expectedAttractionName: data.expectedAttractionName,
+      acceptedAtMs: data.acceptedAtMs ?? Date.now(),
+      delayedRidePath: data.delayedRidePath,
+    },
+  );
+}
+
+async function persistCrowdReport(
+  parkId: string,
+  data: SubmitCrowdReportData,
+  ingress?: QueueIngress,
+): Promise<'accepted' | 'replay' | 'ignored-older-correction'> {
   const reportedAtMs = data.reportedAt.getTime();
   const uidHash = createHash('sha256').update(data.uid).digest('hex');
   const privateContributorId = contributorKey(data.uid, parkId, data.attractionId);
@@ -209,6 +280,13 @@ export async function submitCrowdReport(
   const contributionRef = adminDb.doc(`queueReportContributions/${privateContributorId}`);
   const publicReportRef = adminDb.doc(`waitTimeReports/${data.requestId}`);
   const aggregateRef = adminDb.doc(`${aggregatesPath(parkId)}/${data.attractionId}`);
+  const attractionRef = ingress ? adminDb.doc(`attractions/${data.attractionId}`) : null;
+  const budgetRef = ingress
+    ? adminDb.doc(`queueReportRateLimits/${queueReportBudgetPath(data.uid)}`)
+    : null;
+  const delayedRideRef = ingress?.delayedRidePath
+    ? adminDb.doc(ingress.delayedRidePath)
+    : null;
   const recentCutoffMs = reportedAtMs - AGGREGATION_WINDOW_MS;
   const recentContributionsQuery = adminDb
     .collection('queueReportContributions')
@@ -219,35 +297,78 @@ export async function submitCrowdReport(
     .limit(CONSENSUS_CONTRIBUTOR_QUERY_LIMIT);
 
   return adminDb.runTransaction(async (transaction) => {
+    const references = [
+      requestRef,
+      contributionRef,
+      publicReportRef,
+      aggregateRef,
+      ...(attractionRef && budgetRef ? [attractionRef, budgetRef] : []),
+      ...(delayedRideRef ? [delayedRideRef] : []),
+    ];
     const [
       requestSnapshot,
       contributionSnapshot,
       publicReportSnapshot,
       aggregateSnapshot,
-      recentSnapshot,
-    ] =
-      await Promise.all([
-        transaction.get(requestRef),
-        transaction.get(contributionRef),
-        transaction.get(publicReportRef),
-        transaction.get(aggregateRef),
-        transaction.get(recentContributionsQuery),
-      ]);
+      attractionSnapshot,
+      budgetSnapshot,
+      delayedRideSnapshot,
+    ] = await transaction.getAll(...references);
+
+    const existingRequest = requestSnapshot.data() as StoredRequest | undefined;
+
+    let attractionName = data.attractionName;
+    let budgetDecision: ReturnType<typeof evaluateQueueReportBudget> | null = null;
+    if (ingress) {
+      const canonicalAttraction = attractionSnapshot?.data() as {
+        name?: unknown;
+        parkId?: unknown;
+        entityType?: unknown;
+      } | undefined;
+      if (!attractionSnapshot?.exists) {
+        throw new CrowdReportAttractionError('Attraction not found');
+      }
+      if (
+        canonicalAttraction?.parkId !== parkId
+        || typeof canonicalAttraction.name !== 'string'
+        || !canonicalAttraction.name
+        || (
+          ingress.expectedAttractionName != null
+          && canonicalAttraction.name !== ingress.expectedAttractionName
+        )
+        || !['ATTRACTION', 'RIDE', 'SHOW', 'MEET_AND_GREET'].includes(
+          String(canonicalAttraction.entityType ?? ''),
+        )
+      ) {
+        throw new CrowdReportAttractionError(
+          'Attraction does not belong to the selected park',
+        );
+      }
+      attractionName = canonicalAttraction.name;
+    }
 
     const requestIdentity = {
       uidHash,
       parkId,
       attractionId: data.attractionId,
-      attractionName: data.attractionName,
+      attractionName,
       waitTimeMinutes: data.waitTimeMinutes,
       reportedAtMs,
     };
     if (requestSnapshot.exists) {
-      if (!requestMatches(requestSnapshot.data() as StoredRequest, requestIdentity)) {
+      if (!requestMatches(existingRequest, requestIdentity)) {
         throw new CrowdReportConflictError();
       }
       return 'replay';
     }
+    if (ingress) {
+      budgetDecision = evaluateQueueReportBudget(
+        budgetSnapshot?.data(),
+        data.requestId,
+        ingress.acceptedAtMs,
+      );
+    }
+    const recentSnapshot = await transaction.get(recentContributionsQuery);
     const adoptingExistingPublicReport = publicReportSnapshot.exists;
     if (
       adoptingExistingPublicReport
@@ -255,8 +376,19 @@ export async function submitCrowdReport(
     ) {
       throw new CrowdReportConflictError();
     }
-    if (data.allowStaleReplay && !adoptingExistingPublicReport) {
-      throw new CrowdReportStaleError();
+    if (ingress && data.allowStaleReplay) {
+      const delayedRide = delayedRideSnapshot?.data() as StoredRide | undefined;
+      if (
+        !delayedRideSnapshot?.exists
+        || delayedRide?.clientRequestId !== data.requestId
+        || delayedRide.parkId !== parkId
+        || delayedRide.attractionId !== data.attractionId
+        || delayedRide.waitTimeMinutes !== data.waitTimeMinutes
+        || delayedRide.rodeAt?.toDate?.().getTime() !== reportedAtMs
+        || delayedRide.source !== 'timer'
+      ) {
+        throw new CrowdReportStaleError();
+      }
     }
 
     const current = asContribution(
@@ -283,6 +415,13 @@ export async function submitCrowdReport(
       outcome: isOlderCorrection ? 'ignored-older-correction' : 'accepted',
       createdAt: FieldValue.serverTimestamp(),
     });
+    if (budgetRef && budgetDecision?.result === 'accepted') {
+      transaction.set(budgetRef, {
+        schemaVersion: 1,
+        recentRequests: budgetDecision.recentRequests,
+        updatedAtMs: ingress!.acceptedAtMs,
+      });
+    }
     if (isOlderCorrection) {
       if (adoptingExistingPublicReport) transaction.delete(publicReportRef);
       return 'ignored-older-correction';
@@ -313,7 +452,7 @@ export async function submitCrowdReport(
       transaction.create(publicReportRef, {
         schemaVersion: 1,
         attractionId: data.attractionId,
-        attractionName: data.attractionName,
+        attractionName,
         parkId,
         waitTime: data.waitTimeMinutes,
         reportedAt: Timestamp.fromDate(data.reportedAt),
