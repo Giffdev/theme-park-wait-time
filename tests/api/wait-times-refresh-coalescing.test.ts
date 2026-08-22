@@ -26,10 +26,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockUpdateForecastAggregates = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockBatchSet = vi.fn();
-// Tracks every batch.commit() call across both the primary write
-// (writeCurrentWaitTimes) and background maintenance
-// (archiveHistoricalSnapshot) so tests can gate/inspect specific calls by
-// their 1-based position in the overall call sequence.
+// Tracks archiveHistoricalSnapshot batch commits. Current publication uses
+// a Firestore transaction and is independent of this maintenance gate.
 let commitCallCount = 0;
 const gatedCommitIndexes = new Set<number>();
 const gatedCommitResolvers = new Map<number, () => void>();
@@ -59,6 +57,13 @@ vi.mock('@/lib/firebase/admin', () => ({
       return mock;
     },
     getAll: (...refs: unknown[]) => Promise.resolve(refs.map(() => ({ exists: false }))),
+    runTransaction: async (callback: (transaction: {
+      get: () => Promise<{ data: () => undefined }>;
+      set: () => void;
+    }) => Promise<unknown>) => callback({
+      get: async () => ({ data: () => undefined }),
+      set: vi.fn(),
+    }),
   },
 }));
 
@@ -123,39 +128,36 @@ describe('refreshPark concurrency', () => {
     // and never invoked here at all (see
     // `wait-times-universal-persistence.test.ts` for that coverage).
     //
-    // Commit-call sequence for a single-entry, single-batch payload:
-    //   call 1 = writeCurrentWaitTimes's commit (request 1, fast)
-    //   call 2 = archiveHistoricalSnapshot's commit (request 1, gated)
-    // Gate call 2 so request 1's background maintenance is still pending
+    // Gate the first archive commit so request 1's background maintenance
+    // is still pending
     // when request 1 itself resolves.
-    gatedCommitIndexes.add(2);
+    gatedCommitIndexes.add(1);
 
     // First request kicks off (fire-and-forget) maintenance whose own
     // Firestore write is still pending when the request itself resolves.
     const result1 = await refreshPark(MAGIC_KINGDOM_ID);
     expect(result1.meta.stale).toBe(false);
-    expect(commitCallCount).toBe(2);
-    expect(gatedCommitResolvers.has(2)).toBe(true);
+    await vi.waitFor(() => expect(commitCallCount).toBe(1));
+    expect(gatedCommitResolvers.has(1)).toBe(true);
 
     // A second, non-overlapping request for the same park arrives before the
     // first request's background maintenance has finished. It must complete
     // promptly (proving writeCurrentWaitTimes wasn't starved) and must not
-    // start a second concurrent maintenance run — i.e. no 3rd/4th commit
-    // call beyond its own write.
+    // start a second concurrent maintenance run.
     const result2 = await refreshPark(MAGIC_KINGDOM_ID);
     expect(result2.meta.stale).toBe(false);
-    expect(commitCallCount).toBe(3); // request 2's write only; its maintenance was guarded out.
+    expect(commitCallCount).toBe(1);
 
     // Let the first maintenance run finish and allow its cleanup to flush.
-    gatedCommitResolvers.get(2)!();
+    gatedCommitResolvers.get(1)!();
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
 
     // Now that the in-flight maintenance has cleared, a subsequent request
     // is free to kick off maintenance again — its own write (call 4) and
-    // archive commit (call 5) should both run.
+    // archive commit should run.
     await refreshPark(MAGIC_KINGDOM_ID);
-    expect(commitCallCount).toBe(5);
+    await vi.waitFor(() => expect(commitCallCount).toBe(2));
   });
 });
